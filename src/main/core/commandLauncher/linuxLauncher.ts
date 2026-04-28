@@ -4,6 +4,39 @@ import { WindowManager } from '../native'
 import type { ConfirmDialogOptions } from './types'
 import fs from 'fs'
 
+/**
+ * 将可能包含参数的命令字符串拆分为 [可执行文件, ...参数列表]
+ * 例如: "/usr/bin/ghostty --gtk-single-instance=true" → ["/usr/bin/ghostty", "--gtk-single-instance=true"]
+ */
+function parseCommandString(cmd: string): [string, string[]] {
+  const parts: string[] = []
+  let current = ''
+  let inQuote: string | null = null
+
+  for (let i = 0; i < cmd.length; i++) {
+    const ch = cmd[i]
+    if (inQuote) {
+      if (ch === inQuote) {
+        inQuote = null
+      } else {
+        current += ch
+      }
+    } else if (ch === '"' || ch === "'") {
+      inQuote = ch
+    } else if (/\s/.test(ch)) {
+      if (current) {
+        parts.push(current)
+        current = ''
+      }
+    } else {
+      current += ch
+    }
+  }
+  if (current) parts.push(current)
+
+  return [parts[0], parts.slice(1)]
+}
+
 export async function launchApp(
   appPath: string,
   confirmDialog?: ConfirmDialogOptions
@@ -28,6 +61,9 @@ export async function launchApp(
     }
   }
 
+  // 拆分可执行文件路径和参数
+  const [executable, args] = parseCommandString(appPath)
+
   // Linux 平台窗口激活增强：
   // 先尝试寻找已经打开的窗口并激活它
   try {
@@ -45,7 +81,7 @@ export async function launchApp(
               // 检查该进程的可执行文件是否匹配
               const exePath = fs.readlinkSync(`/proc/${pid}/exe`)
               // 检查路径是否匹配（考虑到软链接或相对路径，对比真实绝对路径）
-              if (exePath === fs.realpathSync(appPath)) {
+              if (exePath === fs.realpathSync(executable)) {
                 console.log(`[Launcher] 发现应用已运行 (PID: ${pid}), 尝试通过 WID ${wid} 激活窗口`)
                 WindowManager.activateWindow(wid)
                 return resolve(true)
@@ -72,7 +108,7 @@ export async function launchApp(
     // 使用 spawn + detached: true + stdio: 'ignore'
     // 这样不会阻塞主进程，且不会因为应用退出码非 0 而报错（常见于 WeChat 等应用）
     try {
-      const child = spawn(appPath, [], {
+      const child = spawn(executable, args, {
         detached: true,
         stdio: 'ignore'
       })
