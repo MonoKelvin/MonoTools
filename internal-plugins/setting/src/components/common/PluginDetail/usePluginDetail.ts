@@ -1,7 +1,7 @@
 import { marked } from 'marked'
 import { computed, onMounted, onUnmounted, ref, watch, type Ref } from 'vue'
 import { useToast } from '@/components'
-import type { DocItem, PluginItem, TabId, TabItem } from './types'
+import type { DocItem, PluginItem, PluginUninstallOptions, TabId, TabItem } from './types'
 
 // 配置 marked
 marked.setOptions({
@@ -19,7 +19,7 @@ export interface UsePluginDetailOptions {
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function usePluginDetail(options: UsePluginDetailOptions) {
   const { plugin, isRunning, showComments = false } = options
-  const { success, error, confirm } = useToast()
+  const { success, error, confirm, confirmWithExtra } = useToast()
 
   // 插件设置状态
   const showSettingsDropdown = ref(false)
@@ -313,16 +313,23 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
   })
 
   // 处理卸载
-  async function handleUninstall(emitFn: () => void): Promise<void> {
-    const confirmed = await confirm({
+  async function handleUninstall(emitFn: (options: PluginUninstallOptions) => void): Promise<void> {
+    const result = await confirmWithExtra({
       title: '删除插件',
       message: `确定要删除插件"${plugin.value.name}"吗？\n\n此操作将删除插件文件，无法恢复。`,
       type: 'danger',
+      extra: [
+        {
+          id: 'deleteData',
+          message: '同时删除插件数据',
+          defaultChecked: false
+        }
+      ],
       confirmText: '删除',
       cancelText: '取消'
     })
-    if (confirmed) {
-      emitFn()
+    if (result.confirmed) {
+      emitFn({ deleteData: result.extra.deleteData === true })
     }
   }
 

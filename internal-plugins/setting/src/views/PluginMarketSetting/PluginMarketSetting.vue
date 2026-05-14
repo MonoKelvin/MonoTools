@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useToast } from '@/components'
+import type { PluginUninstallOptions } from '@/components'
 import {
   compareVersions,
   shuffleArray,
@@ -392,20 +393,23 @@ async function downloadPlugin(plugin: Plugin): Promise<void> {
   }
 }
 
-async function handleUninstallPlugin(plugin: Plugin): Promise<void> {
+async function handleUninstallPlugin(
+  plugin: Plugin,
+  options: PluginUninstallOptions
+): Promise<void> {
   if (!plugin.path) {
     error('无法卸载：找不到插件路径')
     return
   }
 
   try {
-    const deleteResult = await window.ztools.internal.deletePlugin(plugin.path)
+    const deleteResult = await window.ztools.internal.deletePlugin(plugin.path, options)
     if (!deleteResult.success) {
       error(`卸载失败: ${deleteResult.error}`)
       return
     }
 
-    success('插件卸载成功')
+    success(options.deleteData ? '插件已卸载，插件数据已删除' : '插件已卸载，插件数据已保留')
 
     plugin.installed = false
     plugin.localVersion = undefined
@@ -666,7 +670,7 @@ onUnmounted(() => {
         @open="handleOpenPlugin(selectedPlugin)"
         @download="downloadPlugin(selectedPlugin)"
         @upgrade="handleUpgradePlugin(selectedPlugin)"
-        @uninstall="handleUninstallPlugin(selectedPlugin)"
+        @uninstall="handleUninstallPlugin(selectedPlugin, $event)"
       />
     </Transition>
   </div>

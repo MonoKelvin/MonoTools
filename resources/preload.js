@@ -875,8 +875,8 @@ window.ztools = {
         packagePath,
         version
       ),
-    deletePlugin: async (pluginPath) =>
-      await electron.ipcRenderer.invoke('internal:delete-plugin', pluginPath),
+    deletePlugin: async (pluginPath, options) =>
+      await electron.ipcRenderer.invoke('internal:delete-plugin', pluginPath, options),
     getRunningPlugins: async () =>
       await electron.ipcRenderer.invoke('internal:get-running-plugins'),
     killPlugin: async (pluginPath) =>

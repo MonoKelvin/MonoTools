@@ -1,2 +1,9 @@
 export { default as PluginDetail } from './PluginDetail.vue'
-export type { PluginItem, PluginFeature, DocItem, TabId, TabItem } from './types'
+export type {
+  PluginItem,
+  PluginFeature,
+  PluginUninstallOptions,
+  DocItem,
+  TabId,
+  TabItem
+} from './types'

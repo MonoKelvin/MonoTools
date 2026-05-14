@@ -223,4 +223,31 @@ describe('plugin removal cleanup', () => {
     expect(mockDbPut).toHaveBeenCalledWith('plugins', [])
     expect(mockFsRm).toHaveBeenCalledWith('D:\\plugins\\demo', { recursive: true, force: true })
   })
+
+  it('can uninstall a plugin while preserving plugin data', async () => {
+    mockDbGet.mockImplementation((key: string) => {
+      if (key === 'plugins') {
+        return [{ name: 'demo', path: 'D:\\plugins\\demo', isDevelopment: false }]
+      }
+      return []
+    })
+
+    const api = new PluginsAPI()
+    const killPlugin = vi.fn()
+    const removePluginUsageData = vi.fn()
+
+    ;(api as any).pluginManager = { killPlugin }
+    ;(api as any).devProjects = { removePluginUsageData }
+    ;(api as any).mainWindow = { webContents: { send: vi.fn() } }
+    ;(api as any).disabledPluginPathSet = new Set<string>()
+
+    const result = await api.deletePlugin('D:\\plugins\\demo', { deleteData: false })
+
+    expect(result).toEqual({ success: true })
+    expect(killPlugin).toHaveBeenCalledWith('D:\\plugins\\demo')
+    expect(removePluginUsageData).toHaveBeenCalledWith('demo')
+    expect(mockClearPluginData).not.toHaveBeenCalled()
+    expect(mockDbPut).toHaveBeenCalledWith('plugins', [])
+    expect(mockFsRm).toHaveBeenCalledWith('D:\\plugins\\demo', { recursive: true, force: true })
+  })
 })

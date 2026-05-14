@@ -82,7 +82,8 @@ const api = {
     packageName: string
     useChinaMirror?: boolean
   }): Promise<any> => ipcRenderer.invoke('install-plugin-from-npm', options),
-  deletePlugin: (pluginPath: string) => ipcRenderer.invoke('delete-plugin', pluginPath),
+  deletePlugin: (pluginPath: string, options?: { deleteData?: boolean }) =>
+    ipcRenderer.invoke('delete-plugin', pluginPath, options),
   exportAllPlugins: () => ipcRenderer.invoke('export-all-plugins'),
   getRunningPlugins: () => ipcRenderer.invoke('get-running-plugins'),
   killPlugin: (pluginPath: string) => ipcRenderer.invoke('kill-plugin', pluginPath),
@@ -524,7 +525,10 @@ declare global {
         pluginNameOrTaskId: string
       ) => Promise<{ success: boolean; error?: string }>
       onPluginMarketDownloadProgress: (callback: (payload: any) => void) => () => void
-      deletePlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
+      deletePlugin: (
+        pluginPath: string,
+        options?: { deleteData?: boolean }
+      ) => Promise<{ success: boolean; error?: string }>
       exportAllPlugins: () => Promise<{
         success: boolean
         exportPath?: string

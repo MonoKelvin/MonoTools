@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref } from 'vue'
 import { PluginDetail as SharedPluginDetail } from '@/components'
-import type { TabId } from '@/components'
+import type { PluginUninstallOptions, TabId } from '@/components'
 import type { PluginDownloadState } from '../types'
 
 const props = defineProps<{
@@ -16,7 +16,7 @@ defineEmits<{
   (e: 'open'): void
   (e: 'download'): void
   (e: 'upgrade'): void
-  (e: 'uninstall'): void
+  (e: 'uninstall', options: PluginUninstallOptions): void
   (e: 'kill'): void
   (e: 'open-folder'): void
   (e: 'package'): void
@@ -73,7 +73,7 @@ function handleTabSwitch(tabId: TabId): void {
     @open="$emit('open')"
     @download="$emit('download')"
     @upgrade="$emit('upgrade')"
-    @uninstall="$emit('uninstall')"
+    @uninstall="$emit('uninstall', $event)"
     @kill="$emit('kill')"
     @open-folder="$emit('open-folder')"
     @package="$emit('package')"

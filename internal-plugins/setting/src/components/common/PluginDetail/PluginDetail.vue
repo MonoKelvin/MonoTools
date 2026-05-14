@@ -4,7 +4,7 @@ import { DetailPanel } from '@/components'
 import PluginDetailHeader from './PluginDetailHeader.vue'
 import PluginDetailTabs from './PluginDetailTabs.vue'
 import PluginDetailToolbar from './PluginDetailToolbar.vue'
-import type { PluginDownloadState, PluginItem, TabId } from './types'
+import type { PluginDownloadState, PluginItem, PluginUninstallOptions, TabId } from './types'
 import { usePluginDetail } from './usePluginDetail'
 
 const props = defineProps<{
@@ -27,7 +27,7 @@ const emit = defineEmits<{
   (e: 'open'): void
   (e: 'download'): void
   (e: 'upgrade'): void
-  (e: 'uninstall'): void
+  (e: 'uninstall', options: PluginUninstallOptions): void
   (e: 'kill'): void
   (e: 'open-folder'): void
   (e: 'toggle-pin'): void
@@ -105,7 +105,7 @@ function onSwitchTab(tabId: TabId): void {
         @open="emit('open')"
         @kill="emit('kill')"
         @open-folder="emit('open-folder')"
-        @uninstall="handleUninstall(() => emit('uninstall'))"
+        @uninstall="handleUninstall((options) => emit('uninstall', options))"
         @toggle-pin="emit('toggle-pin')"
         @toggle-disabled="emit('toggle-disabled', $event)"
         @toggle-settings-dropdown="toggleSettingsDropdown"

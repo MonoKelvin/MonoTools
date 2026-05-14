@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useToast, AdaptiveIcon } from '@/components'
+import type { PluginUninstallOptions } from '@/components'
 import { PluginDetail, NpmInstallPanel } from './components'
 import { compareVersions, upgradeInstalledPluginFromMarket, weightedSearch } from '@/utils'
 import { useJumpFunction, useZtoolsSubInput } from '@/composables'
@@ -319,14 +320,17 @@ async function importPlugin(): Promise<void> {
 }
 
 // 从详情页面卸载插件（确认弹窗在 PluginDetail 中已展示，此处直接执行删除）
-async function handleUninstallFromDetail(plugin: any): Promise<void> {
+async function handleUninstallFromDetail(
+  plugin: any,
+  options: PluginUninstallOptions
+): Promise<void> {
   if (isDeleting.value) return
 
   isDeleting.value = true
   try {
-    const result = await window.ztools.internal.deletePlugin(plugin.path)
+    const result = await window.ztools.internal.deletePlugin(plugin.path, options)
     if (result.success) {
-      success('插件卸载成功')
+      success(options.deleteData ? '插件已卸载，插件数据已删除' : '插件已卸载，插件数据已保留')
       // 关闭详情面板
       closePluginDetail()
       // 重新加载插件列表
@@ -945,7 +949,7 @@ async function handleInstallFromNpm(data: {
         :is-disabled="isPluginDisabled(selectedPlugin.path)"
         @back="closePluginDetail"
         @open="handleOpenPlugin(selectedPlugin)"
-        @uninstall="handleUninstallFromDetail(selectedPlugin)"
+        @uninstall="handleUninstallFromDetail(selectedPlugin, $event)"
         @kill="handleKillPlugin(selectedPlugin)"
         @open-folder="handleOpenFolder(selectedPlugin)"
         @toggle-pin="togglePin(selectedPlugin)"

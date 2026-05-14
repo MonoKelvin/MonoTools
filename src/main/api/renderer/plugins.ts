@@ -22,6 +22,10 @@ import {
 // 插件目录
 const DISABLED_PLUGINS_KEY = 'disabled-plugins'
 
+export interface DeletePluginOptions {
+  deleteData?: boolean
+}
+
 /**
  * 插件管理API - 主程序专用
  */
@@ -108,7 +112,9 @@ export class PluginsAPI {
       (_event, pluginName: string, packagePath?: string, version?: string) =>
         this.devProjects.packageDevProject(pluginName, packagePath, version)
     )
-    ipcMain.handle('delete-plugin', (_event, pluginPath: string) => this.deletePlugin(pluginPath))
+    ipcMain.handle('delete-plugin', (_event, pluginPath: string, options?: DeletePluginOptions) =>
+      this.deletePlugin(pluginPath, options)
+    )
     ipcMain.handle('get-running-plugins', () => this.getRunningPlugins())
     ipcMain.handle('kill-plugin', (_event, pluginPath: string) => this.killPlugin(pluginPath))
     ipcMain.handle('kill-plugin-and-return', (_event, pluginPath: string) =>
@@ -432,8 +438,12 @@ export class PluginsAPI {
     return pathToFileURL(path.join(pluginPath, logo)).href
   }
 
-  // 删除插件
-  public async deletePlugin(pluginPath: string): Promise<any> {
+  /**
+   * 删除插件
+   * @param pluginPath 插件路径
+   * @param options 删除选项 当 options.deleteData 显式设置为 false 时，保留插件数据
+   */
+  public async deletePlugin(pluginPath: string, options: DeletePluginOptions = {}): Promise<any> {
     try {
       const plugins: any = databaseAPI.dbGet('plugins')
       if (!plugins || !Array.isArray(plugins)) {
@@ -462,7 +472,9 @@ export class PluginsAPI {
 
       this.devProjects.removePluginUsageData(pluginInfo.name)
 
-      await databaseAPI.clearPluginData(pluginInfo.name)
+      if (options.deleteData !== false) {
+        await databaseAPI.clearPluginData(pluginInfo.name)
+      }
 
       // 删除禁用插件标识
       const disabledPlugins = this.getDisabledPluginSet()

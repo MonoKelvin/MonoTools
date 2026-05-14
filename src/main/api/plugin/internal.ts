@@ -12,6 +12,7 @@ import translationManager from '../../core/translationManager.js'
 import aiModelsAPI from '../renderer/aiModels.js'
 import commandsAPI from '../renderer/commands.js'
 import pluginsAPI from '../renderer/plugins.js'
+import type { DeletePluginOptions } from '../renderer/plugins'
 import settingsAPI from '../renderer/settings.js'
 import systemAPI from '../renderer/system.js'
 import webSearchAPI from '../renderer/webSearch.js'
@@ -354,12 +355,15 @@ export class InternalPluginAPI {
       }
     )
 
-    ipcMain.handle('internal:delete-plugin', async (event, pluginPath: string) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:delete-plugin')
+    ipcMain.handle(
+      'internal:delete-plugin',
+      async (event, pluginPath: string, options?: DeletePluginOptions) => {
+        if (!requireInternalPlugin(this.pluginManager, event)) {
+          throw new PermissionDeniedError('internal:delete-plugin')
+        }
+        return await pluginsAPI.deletePlugin(pluginPath, options)
       }
-      return await pluginsAPI.deletePlugin(pluginPath)
-    })
+    )
 
     ipcMain.handle('internal:get-running-plugins', async (event) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {

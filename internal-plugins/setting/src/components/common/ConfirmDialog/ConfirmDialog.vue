@@ -31,6 +31,16 @@
 
         <div class="dialog-content">
           <p class="dialog-message">{{ message }}</p>
+          <div v-if="extraItems.length > 0" class="dialog-extra">
+            <label v-for="item in extraItems" :key="item.id" class="dialog-extra-item">
+              <input
+                type="checkbox"
+                :checked="currentExtraValues[item.id] ?? false"
+                @change="handleExtraChange(item.id, $event)"
+              />
+              <span>{{ item.message }}</span>
+            </label>
+          </div>
         </div>
 
         <div class="dialog-footer">
@@ -46,6 +56,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { ConfirmExtraItem } from '../Toast'
 
 interface Props {
   visible: boolean
@@ -54,6 +65,8 @@ interface Props {
   type?: 'info' | 'warning' | 'danger'
   confirmText?: string
   cancelText?: string
+  extra?: ConfirmExtraItem[]
+  extraValues?: Record<string, boolean>
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -65,9 +78,13 @@ const props = withDefaults(defineProps<Props>(), {
 
 const emit = defineEmits<{
   (e: 'update:visible', value: boolean): void
+  (e: 'update:extraValues', value: Record<string, boolean>): void
   (e: 'confirm'): void
   (e: 'cancel'): void
 }>()
+
+const extraItems = computed(() => props.extra ?? [])
+const currentExtraValues = computed(() => props.extraValues ?? {})
 
 const confirmButtonClass = computed(() => {
   if (props.type === 'danger') return 'btn-danger'
@@ -83,6 +100,15 @@ const handleConfirm = (): void => {
 const handleCancel = (): void => {
   emit('cancel')
   emit('update:visible', false)
+}
+
+const handleExtraChange = (id: string, event: Event): void => {
+  const target = event.target
+  if (!(target instanceof HTMLInputElement)) return
+  emit('update:extraValues', {
+    ...currentExtraValues.value,
+    [id]: target.checked
+  })
 }
 
 const handleOverlayClick = (): void => {
@@ -168,6 +194,30 @@ const handleOverlayClick = (): void => {
   color: var(--text-secondary);
   margin: 0;
   white-space: pre-wrap;
+}
+
+.dialog-extra {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dialog-extra-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-color);
+  cursor: pointer;
+}
+
+.dialog-extra-item input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--primary-color);
 }
 
 .dialog-footer {

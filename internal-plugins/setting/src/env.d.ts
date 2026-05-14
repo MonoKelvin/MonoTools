@@ -101,7 +101,10 @@ declare global {
         ) => Promise<{ success: boolean; error?: string }>
         // 打包指定开发项目
         packageDevProject: (pluginName: string) => Promise<{ success: boolean; error?: string }>
-        deletePlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
+        deletePlugin: (
+          pluginPath: string,
+          options?: { deleteData?: boolean }
+        ) => Promise<{ success: boolean; error?: string }>
         killPlugin: (pluginPath: string) => Promise<{ success: boolean; error?: string }>
         revealInFinder: (filePath: string) => Promise<void>
         launch: (options: {

@@ -18,11 +18,13 @@ const { toastState, confirmState, handleConfirm, handleCancel } = useToast()
   <!-- 全局确认对话框 -->
   <ConfirmDialog
     v-model:visible="confirmState.visible"
+    v-model:extra-values="confirmState.extraValues"
     :title="confirmState.title"
     :message="confirmState.message"
     :type="confirmState.type"
     :confirm-text="confirmState.confirmText"
     :cancel-text="confirmState.cancelText"
+    :extra="confirmState.extra"
     @confirm="handleConfirm"
     @cancel="handleCancel"
   />

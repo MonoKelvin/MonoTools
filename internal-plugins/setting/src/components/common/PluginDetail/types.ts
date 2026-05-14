@@ -42,3 +42,7 @@ export interface PluginDownloadState {
   totalBytes?: number
   error?: string
 }
+
+export interface PluginUninstallOptions {
+  deleteData: boolean
+}
