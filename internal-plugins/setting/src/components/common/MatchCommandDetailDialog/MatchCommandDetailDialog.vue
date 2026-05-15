@@ -17,21 +17,15 @@ interface MatchCommandDetail {
   [key: string]: any
 }
 
-interface MatchCommandContext {
-  commandName?: string
-}
-
 const props = withDefaults(
   defineProps<{
     visible: boolean
     command?: MatchCommandDetail | null
-    context?: MatchCommandContext
     disabled?: boolean
     showToggleDisabled?: boolean
   }>(),
   {
     command: null,
-    context: () => ({}),
     disabled: false,
     showToggleDisabled: false
   }
@@ -59,9 +53,7 @@ const typeMeta = computed(() => {
   return map[type] || { label: type, icon: 'i-z-info' }
 })
 
-const commandName = computed(
-  () => props.context?.commandName || props.command?.label || props.command?.name || '匹配指令'
-)
+const commandName = computed(() => props.command?.label || props.command?.name || '匹配指令')
 
 const primaryRule = computed(() => {
   const command = props.command

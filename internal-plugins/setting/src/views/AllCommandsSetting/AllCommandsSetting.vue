@@ -8,7 +8,8 @@ import {
   FeatureCard,
   TagDropdown,
   CommandCard,
-  MatchCommandDetailDialog
+  MatchCommandDetailDialog,
+  useMatchCommandDetail
 } from '@/components'
 import type { TagDropdownMenuItem } from '@/components'
 import { useZtoolsSubInput } from '@/composables'
@@ -86,16 +87,29 @@ const regexCommands = ref<Command[]>([])
 const plugins = ref<any[]>([])
 const selectedSource = ref<Source | null>(null)
 const activeTab = ref<'text' | 'match'>('text')
-const selectedMatchCommand = ref<{
-  command: any
-  feature: {
-    code: string
-    name: string
-    explain: string
-  }
-  pluginName: string
-  pluginTitle: string
-} | null>(null)
+const {
+  selectedMatchCommand,
+  selectedMatchCommandDisabled,
+  openMatchCommandDetail,
+  closeMatchCommandDetail,
+  toggleSelectedMatchCommandDisabled
+} = useMatchCommandDetail({
+  getPluginName: () => selectedSource.value?.name || '',
+  isDisabled: (detail) =>
+    isCommandDisabled(
+      detail.pluginName || '',
+      detail.feature.code || '',
+      detail.command.label || detail.command.name || '',
+      (detail.command.type || '') as CommandCmdType
+    ),
+  toggleDisabled: (detail) =>
+    toggleCommandDisabled(
+      detail.pluginName || '',
+      detail.feature.code || '',
+      detail.command.label || detail.command.name || '',
+      (detail.command.type || '') as CommandCmdType
+    )
+})
 
 // 禁用指令列表
 const disabledCommands = ref<string[]>([])
@@ -584,30 +598,6 @@ async function handleMenuSelect(
   }
 }
 
-function openMatchCommandDetail(feature: any, cmd: any): void {
-  const rawMatch =
-    cmd.match && typeof cmd.match === 'object' ? cmd.match : { match: cmd.match || '' }
-
-  selectedMatchCommand.value = {
-    command: {
-      ...rawMatch,
-      type: cmd.type,
-      label: cmd.name
-    },
-    feature: {
-      code: feature.code,
-      name: feature.name,
-      explain: feature.explain
-    },
-    pluginName: selectedSource.value?.name || '',
-    pluginTitle: selectedSource.value?.title || selectedSource.value?.name || ''
-  }
-}
-
-function closeMatchCommandDetail(): void {
-  selectedMatchCommand.value = null
-}
-
 async function handleMatchMenuSelect(key: string, feature: any, cmd: any): Promise<void> {
   if (key === 'detail') {
     openMatchCommandDetail(feature, cmd)
@@ -615,17 +605,6 @@ async function handleMatchMenuSelect(key: string, feature: any, cmd: any): Promi
   }
 
   await handleMenuSelect(key, selectedSource.value?.name || '', feature.code, cmd.name, cmd.type)
-}
-
-async function toggleSelectedMatchCommandDisabled(): Promise<void> {
-  const detail = selectedMatchCommand.value
-  if (!detail) return
-  await toggleCommandDisabled(
-    detail.pluginName,
-    detail.feature.code,
-    detail.command.label || detail.command.name || '',
-    detail.command.type || ''
-  )
 }
 
 async function openCommand(
@@ -829,25 +808,6 @@ const textFeaturesCount = computed(() => {
 const matchFeaturesCount = computed(() => {
   // 统计有匹配指令的功能数量
   return filteredGroupedFeatures.value.filter((f) => f.matchCmds.length > 0).length
-})
-
-const selectedMatchCommandContext = computed(() => ({
-  pluginTitle: selectedMatchCommand.value?.pluginTitle,
-  featureName:
-    selectedMatchCommand.value?.feature.explain || selectedMatchCommand.value?.feature.name,
-  featureCode: selectedMatchCommand.value?.feature.code,
-  commandName: selectedMatchCommand.value?.command.label || selectedMatchCommand.value?.command.name
-}))
-
-const selectedMatchCommandDisabled = computed(() => {
-  const detail = selectedMatchCommand.value
-  if (!detail) return false
-  return isCommandDisabled(
-    detail.pluginName,
-    detail.feature.code,
-    detail.command.label || detail.command.name || '',
-    detail.command.type || ''
-  )
 })
 
 // 预计算每个插件的指令数量（一次遍历，避免 N 次全量 filter）
@@ -1151,7 +1111,6 @@ onMounted(async () => {
     <MatchCommandDetailDialog
       :visible="!!selectedMatchCommand"
       :command="selectedMatchCommand?.command"
-      :context="selectedMatchCommandContext"
       :disabled="selectedMatchCommandDisabled"
       show-toggle-disabled
       @close="closeMatchCommandDetail"

@@ -333,28 +333,6 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     }
   }
 
-  function cmdKey(cmd: any): string {
-    if (cmd && typeof cmd === 'object') {
-      return cmd.label || cmd.text || cmd.name || ''
-    }
-    return String(cmd)
-  }
-
-  function normalizeCommand(cmd: any): any {
-    if (cmd && typeof cmd === 'object') {
-      return {
-        name: cmd.label || cmd.name,
-        text: cmd.label,
-        type: cmd.type,
-        match: cmd.match
-      }
-    }
-    return {
-      text: String(cmd),
-      type: 'text'
-    }
-  }
-
   // 切换数据详情展开状态
   async function toggleDataDetail(item: DocItem): Promise<void> {
     if (!currentPluginName.value) return
@@ -554,8 +532,6 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     handleUninstall,
 
     // 工具
-    cmdKey,
-    normalizeCommand,
     formatJsonData,
     formatDate,
     formatSize,
