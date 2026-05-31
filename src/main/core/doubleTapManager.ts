@@ -1,9 +1,12 @@
-import { uIOhook, UiohookKey } from 'uiohook-napi'
+import { UiohookKey } from 'uiohook-napi'
+import globalInputManager from './globalInputManager.js'
 
 interface DoubleTapHandler {
   modifier: string
   callback: () => void
 }
+
+const INPUT_CONSUMER = 'double-tap'
 
 // uiohook keycode → 修饰键名称映射
 const MODIFIER_KEYCODES: Record<number, string> = {
@@ -82,33 +85,30 @@ class DoubleTapManager {
     // 只注册一次事件监听器，避免重复注册导致事件多次触发
     if (!this.listenersRegistered) {
       this.listenersRegistered = true
-      uIOhook.on('keydown', (e) => this.handleKeyDown(e))
-      uIOhook.on('keyup', (e) => this.handleKeyUp(e))
+      globalInputManager.on(INPUT_CONSUMER, 'keydown', (e) => this.handleKeyDown(e))
+      globalInputManager.on(INPUT_CONSUMER, 'keyup', (e) => this.handleKeyUp(e))
     }
 
-    try {
-      uIOhook.start()
+    if (globalInputManager.acquire(INPUT_CONSUMER)) {
       console.log('[DoubleTapManager] 全局键盘监听已启动')
-    } catch (error) {
-      console.error('[DoubleTapManager] 启动全局键盘监听失败:', error)
+    } else {
       this.started = false
     }
   }
 
   private stop(): void {
     if (!this.started) return
-    try {
-      uIOhook.stop()
-      console.log('[DoubleTapManager] 全局键盘监听已停止')
-    } catch (error) {
-      console.error('[DoubleTapManager] 停止全局键盘监听失败:', error)
-    }
+    globalInputManager.release(INPUT_CONSUMER)
+    console.log('[DoubleTapManager] 全局键盘监听已停止')
     this.started = false
+    this.listenersRegistered = false
     this.lastModifierUp = null
     this.nonModifierPressed = false
   }
 
   private handleKeyDown(e: { keycode: number }): void {
+    if (!this.started) return
+
     const modifier = MODIFIER_KEYCODES[e.keycode]
     if (modifier) {
       if (this.modifierDownTime === 0) {
@@ -122,6 +122,8 @@ class DoubleTapManager {
   }
 
   private handleKeyUp(e: { keycode: number }): void {
+    if (!this.started) return
+
     const modifier = MODIFIER_KEYCODES[e.keycode]
     if (!modifier) {
       this.nonModifierPressed = false
@@ -164,11 +166,16 @@ class DoubleTapManager {
   private fireHandlers(modifier: string): void {
     for (const handler of this.handlers) {
       if (handler.modifier === modifier) {
-        try {
-          handler.callback()
-        } catch (error) {
-          console.error(`[DoubleTapManager] 回调执行失败 (${modifier}):`, error)
-        }
+        // 避免在 uiohook 的 keyup 调用栈里直接 show/focus 窗口，降低 Windows 焦点竞争概率。
+        setTimeout(() => {
+          if (!this.started) return
+
+          try {
+            handler.callback()
+          } catch (error) {
+            console.error(`[DoubleTapManager] 回调执行失败 (${modifier}):`, error)
+          }
+        }, 0)
       }
     }
   }
