@@ -123,6 +123,7 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
+import { normalizeConfigList } from '@shared/pluginSettings'
 import AdaptiveIcon from '../common/AdaptiveIcon.vue'
 
 const platform = ref<'darwin' | 'win32'>('darwin')
@@ -139,13 +140,6 @@ const acrylicDarkOpacity = ref(50) // 亚克力暗黑模式透明度（默认 50
 const aiRequestStatus = ref<'idle' | 'sending' | 'receiving'>('idle') // AI 请求状态
 const primaryColor = ref('blue')
 const customColor = ref('#db2777')
-
-function normalizeConfigList(data: unknown): string[] {
-  if (!Array.isArray(data)) return []
-  return (data as any[])
-    .map((item) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
-    .filter(Boolean)
-}
 
 function getThemeColor(colorName: string, isDark: boolean): string {
   const colors: Record<string, { light: string; dark: string }> = {

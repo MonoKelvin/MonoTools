@@ -18,9 +18,20 @@ import {
   getPluginDataPrefix,
   isDevelopmentPluginName
 } from '../../../shared/pluginRuntimeNamespace'
+import {
+  DISABLED_MAIN_PUSH_PLUGINS_KEY,
+  normalizeConfigList,
+  removePluginNameFromSettingList
+} from '../../../shared/pluginSettings'
 
 // 插件目录
 const DISABLED_PLUGINS_KEY = 'disabled-plugins'
+const PLUGIN_NAME_SETTING_KEYS = [
+  'outKillPlugin',
+  'autoDetachPlugin',
+  'autoStartPlugin',
+  DISABLED_MAIN_PUSH_PLUGINS_KEY
+]
 
 export interface DeletePluginOptions {
   deleteData?: boolean
@@ -474,6 +485,7 @@ export class PluginsAPI {
 
       if (options.deleteData !== false) {
         await databaseAPI.clearPluginData(pluginInfo.name)
+        this.removePluginNameConfigs(PLUGIN_NAME_SETTING_KEYS, pluginInfo.name)
       }
 
       // 删除禁用插件标识
@@ -499,6 +511,45 @@ export class PluginsAPI {
       return { success: true }
     } catch (error: unknown) {
       console.error('[Plugins] 删除插件失败:', error)
+      return { success: false, error: error instanceof Error ? error.message : '未知错误' }
+    }
+  }
+
+  private removePluginNameConfigs(keys: string[], pluginName: string): void {
+    for (const key of keys) {
+      const current = databaseAPI.dbGet(key)
+      const normalized = normalizeConfigList(current)
+      const next = removePluginNameFromSettingList(normalized, pluginName)
+      if (next.length !== normalized.length) {
+        databaseAPI.dbPut(key, next)
+      }
+    }
+  }
+
+  public async setPluginMainPushDisabled(
+    pluginName: string,
+    disabled: boolean
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      const disabledPluginNames = new Set(
+        normalizeConfigList(databaseAPI.dbGet(DISABLED_MAIN_PUSH_PLUGINS_KEY))
+      )
+      const isCurrentlyDisabled = disabledPluginNames.has(pluginName)
+      if (isCurrentlyDisabled === disabled) {
+        return { success: true }
+      }
+
+      if (disabled) {
+        disabledPluginNames.add(pluginName)
+      } else {
+        disabledPluginNames.delete(pluginName)
+      }
+
+      databaseAPI.dbPut(DISABLED_MAIN_PUSH_PLUGINS_KEY, [...disabledPluginNames])
+      this.notifyPluginsChanged()
+      return { success: true }
+    } catch (error: unknown) {
+      console.error('[Plugins] 更新插件 mainPush 状态失败:', error)
       return { success: false, error: error instanceof Error ? error.message : '未知错误' }
     }
   }
