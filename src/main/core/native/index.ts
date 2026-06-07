@@ -495,10 +495,7 @@ export class WindowManager {
    * @param address 要跳转的路径或地址
    * @returns 是否设置成功
    */
-  static setAddressBar(
-    target: number | string | FileLocationWindowInfo,
-    address: string
-  ): boolean {
+  static setAddressBar(target: number | string | FileLocationWindowInfo, address: string): boolean {
     if (platform !== 'win32' && platform !== 'darwin') {
       throw new Error('setAddressBar is only available on Windows and macOS')
     }

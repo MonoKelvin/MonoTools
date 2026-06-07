@@ -334,7 +334,30 @@
                 @click="jumpToFileLocationTarget(item)"
                 @mouseenter="windowMatchSelectedIndex = index"
               >
-                <div class="list-icon-placeholder">跳</div>
+                <div class="file-location-jump-icon" aria-hidden="true">
+                  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+                    <path
+                      d="M2.75 5.25A1.75 1.75 0 0 1 4.5 3.5h2.2c.4 0 .78.16 1.06.44l.8.8c.28.28.66.44 1.06.44h3.88a1.75 1.75 0 0 1 1.75 1.75v.82"
+                      stroke="currentColor"
+                      stroke-width="1.3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M2.75 7.75h12.5l-.9 5.15a1.75 1.75 0 0 1-1.72 1.45H4.37a1.75 1.75 0 0 1-1.72-1.45l-.9-5.15Z"
+                      stroke="currentColor"
+                      stroke-width="1.3"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M9.15 10.15h4.1m0 0-1.5-1.5m1.5 1.5-1.5 1.5"
+                      stroke="currentColor"
+                      stroke-width="1.3"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </div>
                 <div class="list-info">
                   <span class="list-name">{{ formatFileLocationJumpPath(item) }}</span>
                   <span v-if="item.title" class="list-desc">{{ item.title }}</span>
@@ -342,7 +365,9 @@
               </div>
             </div>
             <div v-if="windowMatchResults.length > 0" class="window-match-section">
-              <div v-if="fileLocationJumpTargets.length > 0" class="window-match-section-title">窗口命令</div>
+              <div v-if="fileLocationJumpTargets.length > 0" class="window-match-section-title">
+                窗口命令
+              </div>
               <div
                 v-for="(item, index) in windowMatchResults"
                 :key="`wm-${item.path}-${item.featureCode || ''}`"
@@ -859,15 +884,23 @@ function closeWindowMatch(): void {
 // 判断当前触发窗口是否为可精确定位的文件位置窗口
 async function getCurrentFileLocationWindowKind(): Promise<CurrentWindowInfo['kind'] | null> {
   const info = currentWindowInfo.value
-  console.log('object', info);
+  console.log('object', info)
   if (!info) return null
 
   const platform = window.ztools.getPlatform()
   if (info.preciseTarget && info.kind) {
-    if (info.kind === 'windows-explorer' && platform === 'win32' && hasWindowsAddressBarTarget(info)) {
+    if (
+      info.kind === 'windows-explorer' &&
+      platform === 'win32' &&
+      hasWindowsAddressBarTarget(info)
+    ) {
       return info.kind
     }
-    if (info.kind === 'windows-file-dialog' && platform === 'win32' && hasWindowsAddressBarTarget(info)) {
+    if (
+      info.kind === 'windows-file-dialog' &&
+      platform === 'win32' &&
+      hasWindowsAddressBarTarget(info)
+    ) {
       return info.kind
     }
     if (info.kind === 'mac-finder' && platform === 'darwin' && hasMacAddressBarTarget(info)) {
@@ -906,9 +939,7 @@ async function isWindowsFileDialogWindow(info: CurrentWindowInfo): Promise<boole
 
 // 判断 Windows 文件对话框的常见标题
 function isCommonWindowsFileDialogTitle(title?: string): boolean {
-  return /^(打开|开启|选择|另存为|保存|Open|Choose|Select|Save|Save As)$/i.test(
-    title?.trim() || ''
-  )
+  return /^(打开|开启|选择|另存为|保存|Open|Choose|Select|Save|Save As)$/i.test(title?.trim() || '')
 }
 
 // 判断 Windows 当前窗口是否有可传给地址栏设置的窗口句柄
@@ -995,7 +1026,10 @@ async function loadFileLocationJumpTargets(): Promise<void> {
     return
   }
   if (!currentKind) {
-    console.log('[SuperPanel] 当前窗口不是文件位置窗口，跳过快捷跳转目标加载:', currentWindowInfo.value)
+    console.log(
+      '[SuperPanel] 当前窗口不是文件位置窗口，跳过快捷跳转目标加载:',
+      currentWindowInfo.value
+    )
     return
   }
 
@@ -1948,6 +1982,23 @@ onUnmounted(() => {
 
 .file-location-jump-item {
   align-items: flex-start;
+}
+
+.file-location-jump-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 42%, transparent);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.file-location-jump-icon svg {
+  display: block;
 }
 
 .file-location-jump-item .list-name {

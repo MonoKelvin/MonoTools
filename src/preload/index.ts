@@ -417,13 +417,12 @@ const api = {
   },
   superPanelAddBlockedApp: () => ipcRenderer.invoke('super-panel:add-blocked-app'),
   // 超级面板窗口匹配
-  superPanelGetFileLocationWindows: () => ipcRenderer.invoke('super-panel:get-file-location-windows'),
+  superPanelGetFileLocationWindows: () =>
+    ipcRenderer.invoke('super-panel:get-file-location-windows'),
   superPanelIsFileLocationWindow: (hwnd: number) =>
     ipcRenderer.invoke('super-panel:is-file-location-window', hwnd),
-  superPanelSetFileLocationAddressBar: (
-    target: number | FileLocationWindowInfo,
-    address: string
-  ) => ipcRenderer.invoke('super-panel:set-file-location-address-bar', target, address),
+  superPanelSetFileLocationAddressBar: (target: number | FileLocationWindowInfo, address: string) =>
+    ipcRenderer.invoke('super-panel:set-file-location-address-bar', target, address),
   superPanelSearchWindowCommands: (windowInfo: SuperPanelWindowInfo) =>
     ipcRenderer.invoke('super-panel:search-window-commands', windowInfo),
   onSuperPanelWindowCommandsData: (callback: (data: { results: any[] }) => void) => {
@@ -751,7 +750,9 @@ declare global {
         address: string
       ) => Promise<boolean>
       superPanelSearchWindowCommands: (windowInfo: SuperPanelWindowInfo) => Promise<void>
-      onSuperPanelWindowCommandsData: (callback: (data: { requestId?: number; results: any[] }) => void) => void
+      onSuperPanelWindowCommandsData: (
+        callback: (data: { requestId?: number; results: any[] }) => void
+      ) => void
       onSuperPanelSearchWindowCommands: (
         callback: (data: { requestId: number; windowInfo: SuperPanelWindowInfo }) => void
       ) => void

@@ -1,7 +1,12 @@
 import { BrowserWindow, ipcMain, screen } from 'electron'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
-import { MouseMonitor, WindowManager, type FileLocationWindowInfo, type MouseMonitorResult } from './native/index.js'
+import {
+  MouseMonitor,
+  WindowManager,
+  type FileLocationWindowInfo,
+  type MouseMonitorResult
+} from './native/index.js'
 import { launchApp } from './commandLauncher/index.js'
 import databaseAPI from '../api/shared/database.js'
 import pluginsAPI from '../api/renderer/plugins.js'
@@ -215,13 +220,15 @@ class SuperPanelManager {
   // 当前剪贴板内容（在模拟复制后读取）
   private currentClipboardContent: ClipboardContent | null = null
   // 触发时的完整窗口信息
-  private currentWindowInfo: (FileLocationWindowInfo & {
-    x?: number
-    y?: number
-    width?: number
-    height?: number
-    appPath?: string
-  }) | null = null
+  private currentWindowInfo:
+    | (FileLocationWindowInfo & {
+        x?: number
+        y?: number
+        width?: number
+        height?: number
+        appPath?: string
+      })
+    | null = null
 
   /**
    * 将剪贴板管理器返回的数据转换为超级面板使用的结构
@@ -864,7 +871,12 @@ class SuperPanelManager {
     })
 
     ipcMain.handle('super-panel:is-file-location-window', async (_event, hwnd: number) => {
-      if (process.platform !== 'win32' || typeof hwnd !== 'number' || !Number.isFinite(hwnd) || hwnd <= 0) {
+      if (
+        process.platform !== 'win32' ||
+        typeof hwnd !== 'number' ||
+        !Number.isFinite(hwnd) ||
+        hwnd <= 0
+      ) {
         return { supported: false, isFileLocation: false }
       }
 
@@ -881,12 +893,12 @@ class SuperPanelManager {
 
     ipcMain.handle(
       'super-panel:set-file-location-address-bar',
-      async (
-        _event,
-        target: number | string | FileLocationWindowInfo,
-        address: string
-      ) => {
-        if ((process.platform !== 'win32' && process.platform !== 'darwin') || !target || !address) {
+      async (_event, target: number | string | FileLocationWindowInfo, address: string) => {
+        if (
+          (process.platform !== 'win32' && process.platform !== 'darwin') ||
+          !target ||
+          !address
+        ) {
           return false
         }
 
@@ -909,16 +921,19 @@ class SuperPanelManager {
     // 超级面板请求窗口匹配搜索 → 转发给主渲染进程
     ipcMain.handle(
       'super-panel:search-window-commands',
-      (_event, windowInfo: {
-        app?: string
-        title?: string
-        className?: string
-        hwnd?: number
-        bundleId?: string
-        pid?: number
-        path?: string
-        url?: string
-      }) => {
+      (
+        _event,
+        windowInfo: {
+          app?: string
+          title?: string
+          className?: string
+          hwnd?: number
+          bundleId?: string
+          pid?: number
+          path?: string
+          url?: string
+        }
+      ) => {
         // 设置触发前的窗口信息到主窗口管理器
         if (this.currentWindowInfo) {
           windowManager.setPreviousActiveWindow(this.currentWindowInfo)
