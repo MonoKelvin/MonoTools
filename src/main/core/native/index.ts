@@ -47,6 +47,7 @@ export interface FileLocationWindowInfo {
 interface NativeAddon {
   startMonitor: (callback: () => void) => void
   stopMonitor: () => void
+  setClipboardPollingBoost?: (intervalMs: number, durationMs: number) => void
   startWindowMonitor: (callback: (windowInfo: WindowInfo) => void) => void
   stopWindowMonitor: () => void
   getActiveWindow: () => ActiveWindowResult | null
@@ -213,6 +214,18 @@ export class ClipboardMonitor {
    */
   get isMonitoring(): boolean {
     return this._isMonitoring
+  }
+
+  /**
+   * macOS: 临时提升剪贴板轮询频率（仅在当前进程内有效）
+   * @param intervalMs - 轮询间隔（毫秒），建议设置为 20-50ms
+   * @param durationMs - 持续时间（毫秒）
+   */
+  static setClipboardPollingBoost(intervalMs: number, durationMs: number): void {
+    const boostFn = (addon as NativeAddon).setClipboardPollingBoost
+    if (platform === 'darwin' && typeof boostFn === 'function') {
+      boostFn(intervalMs, durationMs)
+    }
   }
 
   /**

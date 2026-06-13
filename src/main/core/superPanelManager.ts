@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen } from 'electron'
 import path from 'path'
 import { is } from '@electron-toolkit/utils'
 import {
+  ClipboardMonitor,
   MouseMonitor,
   WindowManager,
   type FileLocationWindowInfo,
@@ -294,11 +295,16 @@ class SuperPanelManager {
     try {
       const lastSequence = clipboardManager.getLastCopiedSequence()
 
-      // 2. 模拟复制（Cmd+C on macOS, Ctrl+C on Windows）
+      // 2. 超级面板触发前，临时提升 macOS 剪贴板轮询频率
+      if (process.platform === 'darwin') {
+        ClipboardMonitor.setClipboardPollingBoost(20, 400)
+      }
+
+      // 3. 模拟复制（Cmd+C on macOS, Ctrl+C on Windows）
       const modifier = process.platform === 'darwin' ? 'meta' : 'ctrl'
       WindowManager.simulateKeyboardTap('c', modifier)
 
-      // 3. 等待剪贴板监听捕获本次复制事件
+      // 4. 等待剪贴板监听捕获本次复制事件
       const lastCopiedContent = await clipboardManager.getLastCopiedContent(
         CLIPBOARD_WAIT_MS,
         lastSequence

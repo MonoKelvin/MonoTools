@@ -886,6 +886,7 @@ class ClipboardManager {
   ): Promise<LastCopiedContent | null> {
     const cachedContent = this.getValidLastCopiedContent(timeLimit)
     if (cachedContent && (!minSequence || cachedContent.sequence > minSequence)) {
+      console.log('[Clipboard] 获取到有效的最后复制内容，直接返回缓存')
       return cachedContent
     }
 
@@ -894,16 +895,22 @@ class ClipboardManager {
       timeLimit && timeLimit > 0
         ? Math.min(timeLimit, CLIPBOARD_READY_WAIT_MS)
         : CLIPBOARD_READY_WAIT_MS
-    const deadline = Date.now() + waitMs
+    const waitStartAt = Date.now()
+    const deadline = waitStartAt + waitMs
 
     while (Date.now() < deadline) {
       await sleep(CLIPBOARD_RETRY_INTERVAL_MS)
 
       const latestContent = this.getValidLastCopiedContent(timeLimit)
       if (latestContent && latestContent.sequence > initialSequence) {
+        console.log(
+          `[Clipboard] 在等待期间检测到新的复制内容，已更新缓存，等待了 ${Date.now() - waitStartAt}ms`
+        )
         return latestContent
       }
     }
+
+    console.log('[Clipboard] 等待新的复制内容超时，返回 null')
 
     return null
   }
