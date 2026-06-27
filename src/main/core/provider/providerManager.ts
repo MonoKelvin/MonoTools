@@ -12,6 +12,7 @@ import {
   PROVIDER_SETTINGS_KEY,
   type PluginProvidersField,
   type ProviderContractMap,
+  type ProviderDeclaration,
   type ProviderEntry,
   type ProviderSettings,
   type ProviderType
@@ -44,9 +45,9 @@ class ProviderManager {
   private pluginManager: PluginManager | null = null
   /** 已注册的内置 provider 定义（id -> definition） */
   private builtinProviders = new Map<string, BuiltinProviderDefinition>()
-  /** webContents.id => 已通过 ztools.registerProvider 注册的 type 集合 */
-  private registeredProviders = new Map<number, Set<ProviderType>>()
-  /** webContents.id:type => 等待注册完成的回调 */
+  /** webContents.id => 已通过 ztools.registerProvider 注册的 key 集合 */
+  private registeredProviders = new Map<number, Set<string>>()
+  /** webContents.id:key => 等待注册完成的回调 */
   private waiters = new Map<string, Array<() => void>>()
 
   public init(pluginManager: PluginManager): void {
@@ -58,9 +59,10 @@ class ProviderManager {
 
   private setupIPC(): void {
     // 插件 preload 通过 ztools.registerProvider 注册
-    ipcMain.on('plugin:provider-register', (event, type: ProviderType) => {
+    // payload 为插件内声明 key（plugin.json providers 字段的 key），不再限制为 type。
+    ipcMain.on('plugin:provider-register', (event, key: string) => {
       try {
-        this.registerProvider(event.sender, type)
+        this.registerProvider(event.sender, key)
         event.returnValue = { success: true }
       } catch (error: unknown) {
         event.returnValue = {
@@ -111,13 +113,18 @@ class ProviderManager {
 
   /**
    * 仅保留合法 type 且结构正确的声明，丢弃其余。
+   *
+   * 返回的 key 集合与插件 plugin.json providers 字段的 key 一致；
+   * 同一 type 可出现多条（key 不同），由调用方各自生成一条 entry。
    */
   private sanitizeDeclaredProviders(raw: PluginProvidersField): PluginProvidersField {
     const result: PluginProvidersField = {}
-    for (const type of ALL_PROVIDER_TYPES) {
-      const decl = raw[type]
+    if (!raw || typeof raw !== 'object') return result
+    for (const [key, decl] of Object.entries(raw)) {
       if (!decl || typeof decl !== 'object') continue
-      result[type] = {
+      const type = (decl as ProviderDeclaration).type
+      if (!type || !ALL_PROVIDER_TYPES.includes(type)) continue
+      result[key] = {
         type,
         label: typeof decl.label === 'string' ? decl.label : undefined,
         description: typeof decl.description === 'string' ? decl.description : undefined
@@ -154,13 +161,13 @@ class ProviderManager {
       if (typeof pluginPath !== 'string' || typeof pluginName !== 'string') continue
 
       const declared = this.getDeclaredProvidersByPath(pluginPath)
-      for (const type of ALL_PROVIDER_TYPES) {
-        if (filterType && type !== filterType) continue
-        const decl = declared[type]
-        if (!decl) continue
+      // 声明 key 为插件内唯一标识，同一 type 可有多条（key 不同）
+      for (const [key, decl] of Object.entries(declared)) {
+        if (filterType && decl.type !== filterType) continue
         entries.push({
-          id: buildPluginProviderId(pluginName, type),
-          type,
+          id: buildPluginProviderId(pluginName, key),
+          type: decl.type,
+          key,
           label: decl.label || String(plugin.title || pluginName),
           description: decl.description || '',
           source: 'plugin',
@@ -219,10 +226,10 @@ class ProviderManager {
 
     // 插件 provider
     const entry = this.getAllProviders(type).find((p) => p.id === targetId)
-    if (!entry || entry.source !== 'plugin' || !entry.pluginPath) {
+    if (!entry || entry.source !== 'plugin' || !entry.pluginPath || !entry.key) {
       throw new Error(`未找到 provider: ${targetId}`)
     }
-    const webContents = await this.ensurePluginProviderReady(entry.pluginPath, type)
+    const webContents = await this.ensurePluginProviderReady(entry.pluginPath, entry.key)
     if (!webContents) {
       throw new Error(`provider 所在插件无法加载: ${entry.pluginName}`)
     }
@@ -233,7 +240,7 @@ class ProviderManager {
           throw new Error('插件运行时缺少 provider 调用入口')
         }
         return await window.ztools.__invokeRegisteredProvider(
-          ${JSON.stringify(type)},
+          ${JSON.stringify(entry.key)},
           ${JSON.stringify(input ?? {})}
         )
       })()
@@ -253,11 +260,11 @@ class ProviderManager {
   }
 
   /**
-   * 确保目标插件已加载且对应 type 的 provider 已注册。
+   * 确保目标插件已加载且对应 key 的 provider 已注册。
    */
   public async ensurePluginProviderReady(
     pluginPath: string,
-    type: ProviderType
+    key: string
   ): Promise<WebContents | null> {
     let webContents = this.pluginManager?.getPluginWebContentsByPath(pluginPath) ?? null
     if (!webContents) {
@@ -266,56 +273,56 @@ class ProviderManager {
     }
     if (!webContents) return null
 
-    if (this.isProviderRegistered(webContents, type)) {
+    if (this.isProviderRegistered(webContents, key)) {
       return webContents
     }
-    await this.waitForProviderRegistration(webContents, type)
-    return this.isProviderRegistered(webContents, type) ? webContents : null
+    await this.waitForProviderRegistration(webContents, key)
+    return this.isProviderRegistered(webContents, key) ? webContents : null
   }
 
   // ==================== 运行时注册跟踪 ====================
 
-  private registerProvider(webContents: WebContents, type: ProviderType): void {
-    if (!type || !ALL_PROVIDER_TYPES.includes(type)) {
-      throw new Error(`不支持的 provider 类型: ${type}`)
+  private registerProvider(webContents: WebContents, key: string): void {
+    if (!key || typeof key !== 'string') {
+      throw new Error('provider key 不能为空')
     }
     const pluginInfo = this.pluginManager?.getPluginInfoByWebContents(webContents)
     if (!pluginInfo) {
       throw new Error('无法获取插件信息')
     }
-    // 必须在 plugin.json 声明了对应 type 才允许注册
+    // 必须在 plugin.json 声明了对应 key 才允许注册
     const declared = this.getDeclaredProvidersByPath(pluginInfo.path)
-    if (!declared[type]) {
-      throw new Error(`插件未在 plugin.json 声明 ${type} provider`)
+    if (!declared[key]) {
+      throw new Error(`插件未在 plugin.json 声明 "${key}" provider`)
     }
 
     let set = this.registeredProviders.get(webContents.id)
     if (!set) {
-      set = new Set<ProviderType>()
+      set = new Set<string>()
       this.registeredProviders.set(webContents.id, set)
       webContents.once('destroyed', () => {
         this.registeredProviders.delete(webContents.id)
       })
     }
-    set.add(type)
-    this.resolveWaiters(webContents.id, type)
+    set.add(key)
+    this.resolveWaiters(webContents.id, key)
   }
 
-  private isProviderRegistered(webContents: WebContents, type: ProviderType): boolean {
-    return this.registeredProviders.get(webContents.id)?.has(type) ?? false
+  private isProviderRegistered(webContents: WebContents, key: string): boolean {
+    return this.registeredProviders.get(webContents.id)?.has(key) ?? false
   }
 
   private async waitForProviderRegistration(
     webContents: WebContents,
-    type: ProviderType
+    key: string
   ): Promise<void> {
-    if (this.isProviderRegistered(webContents, type)) return
-    const waiterKey = `${webContents.id}:${type}`
+    if (this.isProviderRegistered(webContents, key)) return
+    const waiterKey = `${webContents.id}:${key}`
     await new Promise<void>((resolve, reject) => {
       let wrappedResolve: (() => void) | null = null
       const timeout = setTimeout(() => {
         if (wrappedResolve) this.removeWaiter(waiterKey, wrappedResolve)
-        reject(new Error(`等待 ${type} provider 注册超时`))
+        reject(new Error(`等待 ${key} provider 注册超时`))
       }, PROVIDER_REGISTER_TIMEOUT_MS)
 
       wrappedResolve = (): void => {
@@ -328,8 +335,8 @@ class ProviderManager {
     }).catch(() => undefined)
   }
 
-  private resolveWaiters(webContentsId: number, type: ProviderType): void {
-    const waiterKey = `${webContentsId}:${type}`
+  private resolveWaiters(webContentsId: number, key: string): void {
+    const waiterKey = `${webContentsId}:${key}`
     const list = this.waiters.get(waiterKey)
     if (!list?.length) return
     this.waiters.delete(waiterKey)

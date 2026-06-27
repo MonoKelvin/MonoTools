@@ -3,7 +3,7 @@
  *
  * 翻译、OCR 等能力不再由主程序硬编码实现，而是统一抽象为 Provider：
  * - 插件在 plugin.json 的 providers 字段声明它提供哪些 type；
- * - 运行时通过 ztools.registerProvider(type, handler) 注册实现；
+ * - 运行时通过 ztools.registerProvider(key, handler) 注册实现；
  * - 主程序经 providerManager 聚合后供设置页展示与调用。
  *
  * 注意：AI 不纳入本抽象，AI 模型继续走 aiModels 独立链路。
@@ -16,7 +16,10 @@ export type ProviderType = 'translation' | 'ocr'
 
 /**
  * 插件在 plugin.json 中声明的单个 provider。
- * 与现有 tools 字段平行，不互相依赖。
+ *
+ * providers 字段的 key 为插件内唯一标识（不必等于 type），
+ * 因此同一插件可对同一 type 声明多条（如 baidu / google 都为 translation）。
+ * `registerProvider` 的首参即该 key，运行时按 key 派发。
  */
 export interface ProviderDeclaration {
   /** provider 类型 */
@@ -28,10 +31,11 @@ export interface ProviderDeclaration {
 }
 
 /**
- * plugin.json 中 providers 字段的合法结构：type -> 声明详情。
- * 同一插件可对同一 type 声明一次。
+ * plugin.json 中 providers 字段的合法结构：
+ * key 为插件内唯一标识（任意字符串），value 为声明详情。
+ * 同一插件可对同一 type 声明多条，只要 key 不同即可。
  */
-export type PluginProvidersField = Partial<Record<ProviderType, ProviderDeclaration>>
+export type PluginProvidersField = Record<string, ProviderDeclaration>
 
 // ==================== 翻译契约 ====================
 
@@ -79,6 +83,9 @@ export interface ProviderContractMap {
 
 /**
  * 运行时 handler 的函数签名（由插件通过 registerProvider 注册）。
+ *
+ * 注意：handler 按「声明 key」存取，而非按 type。一个 key 对应一个 handler，
+ * 同一 type 下可有多个 key（如 baidu / google），由 providerManager 按 id 路由。
  */
 export type ProviderHandler<T extends ProviderType> = (
   input: ProviderContractMap[T]['input']
@@ -103,7 +110,7 @@ export type ProviderSource = 'builtin' | 'plugin'
  * 供设置页与主进程消费的扁平化 provider 描述。
  */
 export interface ProviderEntry {
-  /** 全局唯一 id。内置为 `builtin-xxx`，插件为 `plugin:<pluginName>:<type>` */
+  /** 全局唯一 id。内置为 `builtin-xxx`，插件为 `plugin:<pluginName>:<key>` */
   id: string
   /** provider 类型 */
   type: ProviderType
@@ -119,6 +126,8 @@ export interface ProviderEntry {
   pluginPath?: string
   /** 插件 logo（仅插件 provider） */
   pluginLogo?: string
+  /** 插件内声明 key（仅插件 provider，用于运行时按 key 派发到 handler） */
+  key?: string
 }
 
 /**
@@ -135,9 +144,12 @@ export interface ProviderSettings {
 
 /**
  * 生成插件 provider 的稳定 id。
+ *
+ * 第二参数为插件内声明 key（plugin.json providers 字段的 key），
+ * 旧插件 key===type，故此处兼容历史用法：传 type 仍得到 `plugin:<name>:<type>`。
  */
-export function buildPluginProviderId(pluginName: string, type: ProviderType): string {
-  return `plugin:${pluginName}:${type}`
+export function buildPluginProviderId(pluginName: string, key: string): string {
+  return `plugin:${pluginName}:${key}`
 }
 
 /**

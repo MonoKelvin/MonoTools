@@ -20,7 +20,7 @@ ZTools 把「翻译」「OCR」等能力抽象为 **Provider（提供商）**。
 
 ## 第一步：在 plugin.json 声明 providers
 
-在插件的 `plugin.json` 中新增 `providers` 字段，声明本插件提供哪些 type：
+在插件的 `plugin.json` 中新增 `providers` 字段，声明本插件提供哪些 provider。`providers` 的 **key 为插件内唯一标识**（任意字符串，不必等于 type），value 才是 `{ type, label?, description? }`。
 
 ```json
 {
@@ -36,16 +36,39 @@ ZTools 把「翻译」「OCR」等能力抽象为 **Provider（提供商）**。
 }
 ```
 
+- `providers` 的 key 即「声明 key」，后续 `ztools.registerProvider(key, handler)` 的首参必须与之一致。
 - 一个插件可同时声明多个 type（如同时提供 `translation` 和 `ocr`）。
+- **同一 type 可声明多条**，只要 key 不同即可（见下方「同一 type 多条」示例）。
 - `label` / `description` 会展示在「设置 → 提供商」对应 tab 中。
 
 声明后，安装该插件即在「设置 → 提供商 → OCR/翻译」tab 列出该 provider，用户可启用并设为默认。
+
+### 同一 type 多条
+
+当一个插件想提供多个同类渠道（如百度、谷歌两个翻译），可用不同 key 声明同一 type：
+
+```json
+{
+  "providers": {
+    "baidu":  { "type": "translation", "label": "百度翻译" },
+    "google": { "type": "translation", "label": "谷歌翻译" }
+  }
+}
+```
+
+```js
+// preload.js
+ztools.registerProvider('baidu', async (input) => { /* 调用百度 */ })
+ztools.registerProvider('google', async (input) => { /* 调用谷歌 */ })
+```
+
+两条都会出现在「设置 → 提供商 → 翻译」，用户可分别启用并选其中一个为默认。
 
 ---
 
 ## 第二步：在 preload 注册 handler
 
-在插件 preload 脚本中调用 `ztools.registerProvider(type, handler)`，handler 签名必须匹配该 type 的契约：
+在插件 preload 脚本中调用 `ztools.registerProvider(key, handler)`，**首参为声明 key**（与 plugin.json 的 providers key 一致），handler 签名必须匹配该声明的 type 对应契约：
 
 ```js
 // 插件 preload
@@ -68,9 +91,9 @@ ztools.registerProvider('ocr', async (input) => {
 
 注意事项：
 
-- `registerProvider` 必须在 plugin.json 声明过对应 type 之后调用，否则注册会被拒绝。
-- handler 是 `async` 函数，返回值需符合契约；入参缺失字段请自行兜底。
-- 一个插件对同一 type 只能注册一次。
+- `registerProvider` 首参必须是 plugin.json `providers` 中已声明的 key，否则注册会被拒绝。
+- handler 是 `async` 函数，返回值需符合该 key 声明 type 的契约；入参缺失字段请自行兜底。
+- 一个插件对同一 key 只能注册一次；不同 key 各自对应独立 handler。
 
 ---
 

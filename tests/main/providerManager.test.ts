@@ -102,6 +102,23 @@ describe('providerManager', () => {
       expect(declared.ocr).toBeUndefined()
     })
 
+    it('preserves multiple declarations of the same type (different keys)', () => {
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          providers: {
+            baidu: { type: 'translation', label: '百度' },
+            google: { type: 'translation', label: '谷歌' },
+            ocr: { type: 'ocr', label: '云 OCR' }
+          }
+        })
+      )
+      const declared = providerManager.getDeclaredProvidersByPath('/fake/plugin')
+      expect(Object.keys(declared)).toEqual(['baidu', 'google', 'ocr'])
+      expect(declared.baidu?.type).toBe('translation')
+      expect(declared.google?.type).toBe('translation')
+      expect(declared.ocr?.type).toBe('ocr')
+    })
+
     it('returns empty when plugin.json is unreadable', () => {
       mockReadFileSync.mockImplementation(() => {
         throw new Error('ENOENT')
@@ -126,6 +143,37 @@ describe('providerManager', () => {
       expect(pluginProvider?.id).toBe('plugin:cloud-trans:translation')
       expect(pluginProvider?.pluginName).toBe('cloud-trans')
       expect(pluginProvider?.pluginLogo).toBe('l.png')
+    })
+
+    it('lists multiple providers of the same type from one plugin (multi-declaration)', () => {
+      mockDbGet.mockReturnValue([{ name: 'multi-trans', path: '/p/multi-trans', title: '多云翻译' }])
+      mockReadFileSync.mockReturnValue(
+        JSON.stringify({
+          providers: {
+            baidu: { type: 'translation', label: '百度翻译', description: 'b' },
+            google: { type: 'translation', label: '谷歌翻译', description: 'g' },
+            ocr: { type: 'ocr', label: '云 OCR', description: 'o' }
+          }
+        })
+      )
+      const translations = providerManager.getAllProviders('translation')
+      const pluginProviders = translations.filter((p) => p.source === 'plugin')
+      expect(pluginProviders).toHaveLength(2)
+      const byId = Object.fromEntries(pluginProviders.map((p) => [p.id, p]))
+      expect(byId['plugin:multi-trans:baidu']).toBeDefined()
+      expect(byId['plugin:multi-trans:baidu'].label).toBe('百度翻译')
+      expect(byId['plugin:multi-trans:baidu'].key).toBe('baidu')
+      expect(byId['plugin:multi-trans:google']).toBeDefined()
+      expect(byId['plugin:multi-trans:google'].label).toBe('谷歌翻译')
+      expect(byId['plugin:multi-trans:google'].key).toBe('google')
+
+      // ocr 声明不会混入 translation 列表
+      expect(pluginProviders.every((p) => p.type === 'translation')).toBe(true)
+
+      // 按 ocr 过滤应只剩一条
+      const ocrList = providerManager.getAllProviders('ocr')
+      expect(ocrList.filter((p) => p.source === 'plugin')).toHaveLength(1)
+      expect(ocrList.find((p) => p.source === 'plugin')?.id).toBe('plugin:multi-trans:ocr')
     })
   })
 

@@ -715,30 +715,32 @@ window.ztools = {
     return await handler(input ?? {})
   },
 
-  // 注册 provider（翻译、OCR 等）处理器。type 需与 plugin.json 的 providers 声明一致。
-  registerProvider: (type, handler) => {
-    const providerType = typeof type === 'string' ? type.trim() : ''
-    if (!providerType) {
-      throw new Error('provider 类型不能为空')
+  // 注册 provider（翻译、OCR 等）处理器。
+  // 首参 key 需与 plugin.json 的 providers 字段 key 一致；type 由声明决定。
+  // 一个插件可对同一 type 声明多条（如 baidu / google 都为 translation），只要 key 不同。
+  registerProvider: (key, handler) => {
+    const providerKey = typeof key === 'string' ? key.trim() : ''
+    if (!providerKey) {
+      throw new Error('provider key 不能为空')
     }
     if (typeof handler !== 'function') {
-      throw new Error(`provider "${providerType}" 的处理器必须是函数`)
+      throw new Error(`provider "${providerKey}" 的处理器必须是函数`)
     }
 
-    registeredProviders.set(providerType, handler)
-    const result = electron.ipcRenderer.sendSync('plugin:provider-register', providerType)
+    registeredProviders.set(providerKey, handler)
+    const result = electron.ipcRenderer.sendSync('plugin:provider-register', providerKey)
     if (!result?.success) {
-      registeredProviders.delete(providerType)
-      throw new Error(result?.error || `provider "${providerType}" 注册失败`)
+      registeredProviders.delete(providerKey)
+      throw new Error(result?.error || `provider "${providerKey}" 注册失败`)
     }
   },
 
   // 由主进程回调执行已注册的 provider 处理器，不对插件开发者直接暴露。
-  __invokeRegisteredProvider: async (type, input) => {
-    const providerType = typeof type === 'string' ? type.trim() : ''
-    const handler = registeredProviders.get(providerType)
+  __invokeRegisteredProvider: async (key, input) => {
+    const providerKey = typeof key === 'string' ? key.trim() : ''
+    const handler = registeredProviders.get(providerKey)
     if (!handler) {
-      throw new Error(`provider "${providerType}" 未注册`)
+      throw new Error(`provider "${providerKey}" 未注册`)
     }
     return await handler(input ?? {})
   },

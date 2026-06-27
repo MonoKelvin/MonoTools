@@ -6,8 +6,26 @@
 
 ## 文件说明
 
-- `plugin.json` —— 声明了 `providers.translation` 与 `providers.ocr`。
+- `plugin.json` —— 声明了 `providers.translation` 与 `providers.ocr`（此处 key 恰好等于 type，作为最简兼容示例；多声明见下方说明）。
 - `preload.js` —— 调用 `ztools.registerProvider` 注册两个 provider 的 mock 实现。
+
+## 同一 type 多条声明
+
+当一个插件要提供多个同类渠道（如百度、谷歌两个翻译），用不同 key 声明同一 type 即可：
+
+```json
+"providers": {
+  "baidu":  { "type": "translation", "label": "百度翻译" },
+  "google": { "type": "translation", "label": "谷歌翻译" }
+}
+```
+
+```js
+ztools.registerProvider('baidu', async (input) => { /* ... */ })
+ztools.registerProvider('google', async (input) => { /* ... */ })
+```
+
+详见主程序 `docs/provider-development-guide.md`。
 
 ## 接入后会怎样
 

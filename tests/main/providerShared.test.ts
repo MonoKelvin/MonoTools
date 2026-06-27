@@ -9,9 +9,13 @@ import {
 
 describe('providerShared', () => {
   describe('buildPluginProviderId', () => {
-    it('builds a stable id from plugin name and type', () => {
+    it('builds a stable id from plugin name and declaration key', () => {
+      // 旧用法（key===type）保持兼容
       expect(buildPluginProviderId('my-plugin', 'translation')).toBe('plugin:my-plugin:translation')
       expect(buildPluginProviderId('ocr-x', 'ocr')).toBe('plugin:ocr-x:ocr')
+      // 新用法：key 可为任意字符串，同一 type 下多条用不同 key
+      expect(buildPluginProviderId('multi', 'baidu')).toBe('plugin:multi:baidu')
+      expect(buildPluginProviderId('multi', 'google')).toBe('plugin:multi:google')
     })
   })
 
