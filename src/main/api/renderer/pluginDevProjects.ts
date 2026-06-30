@@ -793,7 +793,9 @@ export class PluginDevProjectsAPI {
       const devVersionPlugin = installedPlugins.find(
         (p) => p?.name === 'monotools-developer-plugin__dev'
       )
-      const prodVersionPlugin = installedPlugins.find((p) => p?.name === 'monotools-developer-plugin')
+      const prodVersionPlugin = installedPlugins.find(
+        (p) => p?.name === 'monotools-developer-plugin'
+      )
       const devPlugin = devVersionPlugin || prodVersionPlugin
       if (!devPlugin?.path) {
         return { success: false, error: '开发者工具插件未安装' }

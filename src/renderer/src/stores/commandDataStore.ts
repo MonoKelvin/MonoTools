@@ -166,8 +166,7 @@ const MATCH_CMD_TYPES = ['regex', 'over', 'img', 'files', 'window']
 export function normalizeCmd(cmd: unknown): { isMatchCmd: boolean; cmdName: string } {
   if (typeof cmd === 'object' && cmd !== null) {
     const type = (cmd as { type?: unknown }).type
-    const isMatchCmd =
-      typeof type === 'string' && MATCH_CMD_TYPES.includes(type)
+    const isMatchCmd = typeof type === 'string' && MATCH_CMD_TYPES.includes(type)
     const label = (cmd as { label?: unknown }).label
     return { isMatchCmd, cmdName: typeof label === 'string' ? label : '' }
   }
@@ -899,7 +898,10 @@ export const useCommandDataStore = defineStore('commandData', () => {
                 pinyinAbbr: py.pinyinAbbr
               }
 
-              pluginItems.push(textCommand, ...getLaunchableAliasEntries(textCommand, commandAliases))
+              pluginItems.push(
+                textCommand,
+                ...getLaunchableAliasEntries(textCommand, commandAliases)
+              )
             }
           } catch (error) {
             console.error('[CommandData] 构建插件指令失败，已跳过该指令:', {

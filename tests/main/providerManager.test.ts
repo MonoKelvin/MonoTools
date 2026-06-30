@@ -146,7 +146,9 @@ describe('providerManager', () => {
     })
 
     it('lists multiple providers of the same type from one plugin (multi-declaration)', () => {
-      mockDbGet.mockReturnValue([{ name: 'multi-trans', path: '/p/multi-trans', title: '多云翻译' }])
+      mockDbGet.mockReturnValue([
+        { name: 'multi-trans', path: '/p/multi-trans', title: '多云翻译' }
+      ])
       mockReadFileSync.mockReturnValue(
         JSON.stringify({
           providers: {

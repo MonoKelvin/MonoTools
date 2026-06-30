@@ -790,13 +790,15 @@ onMounted(async () => {
   })
 
   // 监听亚克力透明度更新事件
-  window.monotools.onUpdateAcrylicOpacity?.((data: { lightOpacity: number; darkOpacity: number }) => {
-    console.log('更新亚克力透明度:', data)
-    windowStore.updateAcrylicLightOpacity(data.lightOpacity)
-    windowStore.updateAcrylicDarkOpacity(data.darkOpacity)
-    // 应用亚克力背景色叠加效果
-    applyAcrylicOverlay()
-  })
+  window.monotools.onUpdateAcrylicOpacity?.(
+    (data: { lightOpacity: number; darkOpacity: number }) => {
+      console.log('更新亚克力透明度:', data)
+      windowStore.updateAcrylicLightOpacity(data.lightOpacity)
+      windowStore.updateAcrylicDarkOpacity(data.darkOpacity)
+      // 应用亚克力背景色叠加效果
+      applyAcrylicOverlay()
+    }
+  )
 
   // 监听应用启动事件（应用启动后）
   window.monotools.onAppLaunched(() => {

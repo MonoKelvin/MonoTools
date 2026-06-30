@@ -924,11 +924,17 @@ export class IconExtractor {
       try {
         return nativeAddon.getFileIcon(filePath)
       } catch (error) {
-        console.warn('[Native] Native icon extraction failed, falling back to Electron app.getFileIcon:', error)
+        console.warn(
+          '[Native] Native icon extraction failed, falling back to Electron app.getFileIcon:',
+          error
+        )
       }
     }
 
-    console.warn('[Native] Native icon module is unavailable, falling back to Electron app.getFileIcon:', filePath)
+    console.warn(
+      '[Native] Native icon module is unavailable, falling back to Electron app.getFileIcon:',
+      filePath
+    )
     const icon = await app.getFileIcon(filePath, { size: 'normal' })
     const buffer = icon.toPNG()
     if (!buffer || buffer.length === 0) {

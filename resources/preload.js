@@ -676,7 +676,8 @@ window.monotools = {
   redirectHotKeySetting: (cmdLabel) =>
     electron.ipcRenderer.sendSync('monotools-redirect-hotkey-setting', cmdLabel),
   // 跳转到 AI 模型设置
-  redirectAiModelsSetting: () => electron.ipcRenderer.sendSync('monotools-redirect-ai-models-setting'),
+  redirectAiModelsSetting: () =>
+    electron.ipcRenderer.sendSync('monotools-redirect-ai-models-setting'),
   // HTTP 请求头设置
   http: {
     // 设置请求头

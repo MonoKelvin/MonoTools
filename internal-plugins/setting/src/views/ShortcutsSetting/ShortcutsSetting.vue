@@ -816,7 +816,10 @@ async function handleSaveAppShortcut(
       }
     } catch (err: any) {
       if (oldShortcut !== recordedShortcut) {
-        await window.monotools.internal.registerAppShortcut(oldShortcut, editingShortcut.value.target)
+        await window.monotools.internal.registerAppShortcut(
+          oldShortcut,
+          editingShortcut.value.target
+        )
       }
       console.error('更新应用快捷键失败:', err)
       error(`更新应用快捷键失败: ${err.message || '未知错误'}`)
@@ -841,7 +844,10 @@ async function handleSaveAppShortcut(
   await saveAppShortcuts()
 
   try {
-    const result = await window.monotools.internal.registerAppShortcut(recordedShortcut, targetCommand)
+    const result = await window.monotools.internal.registerAppShortcut(
+      recordedShortcut,
+      targetCommand
+    )
     if (result.success) {
       success('应用快捷键添加成功!')
       closeEditor()

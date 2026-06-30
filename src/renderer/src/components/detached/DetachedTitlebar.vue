@@ -274,25 +274,29 @@ onMounted(async () => {
 
   // 监听亚克力透明度更新事件
   if (window.monotools?.onUpdateAcrylicOpacity) {
-    window.monotools.onUpdateAcrylicOpacity((data: { lightOpacity: number; darkOpacity: number }) => {
-      console.log('标题栏更新亚克力透明度:', data)
-      acrylicLightOpacity.value = data.lightOpacity
-      acrylicDarkOpacity.value = data.darkOpacity
-      // 应用亚克力背景色叠加效果
-      applyAcrylicOverlay()
-    })
+    window.monotools.onUpdateAcrylicOpacity(
+      (data: { lightOpacity: number; darkOpacity: number }) => {
+        console.log('标题栏更新亚克力透明度:', data)
+        acrylicLightOpacity.value = data.lightOpacity
+        acrylicDarkOpacity.value = data.darkOpacity
+        // 应用亚克力背景色叠加效果
+        applyAcrylicOverlay()
+      }
+    )
   }
 
   // 监听主题色更新
   if (window.monotools?.onUpdatePrimaryColor) {
-    window.monotools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
-      console.log('标题栏更新主题色:', data)
-      primaryColor.value = data.primaryColor
-      if (data.customColor) {
-        customColor.value = data.customColor
+    window.monotools.onUpdatePrimaryColor(
+      (data: { primaryColor: string; customColor?: string }) => {
+        console.log('标题栏更新主题色:', data)
+        primaryColor.value = data.primaryColor
+        if (data.customColor) {
+          customColor.value = data.customColor
+        }
+        applyPrimaryColor()
       }
-      applyPrimaryColor()
-    })
+    )
   }
 
   // 监听系统主题变化

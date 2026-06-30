@@ -312,10 +312,7 @@ class ProviderManager {
     return this.registeredProviders.get(webContents.id)?.has(key) ?? false
   }
 
-  private async waitForProviderRegistration(
-    webContents: WebContents,
-    key: string
-  ): Promise<void> {
+  private async waitForProviderRegistration(webContents: WebContents, key: string): Promise<void> {
     if (this.isProviderRegistered(webContents, key)) return
     const waiterKey = `${webContents.id}:${key}`
     await new Promise<void>((resolve, reject) => {

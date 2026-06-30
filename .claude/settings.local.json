@@ -1,8 +1,5 @@
 {
   "permissions": {
-    "allow": [
-      "Bash(rm -rf monotools-api-types/.git)",
-      "Bash(git submodule:*)"
-    ]
+    "allow": ["Bash(rm -rf monotools-api-types/.git)", "Bash(git submodule:*)"]
   }
 }

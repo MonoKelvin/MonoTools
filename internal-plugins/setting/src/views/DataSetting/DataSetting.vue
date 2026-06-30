@@ -215,7 +215,9 @@ async function handleClearData(): Promise<void> {
   if (!confirmed) return
 
   try {
-    const result = await window.monotools.internal.clearPluginData(currentPluginData.value.pluginName)
+    const result = await window.monotools.internal.clearPluginData(
+      currentPluginData.value.pluginName
+    )
     if (result.success) {
       success(`已成功清空 ${result.deletedCount} 个文档`)
       // 关闭弹窗

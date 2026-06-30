@@ -21,8 +21,12 @@
 ```
 
 ```js
-monotools.registerProvider('baidu', async (input) => { /* ... */ })
-monotools.registerProvider('google', async (input) => { /* ... */ })
+monotools.registerProvider('baidu', async (input) => {
+  /* ... */
+})
+monotools.registerProvider('google', async (input) => {
+  /* ... */
+})
 ```
 
 详见主程序 `docs/provider-development-guide.md`。

@@ -1426,22 +1426,26 @@ onMounted(() => {
 
   // 监听亚克力透明度更新事件
   if (window.monotools?.onUpdateAcrylicOpacity) {
-    window.monotools.onUpdateAcrylicOpacity((data: { lightOpacity: number; darkOpacity: number }) => {
-      acrylicLightOpacity.value = data.lightOpacity
-      acrylicDarkOpacity.value = data.darkOpacity
-      applyAcrylicOverlay()
-    })
+    window.monotools.onUpdateAcrylicOpacity(
+      (data: { lightOpacity: number; darkOpacity: number }) => {
+        acrylicLightOpacity.value = data.lightOpacity
+        acrylicDarkOpacity.value = data.darkOpacity
+        applyAcrylicOverlay()
+      }
+    )
   }
 
   // 监听主题色更新
   if (window.monotools?.onUpdatePrimaryColor) {
-    window.monotools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
-      primaryColor.value = data.primaryColor
-      if (data.customColor) {
-        customColor.value = data.customColor
+    window.monotools.onUpdatePrimaryColor(
+      (data: { primaryColor: string; customColor?: string }) => {
+        primaryColor.value = data.primaryColor
+        if (data.customColor) {
+          customColor.value = data.customColor
+        }
+        applyPrimaryColor()
       }
-      applyPrimaryColor()
-    })
+    )
   }
 
   // 监听系统主题变化
