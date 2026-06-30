@@ -77,7 +77,7 @@ export function useSearchResults(props: {
     ],
     async () => {
       try {
-        const stats: any[] = await window.ztools.getUsageStats()
+        const stats: any[] = await window.monotools.getUsageStats()
         const map = new Map<string, number>()
         for (const item of stats) {
           const key = `${item.path}:${item.featureCode || ''}`

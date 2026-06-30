@@ -55,7 +55,7 @@ describe('plugin preload internal api bridge', () => {
   it('exposes updateDevProjectsOrder for internal plugin runtimes', async () => {
     require(preloadPath)
 
-    const internalApi = (globalThis as any).window.ztools?.internal
+    const internalApi = (globalThis as any).window.monotools?.internal
 
     expect(internalApi?.updateDevProjectsOrder).toBeTypeOf('function')
 
@@ -67,7 +67,7 @@ describe('plugin preload internal api bridge', () => {
   it('exposes upsertDevProjectByConfigPath for internal plugin runtimes', async () => {
     require(preloadPath)
 
-    const internalApi = (globalThis as any).window.ztools?.internal
+    const internalApi = (globalThis as any).window.monotools?.internal
 
     expect(internalApi?.upsertDevProjectByConfigPath).toBeTypeOf('function')
 

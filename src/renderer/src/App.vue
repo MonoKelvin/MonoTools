@@ -78,7 +78,7 @@ const pastedTextData = ref<string | null>(null)
 
 // 将当前搜索输入和粘贴态同步到主进程，供应用快捷键启动时复用
 function syncLaunchContext(): void {
-  window.ztools.updateLaunchContext({
+  window.monotools.updateLaunchContext({
     searchQuery: searchQuery.value,
     pastedImage: pastedImageData.value,
     pastedFiles: pastedFilesData.value
@@ -97,7 +97,7 @@ function handleSearchQueryChange(value: string): void {
   searchQuery.value = value
   // 如果在插件模式下，通知主进程，由主进程转发给插件（同时更新缓存）
   if (currentView.value === ViewMode.Plugin && windowStore.currentPlugin) {
-    window.ztools.notifySubInputChange(value)
+    window.monotools.notifySubInputChange(value)
   }
 }
 
@@ -139,7 +139,7 @@ function updateWindowHeight(): Promise<void> {
     const container = document.querySelector('.app-container')
     if (container) {
       const height = container.scrollHeight
-      window.ztools.resizeWindow(height + 1)
+      window.monotools.resizeWindow(height + 1)
     }
   })
 }
@@ -179,7 +179,7 @@ function handleClosePlugin(): void {
 function exitPluginToSearch(): void {
   currentView.value = ViewMode.Search
   searchQuery.value = ''
-  window.ztools.hidePlugin()
+  window.monotools.hidePlugin()
   focusSearchAfterPluginExit()
   console.log('[PluginExit] 已退出插件并返回搜索视图')
 }
@@ -198,7 +198,7 @@ function handlePluginStepExit(): void {
   if (searchQuery.value.trim()) {
     // 主窗口插件模式：优先清空子输入框并通知插件
     searchQuery.value = ''
-    window.ztools.notifySubInputChange('')
+    window.monotools.notifySubInputChange('')
     return
   }
 
@@ -264,10 +264,10 @@ async function handleArrowKeydown(
 
   // 发送给主进程：先发送 keyDown，再发送 keyUp
   try {
-    await window.ztools.sendInputEvent(keyDownEvent)
+    await window.monotools.sendInputEvent(keyDownEvent)
     // 短暂延迟后发送 keyUp，模拟真实的按键行为
     await new Promise((resolve) => setTimeout(resolve, 10))
-    await window.ztools.sendInputEvent(keyUpEvent)
+    await window.monotools.sendInputEvent(keyUpEvent)
   } catch (error) {
     console.error('发送方向键事件失败:', error)
   }
@@ -296,14 +296,14 @@ function launchTabTarget(target: string, text: string): void {
 
   if (!matchedCommand) {
     console.warn('[Tab Target] 未找到目标指令:', target)
-    new Notification('ZTools', {
+    new Notification('MonoTools', {
       body: `未找到 Tab 键目标指令「${target}」，请检查设置中的指令名称是否正确`
     })
     return
   }
 
   console.log('[Tab Target] 启动目标指令:', matchedCommand.name, '携带文本:', text)
-  window.ztools.launch({
+  window.monotools.launch({
     path: matchedCommand.path,
     type: matchedCommand.type as 'plugin' | 'direct',
     featureCode: matchedCommand.featureCode,
@@ -319,7 +319,7 @@ function launchTabTarget(target: string, text: string): void {
 // 分离当前插件到独立窗口
 async function detachCurrentPlugin(): Promise<void> {
   try {
-    const result = await window.ztools.detachPlugin()
+    const result = await window.monotools.detachPlugin()
     if (!result.success) {
       console.error('分离插件失败:', result.error)
     }
@@ -399,7 +399,7 @@ async function handleKeydown(event: KeyboardEvent): Promise<void> {
 
   // Cmd/Ctrl + Q: 在插件内终止插件
   if ((event.key === 'q' || event.key === 'Q') && (event.metaKey || event.ctrlKey)) {
-    const settings = (await window.ztools.dbGet('settings-general')) || {}
+    const settings = (await window.monotools.dbGet('settings-general')) || {}
     const isEnabled = settings?.builtinAppShortcutsEnabled?.killPlugin !== false
     if (!isEnabled) {
       return
@@ -410,7 +410,7 @@ async function handleKeydown(event: KeyboardEvent): Promise<void> {
       // 终止插件并返回搜索页面（与右上角菜单"结束运行"相同）
       console.log('终止插件并返回搜索页面')
       try {
-        const result = await window.ztools.killPluginAndReturn(windowStore.currentPlugin.path)
+        const result = await window.monotools.killPluginAndReturn(windowStore.currentPlugin.path)
         if (!result.success) {
           console.error('终止插件失败:', result.error)
         }
@@ -418,7 +418,7 @@ async function handleKeydown(event: KeyboardEvent): Promise<void> {
         console.error('终止插件失败:', error)
       }
     } else {
-      window.ztools.hideWindow()
+      window.monotools.hideWindow()
     }
     return
   }
@@ -496,7 +496,7 @@ async function handleKeydown(event: KeyboardEvent): Promise<void> {
       pastedTextData.value = null
     } else {
       // 第三步：关闭窗口
-      window.ztools.hideWindow()
+      window.monotools.hideWindow()
     }
     return
   }
@@ -526,7 +526,7 @@ onMounted(async () => {
   console.log('监听聚焦事件')
 
   // 监听窗口显示事件,聚焦搜索框，并接收窗口信息
-  window.ztools.onFocusSearch(async (windowInfo) => {
+  window.monotools.onFocusSearch(async (windowInfo) => {
     console.log('窗口聚焦事件:', windowInfo)
     // 更新窗口信息
     if (windowInfo) {
@@ -564,7 +564,7 @@ onMounted(async () => {
     const timeLimit = windowStore.getAutoPasteTimeLimit()
     if (timeLimit > 0) {
       try {
-        const copiedContent = await window.ztools.getLastCopiedContent(timeLimit)
+        const copiedContent = await window.monotools.getLastCopiedContent(timeLimit)
         if (copiedContent) {
           if (copiedContent.type === 'image') {
             // 自动粘贴图片
@@ -590,7 +590,7 @@ onMounted(async () => {
 
   // 监听插件按 ESC 返回搜索页面事件
   console.log('监听返回搜索页面事件')
-  window.ztools.onBackToSearch(() => {
+  window.monotools.onBackToSearch(() => {
     console.log('收到返回搜索页面事件')
     // 切换到搜索视图
     currentView.value = ViewMode.Search
@@ -607,7 +607,7 @@ onMounted(async () => {
   })
 
   // 监听插件打开事件
-  window.ztools.onPluginOpened((plugin) => {
+  window.monotools.onPluginOpened((plugin) => {
     console.log('插件已打开:', plugin)
     windowStore.updateCurrentPlugin(plugin)
     // 清除所有粘贴内容
@@ -617,13 +617,13 @@ onMounted(async () => {
   })
 
   // 监听插件加载完成事件
-  window.ztools.onPluginLoaded((plugin) => {
+  window.monotools.onPluginLoaded((plugin) => {
     console.log('插件页面加载完成:', plugin)
     windowStore.setPluginLoading(false)
   })
 
   // 监听插件关闭事件
-  window.ztools.onPluginClosed(() => {
+  window.monotools.onPluginClosed(() => {
     console.log('插件已关闭')
     windowStore.updateCurrentPlugin(null)
     windowStore.setPluginLoading(false)
@@ -632,9 +632,9 @@ onMounted(async () => {
   // 监听子输入框 placeholder 更新事件
   console.log(
     'onUpdateSubInputPlaceholder 方法存在?',
-    typeof window.ztools.onUpdateSubInputPlaceholder
+    typeof window.monotools.onUpdateSubInputPlaceholder
   )
-  window.ztools.onUpdateSubInputPlaceholder?.(
+  window.monotools.onUpdateSubInputPlaceholder?.(
     (data: { pluginPath: string; placeholder: string }) => {
       console.log('收到更新子输入框 placeholder 事件:', data)
       windowStore.updateSubInputPlaceholder(data.placeholder)
@@ -642,19 +642,19 @@ onMounted(async () => {
   )
 
   // 监听子输入框可见性更新事件（插件调用 removeSubInput 时触发）
-  window.ztools.onUpdateSubInputVisible?.((visible: boolean) => {
+  window.monotools.onUpdateSubInputVisible?.((visible: boolean) => {
     console.log('收到更新子输入框可见性事件:', visible)
     windowStore.updateSubInputVisible(visible)
   })
 
   // 监听设置子输入框值事件
-  window.ztools.onSetSubInputValue((text: string) => {
+  window.monotools.onSetSubInputValue((text: string) => {
     console.log('收到设置子输入框值事件:', text)
     searchQuery.value = text
   })
 
   // 监听聚焦子输入框事件
-  window.ztools.onFocusSubInput(() => {
+  window.monotools.onFocusSubInput(() => {
     console.log('收到聚焦子输入框事件')
     nextTick(() => {
       searchBoxRef.value?.focus()
@@ -662,7 +662,7 @@ onMounted(async () => {
   })
 
   // 监听选中子输入框内容事件
-  window.ztools.onSelectSubInput(() => {
+  window.monotools.onSelectSubInput(() => {
     nextTick(() => {
       searchBoxRef.value?.focus()
       searchBoxRef.value?.selectAll()
@@ -670,7 +670,7 @@ onMounted(async () => {
   })
 
   // 监听 HTTP API 设置搜索文本事件
-  window.ztools.onSetSearchText((text: string) => {
+  window.monotools.onSetSearchText((text: string) => {
     searchQuery.value = text
     nextTick(() => {
       searchBoxRef.value?.focus()
@@ -678,7 +678,7 @@ onMounted(async () => {
   })
 
   // 监听显示插件占位区域事件（插件启动前）
-  window.ztools.onShowPluginPlaceholder(() => {
+  window.monotools.onShowPluginPlaceholder(() => {
     console.log('显示插件占位区域')
     currentView.value = ViewMode.Plugin
     // 清空搜索框和所有粘贴内容
@@ -689,80 +689,80 @@ onMounted(async () => {
   })
 
   // 监听搜索框提示文字更新事件
-  window.ztools.onUpdatePlaceholder((placeholder: string) => {
+  window.monotools.onUpdatePlaceholder((placeholder: string) => {
     console.log('更新搜索框提示文字:', placeholder)
     windowStore.updatePlaceholder(placeholder)
   })
 
   // 监听头像更新事件
-  window.ztools.onUpdateAvatar((avatar: string) => {
+  window.monotools.onUpdateAvatar((avatar: string) => {
     console.log('更新头像:', avatar)
     windowStore.updateAvatar(avatar)
   })
 
   // 监听自动粘贴配置更新事件
-  window.ztools.onUpdateAutoPaste((autoPaste: string) => {
+  window.monotools.onUpdateAutoPaste((autoPaste: string) => {
     console.log('更新自动粘贴配置:', autoPaste)
     windowStore.updateAutoPaste(autoPaste as any)
   })
 
   // 监听自动清空配置更新事件
-  window.ztools.onUpdateAutoClear((autoClear: string) => {
+  window.monotools.onUpdateAutoClear((autoClear: string) => {
     console.log('更新自动清空配置:', autoClear)
     windowStore.updateAutoClear(autoClear as any)
   })
 
   // 监听显示最近使用配置更新事件
-  window.ztools.onUpdateShowRecentInSearch((showRecentInSearch: boolean) => {
+  window.monotools.onUpdateShowRecentInSearch((showRecentInSearch: boolean) => {
     windowStore.updateShowRecentInSearch(showRecentInSearch)
   })
 
   // 监听匹配推荐配置更新事件
-  window.ztools.onUpdateMatchRecommendation((showMatchRecommendation: boolean) => {
+  window.monotools.onUpdateMatchRecommendation((showMatchRecommendation: boolean) => {
     windowStore.updateShowMatchRecommendation(showMatchRecommendation)
   })
 
   // 监听最近使用行数更新事件
-  window.ztools.onUpdateRecentRows((rows: number) => {
+  window.monotools.onUpdateRecentRows((rows: number) => {
     windowStore.updateRecentRows(rows)
   })
 
   // 监听固定栏行数更新事件
-  window.ztools.onUpdatePinnedRows((rows: number) => {
+  window.monotools.onUpdatePinnedRows((rows: number) => {
     windowStore.updatePinnedRows(rows)
   })
 
   // 监听 Tab 键目标指令更新事件
-  window.ztools.onUpdateTabTarget((target: string) => {
+  window.monotools.onUpdateTabTarget((target: string) => {
     console.log('更新 Tab 键目标指令:', target)
     windowStore.updateTabTargetCommand(target)
   })
 
   // 监听 Tab 键功能更新事件
-  window.ztools.onUpdateTabKeyFunction((mode: 'navigate' | 'target-command') => {
+  window.monotools.onUpdateTabKeyFunction((mode: 'navigate' | 'target-command') => {
     console.log('更新 Tab 键功能:', mode)
     windowStore.updateTabKeyFunction(mode)
   })
 
   // 监听空格打开指令配置更新事件
-  window.ztools.onUpdateSpaceOpenCommand((enabled: boolean) => {
+  window.monotools.onUpdateSpaceOpenCommand((enabled: boolean) => {
     console.log('更新空格打开指令:', enabled)
     windowStore.updateSpaceOpenCommand(enabled)
   })
 
   // 监听悬浮球双击目标指令更新事件
-  window.ztools.onUpdateFloatingBallDoubleClickCommand?.((command: string) => {
+  window.monotools.onUpdateFloatingBallDoubleClickCommand?.((command: string) => {
     console.log('更新悬浮球双击目标指令:', command)
     windowStore.updateFloatingBallDoubleClickCommand(command)
   })
 
   // 监听搜索框模式更新事件
-  window.ztools.onUpdateSearchMode((mode: string) => {
+  window.monotools.onUpdateSearchMode((mode: string) => {
     windowStore.updateSearchMode(mode as 'aggregate' | 'list')
   })
 
   // 监听主题色更新事件
-  window.ztools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
+  window.monotools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
     console.log('更新主题色:', data)
     // 更新 store（会自动处理 DOM class 和 CSS 变量）
     windowStore.updatePrimaryColor(data.primaryColor as any)
@@ -772,8 +772,8 @@ onMounted(async () => {
   })
 
   // 初始化时获取当前窗口材质
-  if (window.ztools.getWindowMaterial) {
-    window.ztools.getWindowMaterial().then((material) => {
+  if (window.monotools.getWindowMaterial) {
+    window.monotools.getWindowMaterial().then((material) => {
       console.log('主渲染进程初始化材质:', material)
       document.documentElement.setAttribute('data-material', material)
       // 应用亚克力背景色叠加效果
@@ -782,7 +782,7 @@ onMounted(async () => {
   }
 
   // 监听窗口材质更新事件
-  window.ztools.onUpdateWindowMaterial?.((material: 'mica' | 'acrylic' | 'none') => {
+  window.monotools.onUpdateWindowMaterial?.((material: 'mica' | 'acrylic' | 'none') => {
     console.log('更新窗口材质:', material)
     document.documentElement.setAttribute('data-material', material)
     // 应用亚克力背景色叠加效果
@@ -790,7 +790,7 @@ onMounted(async () => {
   })
 
   // 监听亚克力透明度更新事件
-  window.ztools.onUpdateAcrylicOpacity?.((data: { lightOpacity: number; darkOpacity: number }) => {
+  window.monotools.onUpdateAcrylicOpacity?.((data: { lightOpacity: number; darkOpacity: number }) => {
     console.log('更新亚克力透明度:', data)
     windowStore.updateAcrylicLightOpacity(data.lightOpacity)
     windowStore.updateAcrylicDarkOpacity(data.darkOpacity)
@@ -799,7 +799,7 @@ onMounted(async () => {
   })
 
   // 监听应用启动事件（应用启动后）
-  window.ztools.onAppLaunched(() => {
+  window.monotools.onAppLaunched(() => {
     console.log('应用已启动')
     // 清空搜索框和所有粘贴内容
     searchQuery.value = ''
@@ -810,7 +810,7 @@ onMounted(async () => {
   })
 
   // 监听全局快捷键触发的启动事件
-  window.ztools.onIpcLaunch((options) => {
+  window.monotools.onIpcLaunch((options) => {
     console.log('收到 IPC 启动事件:', options)
 
     // 转换旧的 'app' 类型为新的 'direct' 类型
@@ -836,11 +836,11 @@ onMounted(async () => {
       }
     }
 
-    window.ztools.launch(launchOptions)
+    window.monotools.launch(launchOptions)
   })
 
   // 监听悬浮球文件拖放事件
-  window.ztools.onFloatingBallFiles((files) => {
+  window.monotools.onFloatingBallFiles((files) => {
     console.log('收到悬浮球文件拖放:', files)
     // 切换到搜索视图
     currentView.value = ViewMode.Search
@@ -854,7 +854,7 @@ onMounted(async () => {
   })
 
   // 监听悬浮球双击事件
-  window.ztools.onFloatingBallDoubleClickCommand?.((command: string) => {
+  window.monotools.onFloatingBallDoubleClickCommand?.((command: string) => {
     console.log('收到悬浮球双击事件，目标指令:', command)
     if (!command) return
 
@@ -867,7 +867,7 @@ onMounted(async () => {
   })
 
   // 监听插件重定向搜索事件
-  window.ztools.onRedirectSearch((data) => {
+  window.monotools.onRedirectSearch((data) => {
     console.log('收到重定向搜索事件:', data)
     // 切换到搜索视图
     currentView.value = ViewMode.Search
@@ -880,13 +880,13 @@ onMounted(async () => {
   })
 
   // 监听插件变化事件（安装、删除、禁用状态变化后刷新相关数据）
-  window.ztools.onPluginsChanged(async () => {
+  window.monotools.onPluginsChanged(async () => {
     console.log('插件列表已变化，重新加载插件可用性相关数据')
     await commandDataStore.reloadPluginAvailabilityData()
   })
 
   // 监听更新下载完成事件
-  window.ztools.onUpdateDownloaded((data) => {
+  window.monotools.onUpdateDownloaded((data) => {
     console.log('更新已下载:', data)
     windowStore.setUpdateDownloadInfo({
       hasDownloaded: true,
@@ -896,12 +896,12 @@ onMounted(async () => {
   })
 
   // 监听更新下载开始事件
-  window.ztools.onUpdateDownloadStart((data) => {
+  window.monotools.onUpdateDownloadStart((data) => {
     console.log('开始下载更新:', data)
   })
 
   // 监听更新下载失败事件
-  window.ztools.onUpdateDownloadFailed((data) => {
+  window.monotools.onUpdateDownloadFailed((data) => {
     console.error('更新下载失败:', data)
   })
 
@@ -909,7 +909,7 @@ onMounted(async () => {
   windowStore.checkDownloadedUpdate()
 
   // 监听超级面板搜索请求（主进程转发，携带剪贴板内容）
-  window.ztools.onSuperPanelSearch((data: { text: string; clipboardContent?: any }) => {
+  window.monotools.onSuperPanelSearch((data: { text: string; clipboardContent?: any }) => {
     console.log(
       '[超级面板搜索] 收到搜索请求:',
       data.text?.substring(0, 50),
@@ -951,14 +951,14 @@ onMounted(async () => {
 
     console.log('[超级面板搜索] 返回结果数:', results.length)
     // 发送搜索结果回超级面板（携带剪贴板内容）
-    window.ztools.sendSuperPanelSearchResult({
+    window.monotools.sendSuperPanelSearchResult({
       results: JSON.parse(JSON.stringify(results)),
       clipboardContent: cc
     })
   })
 
   // 监听超级面板窗口匹配搜索请求
-  window.ztools.onSuperPanelSearchWindowCommands(
+  window.monotools.onSuperPanelSearchWindowCommands(
     (data: {
       requestId: number
       windowInfo: {
@@ -973,7 +973,7 @@ onMounted(async () => {
       console.log('[超级面板窗口匹配] 收到搜索请求:', data.windowInfo)
       const results = commandDataStore.searchWindowCommands(data.windowInfo)
       console.log('[超级面板窗口匹配] 返回结果数:', results.length)
-      window.ztools.sendSuperPanelWindowCommandsResult({
+      window.monotools.sendSuperPanelWindowCommandsResult({
         requestId: data.requestId,
         results: JSON.parse(JSON.stringify(results))
       })
@@ -981,7 +981,7 @@ onMounted(async () => {
   )
 
   // 监听超级面板启动事件（由主进程从超级面板转发）
-  window.ztools.onSuperPanelLaunch(
+  window.monotools.onSuperPanelLaunch(
     async (data: { command: any; clipboardContent?: any; windowInfo?: any }) => {
       console.log(
         '[超级面板启动] 收到启动事件:',
@@ -1021,7 +1021,7 @@ onMounted(async () => {
       }
 
       try {
-        await window.ztools.launch({
+        await window.monotools.launch({
           path: cmd.path,
           type: cmd.type || 'plugin',
           featureCode: cmd.featureCode,

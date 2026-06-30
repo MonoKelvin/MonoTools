@@ -137,7 +137,7 @@ class HttpServer {
 
     // GET / 无需认证，返回欢迎信息
     if (req.method === 'GET' && url === '/') {
-      this.sendJson(res, 200, { code: 0, message: 'Hello ZTools' })
+      this.sendJson(res, 200, { code: 0, message: 'Hello MonoTools' })
       return
     }
 

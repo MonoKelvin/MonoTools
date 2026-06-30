@@ -311,8 +311,8 @@ const api = {
     ipcRenderer.on('update-sub-input-visible', (_event, visible) => callback(visible))
   },
   // 数据库相关（主程序专用，直接操作 ZTOOLS 命名空间）
-  dbPut: (key: string, data: any) => ipcRenderer.invoke('ztools:db-put', key, data),
-  dbGet: (key: string) => ipcRenderer.invoke('ztools:db-get', key),
+  dbPut: (key: string, data: any) => ipcRenderer.invoke('monotools:db-put', key, data),
+  dbGet: (key: string) => ipcRenderer.invoke('monotools:db-get', key),
   // 插件数据管理
   getPluginDataStats: () => ipcRenderer.invoke('get-plugin-data-stats'),
   getPluginDocKeys: (pluginName: string) => ipcRenderer.invoke('get-plugin-doc-keys', pluginName),
@@ -441,7 +441,7 @@ const api = {
   }
 }
 
-contextBridge.exposeInMainWorld('ztools', api)
+contextBridge.exposeInMainWorld('monotools', api)
 
 // 为标题栏暴露 electron API
 contextBridge.exposeInMainWorld('electron', {
@@ -486,7 +486,7 @@ declare global {
         on: (channel: string, callback: (...args: any[]) => void) => () => void
       }
     }
-    ztools: {
+    monotools: {
       getApps: () => Promise<Command[]>
       getSystemSettings: () => Promise<any[]>
       isWindows: () => Promise<boolean>

@@ -1,16 +1,16 @@
-# ZTools
+# MonoTools
 
 <div align="center">
 
-<img src="./.github/assets/icon.png" alt="ZTools Logo" width="120">
+<img src="./.github/assets/icon.png" alt="MonoTools Logo" width="120">
 
 **A High-Performance, Extensible Application Launcher and Plugin Platform**
 
 _Open Source Implementation of uTools | Supports macOS and Windows_
 
-[![GitHub release](https://img.shields.io/github/v/release/lzx8589561/ZTools)](https://github.com/ZToolsCenter/ZTools/releases)
-[![License](https://img.shields.io/github/license/lzx8589561/ZTools)](./LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/ZToolsCenter/ZTools)
+[![GitHub release](https://img.shields.io/github/v/release/lzx8589561/MonoTools)](https://github.com/MonoToolsCenter/MonoTools/releases)
+[![License](https://img.shields.io/github/license/lzx8589561/MonoTools)](./LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/MonoToolsCenter/MonoTools)
 
 English | [简体中文](./README.md)
 
@@ -33,7 +33,7 @@ English | [简体中文](./README.md)
 ## 📸 Preview
 
 <div align="center">
-  <img src="./.github/assets/demo.gif" alt="ZTools Demo" width="600">
+  <img src="./.github/assets/demo.gif" alt="MonoTools Demo" width="600">
   <p><i>Quick launch and search functionality demo</i></p>
 </div>
 
@@ -70,17 +70,17 @@ English | [简体中文](./README.md)
 
 #### Method 1: Download Pre-built Version (Recommended)
 
-Download the latest version from [Releases](https://github.com/ZToolsCenter/ZTools/releases):
+Download the latest version from [Releases](https://github.com/MonoToolsCenter/MonoTools/releases):
 
-- **macOS**: `ztools-x.x.x.dmg` or `ZTools-x.x.x-arm64-mac.zip`
-- **Windows**: `ztools-x.x.x-setup.exe` or `ztools-x.x.x-win.zip`
+- **macOS**: `monotools-x.x.x.dmg` or `MonoTools-x.x.x-arm64-mac.zip`
+- **Windows**: `monotools-x.x.x-setup.exe` or `monotools-x.x.x-win.zip`
 
 #### Method 2: Build from Source
 
 ```bash
 # Clone the repository
-git clone https://github.com/ZToolsCenter/ZTools.git
-cd ZTools
+git clone https://github.com/MonoToolsCenter/MonoTools.git
+cd MonoTools
 
 # Install dependencies
 pnpm install
@@ -104,7 +104,7 @@ pnpm build:linux:arm64 # Linux (arm64)
 
 ### Plugin Market
 
-ZTools provides a built-in plugin market for easy browsing and installation:
+MonoTools provides a built-in plugin market for easy browsing and installation:
 
 **Key Features**:
 
@@ -115,14 +115,14 @@ ZTools provides a built-in plugin market for easy browsing and installation:
 
 **How to Use**:
 
-1. Open ZTools settings (click avatar)
+1. Open MonoTools settings (click avatar)
 2. Switch to "Plugin Market" tab
 3. Browse and install plugins of interest
 4. Installed plugins will show "Open" or "Upgrade" button
 
 **Technical Implementation**:
 
-- Plugins hosted on GitHub Releases ([ZTools-plugins](https://github.com/ZToolsCenter/ZTools-plugins/releases))
+- Plugins hosted on GitHub Releases ([MonoTools-plugins](https://github.com/MonoToolsCenter/MonoTools-plugins/releases))
 - Plugin list: Fetched from `plugins.json` file for plugin information and download links
 - Plugin package format: ZIP archive containing `plugin.json` and plugin files
 - Version comparison: Automatically compare local and market versions (semantic versioning)
@@ -130,7 +130,7 @@ ZTools provides a built-in plugin market for easy browsing and installation:
 
 ### In-App Updates
 
-ZTools supports one-click in-app updates without manual download:
+MonoTools supports one-click in-app updates without manual download:
 
 **Update Process**:
 
@@ -141,14 +141,14 @@ ZTools supports one-click in-app updates without manual download:
 
 **Technical Implementation**:
 
-- Update source: GitHub Releases ([ZTools](https://github.com/ZToolsCenter/ZTools/releases))
+- Update source: GitHub Releases ([MonoTools](https://github.com/MonoToolsCenter/MonoTools/releases))
 - Update info file: `latest.yml` (contains version number, changelog, etc.)
 - Update package format: ZIP archive with naming format `update-{platform}-{arch}-{version}.zip`
   - Example: `update-darwin-arm64-1.2.8.zip` (macOS Apple Silicon)
   - Example: `update-win32-x64-1.2.8.zip` (Windows x64)
-- Updater program: Independent `ztools-updater` executable
-  - macOS: `ztools-updater` (located in Contents/MacOS/)
-  - Windows: `ztools-agent.exe` (located in app root directory)
+- Updater program: Independent `monotools-updater` executable
+  - macOS: `monotools-updater` (located in Contents/MacOS/)
+  - Windows: `monotools-agent.exe` (located in app root directory)
 - Update flow:
   1. Download `latest.yml` from GitHub Releases to get latest version info
   2. Download update package for the corresponding platform
@@ -164,7 +164,7 @@ ZTools supports one-click in-app updates without manual download:
 
 ## 🧩 Plugin Development
 
-ZTools is a powerful and extensible plugin platform that enhances your productivity with custom plugins. With simple configuration, rich APIs, and cross-platform support, you can easily develop powerful plugins.
+MonoTools is a powerful and extensible plugin platform that enhances your productivity with custom plugins. With simple configuration, rich APIs, and cross-platform support, you can easily develop powerful plugins.
 
 **Plugin System Features**:
 
@@ -173,9 +173,9 @@ ZTools is a powerful and extensible plugin platform that enhances your productiv
 - 🎯 **Flexible Commands** - Trigger your plugins using text, regex, or global hooks to adapt to any workflow
 - 🌍 **Cross-Platform** - Build once, run on Windows, macOS, and Linux with a consistent experience across all devices
 
-> 📖 **Full Documentation**: Visit [ZTools Developer Documentation](https://ztoolscenter.github.io/ZTools-doc/) for more details
+> 📖 **Full Documentation**: Visit [MonoTools Developer Documentation](https://ztoolscenter.github.io/MonoTools-doc/) for more details
 
-ZTools provides a complete plugin system supporting two types:
+MonoTools provides a complete plugin system supporting two types:
 
 ### UI Plugins
 
@@ -236,7 +236,7 @@ window.exports = {
 
 ### Plugin API
 
-ZTools provides rich APIs:
+MonoTools provides rich APIs:
 
 - **Database API** - Persistent data storage
 - **Clipboard API** - Access and monitor clipboard
@@ -349,12 +349,12 @@ pnpm build:unpack       # Package without installer (for debugging)
 
 ## 🐛 Issue Reporting
 
-Having issues? Please report them in [Issues](https://github.com/ZToolsCenter/ZTools/issues).
+Having issues? Please report them in [Issues](https://github.com/MonoToolsCenter/MonoTools/issues).
 
 When submitting an issue, please include:
 
 - Operating system version
-- ZTools version
+- MonoTools version
 - Steps to reproduce
 - Error logs (if any)
 
@@ -364,9 +364,9 @@ This project is licensed under the [MIT License](./LICENSE).
 
 ## 💖 Sponsor
 
-If ZTools has been helpful to you, consider sponsoring the project on Afdian to support continued development:
+If MonoTools has been helpful to you, consider sponsoring the project on Afdian to support continued development:
 
-<a href="https://afdian.com/a/ZTools">
+<a href="https://afdian.com/a/MonoTools">
   <img src="https://img.shields.io/badge/Afdian-Sponsor-946ce6?style=for-the-badge" alt="Afdian">
 </a>
 
@@ -379,7 +379,7 @@ If ZTools has been helpful to you, consider sponsoring the project on Afdian to 
 
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.com/#lzx8589561/ZTools&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/MonoTools&type=Date)](https://star-history.com/#lzx8589561/MonoTools&Date)
 
 ---
 

@@ -638,7 +638,7 @@ const clipboardDescription = computed(() => {
 async function savePinnedCommands(): Promise<void> {
   try {
     const plainCommands = JSON.parse(JSON.stringify(pinnedCommands.value))
-    await window.ztools.updateSuperPanelPinnedOrder(plainCommands)
+    await window.monotools.updateSuperPanelPinnedOrder(plainCommands)
   } catch (error) {
     console.error('保存固定列表顺序失败:', error)
   }
@@ -733,7 +733,7 @@ async function handleContextMenu(cmd: GridItem): Promise<void> {
       { id: `ungroup-folder:${folderIndex}`, label: '解散文件夹' },
       { id: `delete-folder:${folderIndex}`, label: '删除文件夹' }
     ]
-    await window.ztools.showContextMenu(menuItems)
+    await window.monotools.showContextMenu(menuItems)
   } else {
     const itemIndex = pinnedCommands.value.indexOf(cmd)
 
@@ -761,7 +761,7 @@ async function handleContextMenu(cmd: GridItem): Promise<void> {
         label: '取消固定'
       }
     ]
-    await window.ztools.showContextMenu(menuItems)
+    await window.monotools.showContextMenu(menuItems)
   }
 }
 
@@ -825,7 +825,7 @@ async function handleFolderItemContextMenu(
       label: '取消固定'
     }
   ]
-  await window.ztools.showContextMenu(menuItems)
+  await window.monotools.showContextMenu(menuItems)
 }
 
 function onDragStart(evt: any): void {
@@ -846,18 +846,18 @@ function onDragMove(): boolean | void {
 
 // 返回固定列表
 function showPinned(): void {
-  window.ztools.superPanelShowPinned()
+  window.monotools.superPanelShowPinned()
 }
 
 // 点击头像：隐藏超级面板，显示主搜索窗口
 function showMainWindow(): void {
-  window.ztools.superPanelShowMainWindow()
+  window.monotools.superPanelShowMainWindow()
 }
 
 // 添加当前窗口到屏蔽列表
 async function addBlockedApp(): Promise<void> {
   if (!currentWindowInfo.value) return
-  await window.ztools.superPanelAddBlockedApp()
+  await window.monotools.superPanelAddBlockedApp()
 }
 
 // 打开窗口匹配面板
@@ -869,7 +869,7 @@ function openWindowMatch(): void {
   loadFileLocationJumpTargets()
   // 如果已有结果（自动搜索过），直接使用；否则发起搜索
   if (windowMatchResults.value.length === 0 && currentWindowInfo.value) {
-    window.ztools.superPanelSearchWindowCommands(
+    window.monotools.superPanelSearchWindowCommands(
       JSON.parse(JSON.stringify(currentWindowInfo.value))
     )
   }
@@ -887,7 +887,7 @@ async function getCurrentFileLocationWindowKind(): Promise<CurrentWindowInfo['ki
   console.log('object', info)
   if (!info) return null
 
-  const platform = window.ztools.getPlatform()
+  const platform = window.monotools.getPlatform()
   if (info.preciseTarget && info.kind) {
     if (
       info.kind === 'windows-explorer' &&
@@ -928,7 +928,7 @@ async function isWindowsFileDialogWindow(info: CurrentWindowInfo): Promise<boole
   if (info.className !== '#32770' || !info.hwnd) return false
 
   try {
-    const result = await window.ztools.superPanelIsFileLocationWindow(info.hwnd)
+    const result = await window.monotools.superPanelIsFileLocationWindow(info.hwnd)
     return result.supported
   } catch (error) {
     console.error('[SuperPanel] 判断 Windows 文件对话框失败:', error)
@@ -975,7 +975,7 @@ function normalizeFileLocation(value?: string): string | null {
   }
 
   normalized = normalized.replace(/\\/g, '/')
-  if (window.ztools.getPlatform() === 'win32') {
+  if (window.monotools.getPlatform() === 'win32') {
     normalized = normalized.toLowerCase()
   }
   return normalized.replace(/\/+$/, '')
@@ -1037,7 +1037,7 @@ async function loadFileLocationJumpTargets(): Promise<void> {
   fileLocationJumpLoading.value = true
 
   try {
-    const rawWindows = (await window.ztools.superPanelGetFileLocationWindows()) as Array<
+    const rawWindows = (await window.monotools.superPanelGetFileLocationWindows()) as Array<
       FileLocationJumpTarget | string
     >
     const windows = (rawWindows || []).map((item) =>
@@ -1081,7 +1081,7 @@ function formatFileLocationJumpPath(target: FileLocationJumpTarget): string {
 function toFileLocationAddressBarTarget(
   windowInfo: CurrentWindowInfo
 ): FileLocationAddressBarTarget | null {
-  const platform = window.ztools.getPlatform()
+  const platform = window.monotools.getPlatform()
   if (platform === 'win32') {
     return hasWindowsAddressBarTarget(windowInfo) ? { hwnd: windowInfo.hwnd } : null
   }
@@ -1116,7 +1116,7 @@ async function jumpToFileLocationTarget(target: FileLocationJumpTarget): Promise
       target,
       address
     })
-    const success = await window.ztools.superPanelSetFileLocationAddressBar(
+    const success = await window.monotools.superPanelSetFileLocationAddressBar(
       addressBarTarget,
       address
     )
@@ -1180,7 +1180,7 @@ async function launch(cmd: CommandItem): Promise<void> {
         windowInfo: currentWindowInfo.value
       })
     )
-    await window.ztools.superPanelLaunch(launchData)
+    await window.monotools.superPanelLaunch(launchData)
   } catch (error) {
     console.error('超级面板启动失败:', error)
   }
@@ -1329,7 +1329,7 @@ let cleanupContextMenuListener: (() => void) | null = null
 
 onMounted(() => {
   // 监听超级面板数据（从主进程发送）
-  window.ztools.onSuperPanelData((data) => {
+  window.monotools.onSuperPanelData((data) => {
     console.log(
       '[SuperPanel] 收到数据, type:',
       data.type,
@@ -1348,7 +1348,7 @@ onMounted(() => {
 
     // 自动发起窗口匹配搜索（用于判断是否需要闪动图标）
     if (data.windowInfo) {
-      window.ztools.superPanelSearchWindowCommands(JSON.parse(JSON.stringify(data.windowInfo)))
+      window.monotools.superPanelSearchWindowCommands(JSON.parse(JSON.stringify(data.windowInfo)))
     }
 
     if (data.type === 'pinned') {
@@ -1371,7 +1371,7 @@ onMounted(() => {
   })
 
   // 监听窗口匹配搜索结果
-  window.ztools.onSuperPanelWindowCommandsData((data: { results: any[] }) => {
+  window.monotools.onSuperPanelWindowCommandsData((data: { results: any[] }) => {
     windowMatchResults.value = data.results || []
     windowMatchSelectedIndex.value = 0
     // 有匹配结果且面板未打开时，触发图标闪动
@@ -1381,7 +1381,7 @@ onMounted(() => {
   })
 
   // 加载设置（头像、亚克力透明度、主题色）
-  window.ztools
+  window.monotools
     .dbGet('settings-general')
     .then((settings) => {
       if (settings?.avatar) {
@@ -1404,8 +1404,8 @@ onMounted(() => {
     })
 
   // 初始化时获取当前窗口材质
-  if (window.ztools?.getWindowMaterial) {
-    window.ztools
+  if (window.monotools?.getWindowMaterial) {
+    window.monotools
       .getWindowMaterial()
       .then((material: string) => {
         document.documentElement.setAttribute('data-material', material)
@@ -1417,16 +1417,16 @@ onMounted(() => {
   }
 
   // 监听窗口材质更新
-  if (window.ztools?.onUpdateWindowMaterial) {
-    window.ztools.onUpdateWindowMaterial((material: 'mica' | 'acrylic' | 'none') => {
+  if (window.monotools?.onUpdateWindowMaterial) {
+    window.monotools.onUpdateWindowMaterial((material: 'mica' | 'acrylic' | 'none') => {
       document.documentElement.setAttribute('data-material', material)
       applyAcrylicOverlay()
     })
   }
 
   // 监听亚克力透明度更新事件
-  if (window.ztools?.onUpdateAcrylicOpacity) {
-    window.ztools.onUpdateAcrylicOpacity((data: { lightOpacity: number; darkOpacity: number }) => {
+  if (window.monotools?.onUpdateAcrylicOpacity) {
+    window.monotools.onUpdateAcrylicOpacity((data: { lightOpacity: number; darkOpacity: number }) => {
       acrylicLightOpacity.value = data.lightOpacity
       acrylicDarkOpacity.value = data.darkOpacity
       applyAcrylicOverlay()
@@ -1434,8 +1434,8 @@ onMounted(() => {
   }
 
   // 监听主题色更新
-  if (window.ztools?.onUpdatePrimaryColor) {
-    window.ztools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
+  if (window.monotools?.onUpdatePrimaryColor) {
+    window.monotools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
       primaryColor.value = data.primaryColor
       if (data.customColor) {
         customColor.value = data.customColor
@@ -1451,13 +1451,13 @@ onMounted(() => {
   })
 
   // 监听头像更新事件
-  window.ztools.onUpdateAvatar((newAvatar: string) => {
+  window.monotools.onUpdateAvatar((newAvatar: string) => {
     console.log('[SuperPanel] 收到头像更新:', newAvatar)
     avatar.value = newAvatar || defaultAvatar
   })
 
   // 监听翻译结果
-  window.ztools.onSuperPanelTranslation((data: { text: string; sourceText?: string }) => {
+  window.monotools.onSuperPanelTranslation((data: { text: string; sourceText?: string }) => {
     if (data.text) {
       pendingTranslation.value = data
 
@@ -1473,14 +1473,14 @@ onMounted(() => {
 
   // 监听右键菜单命令
   cleanupContextMenuListener?.()
-  cleanupContextMenuListener = window.ztools.onContextMenuCommand(async (command: string) => {
+  cleanupContextMenuListener = window.monotools.onContextMenuCommand(async (command: string) => {
     console.log('[SuperPanel] 收到右键菜单命令:', command)
     if (command.startsWith('unpin:')) {
       const jsonStr = command.replace('unpin:', '')
       try {
         const { path, featureCode } = JSON.parse(jsonStr)
         console.log('[SuperPanel] 准备取消固定:', { path, featureCode })
-        await window.ztools.unpinSuperPanelCommand(path, featureCode)
+        await window.monotools.unpinSuperPanelCommand(path, featureCode)
         console.log('[SuperPanel] 取消固定成功')
       } catch (error) {
         console.error('[SuperPanel] 取消固定失败:', error)
@@ -1551,7 +1551,7 @@ onMounted(() => {
   }
 
   // 通知主进程窗口已准备好
-  window.ztools.superPanelReady()
+  window.monotools.superPanelReady()
 })
 
 // 键盘焦点保持

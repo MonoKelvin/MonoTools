@@ -14,6 +14,6 @@
       "@/*": ["./src/*"],
       "@shared/*": ["../../src/shared/*"]
     },
-    "types": ["@ztools-center/ztools-api-types"]
+    "types": ["@monotools-center/monotools-api-types"]
   }
 }

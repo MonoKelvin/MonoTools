@@ -9,10 +9,10 @@ import {
 
 describe('internal plugin privilege split', () => {
   it('应将开发者插件识别为仅拥有内部 API 权限', () => {
-    expect(INTERNAL_API_PLUGIN_NAMES).toContain('ztools-developer-plugin')
-    expect(BUNDLED_INTERNAL_PLUGIN_NAMES).not.toContain('ztools-developer-plugin')
-    expect(canPluginUseInternalApi('ztools-developer-plugin')).toBe(true)
-    expect(isBundledInternalPlugin('ztools-developer-plugin')).toBe(false)
+    expect(INTERNAL_API_PLUGIN_NAMES).toContain('monotools-developer-plugin')
+    expect(BUNDLED_INTERNAL_PLUGIN_NAMES).not.toContain('monotools-developer-plugin')
+    expect(canPluginUseInternalApi('monotools-developer-plugin')).toBe(true)
+    expect(isBundledInternalPlugin('monotools-developer-plugin')).toBe(false)
   })
 
   it('应归一化用户自定义内部 API 授权插件名称', () => {

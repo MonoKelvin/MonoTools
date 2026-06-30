@@ -192,7 +192,7 @@ class PluginAiAPI {
     Array<{ id: string; label: string; description: string; icon: string; cost: number }>
   > {
     try {
-      const doc = await lmdbInstance.promises.get('ZTOOLS/ai-models')
+      const doc = await lmdbInstance.promises.get('MONOTOOLS/ai-models')
       if (doc?.data && Array.isArray(doc.data)) {
         return (doc.data as AiModel[]).map((m) => ({
           id: m.id,
@@ -210,7 +210,7 @@ class PluginAiAPI {
 
   private async getModelConfig(modelId?: string): Promise<AiModel | null> {
     try {
-      const doc = await lmdbInstance.promises.get('ZTOOLS/ai-models')
+      const doc = await lmdbInstance.promises.get('MONOTOOLS/ai-models')
       if (doc?.data && Array.isArray(doc.data)) {
         const models: AiModel[] = doc.data
         return modelId ? models.find((m) => m.id === modelId) || null : models[0] || null

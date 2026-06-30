@@ -98,7 +98,7 @@ const superPanelMouseButtonOptions = [
   { label: '长按鼠标前进键', value: 'forward-long' }
 ]
 
-// 当前平台（与 window.ztools.getPlatform 返回类型保持一致）
+// 当前平台（与 window.monotools.getPlatform 返回类型保持一致）
 const platform = ref<'darwin' | 'win32' | 'linux'>('darwin')
 
 // 默认快捷键（根据平台区分文案）
@@ -272,7 +272,7 @@ async function handleHotkeyChange(newHotkey: string): Promise<void> {
   const previousHotkey = hotkey.value
   try {
     // 调用 IPC 更新全局快捷键
-    const result = await window.ztools.internal.updateShortcut(newHotkey)
+    const result = await window.monotools.internal.updateShortcut(newHotkey)
     if (result.success) {
       // 保存到数据库
       await saveSettings()
@@ -293,7 +293,7 @@ async function handleHotkeyChange(newHotkey: string): Promise<void> {
 async function applyHotkeyPreset(preset: string): Promise<void> {
   const previousHotkey = hotkey.value
   try {
-    const result = await window.ztools.internal.updateShortcut(preset)
+    const result = await window.monotools.internal.updateShortcut(preset)
     if (result.success) {
       hotkey.value = preset
       await saveSettings()
@@ -312,7 +312,7 @@ async function applyHotkeyPreset(preset: string): Promise<void> {
 // 重置快捷键
 async function resetHotkey(): Promise<void> {
   try {
-    const result = await window.ztools.internal.updateShortcut(defaultHotkey.value)
+    const result = await window.monotools.internal.updateShortcut(defaultHotkey.value)
     if (result.success) {
       hotkey.value = defaultHotkey.value
       await saveSettings()
@@ -347,7 +347,7 @@ async function handleHotkeyResetClick(): Promise<void> {
 // 处理不透明度变化
 async function handleOpacityChange(): Promise<void> {
   try {
-    await window.ztools.internal.setWindowOpacity(opacity.value)
+    await window.monotools.internal.setWindowOpacity(opacity.value)
     // 保存到数据库
     await saveSettings()
   } catch (error) {
@@ -364,7 +364,7 @@ async function handleWindowDefaultHeightChange(): Promise<void> {
     }
     await saveSettings()
     // 通知主进程更新
-    await window.ztools.internal.setWindowDefaultHeight(windowDefaultHeight.value)
+    await window.monotools.internal.setWindowDefaultHeight(windowDefaultHeight.value)
     console.log('插件默认高度已更新:', windowDefaultHeight.value)
   } catch (error) {
     console.error('设置插件默认高度失败:', error)
@@ -376,7 +376,7 @@ async function resetWindowDefaultHeight(): Promise<void> {
   try {
     windowDefaultHeight.value = 541
     await saveSettings()
-    await window.ztools.internal.setWindowDefaultHeight(541)
+    await window.monotools.internal.setWindowDefaultHeight(541)
     console.log('插件默认高度已重置')
   } catch (error) {
     console.error('重置插件默认高度失败:', error)
@@ -391,7 +391,7 @@ async function handleClipboardRetentionDaysChange(): Promise<void> {
     }
     await saveSettings()
     // 通知主进程更新剪贴板配置
-    await window.ztools.internal.updateClipboardConfig({
+    await window.monotools.internal.updateClipboardConfig({
       retentionDays: clipboardRetentionDays.value
     })
     console.log('剪贴板历史保存天数已更新:', clipboardRetentionDays.value)
@@ -420,7 +420,7 @@ async function handlePlaceholderChange(): Promise<void> {
     // 保存到数据库
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updatePlaceholder(placeholder.value)
+    await window.monotools.internal.updatePlaceholder(placeholder.value)
     console.log('搜索框提示文字已更新:', placeholder.value)
   } catch (error) {
     console.error('保存搜索框提示文字失败:', error)
@@ -433,7 +433,7 @@ async function handleResetPlaceholder(): Promise<void> {
     placeholder.value = defaultPlaceholder
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updatePlaceholder(placeholder.value)
+    await window.monotools.internal.updatePlaceholder(placeholder.value)
     console.log('搜索框提示文字已重置')
   } catch (error) {
     console.error('重置搜索框提示文字失败:', error)
@@ -443,12 +443,12 @@ async function handleResetPlaceholder(): Promise<void> {
 // 选择头像
 async function handleSelectAvatar(): Promise<void> {
   try {
-    const result = await window.ztools.internal.selectAvatar()
+    const result = await window.monotools.internal.selectAvatar()
     if (result.success && result.path) {
       avatar.value = result.path
       await saveSettings()
       // 通知主渲染进程更新
-      await window.ztools.internal.updateAvatar(avatar.value)
+      await window.monotools.internal.updateAvatar(avatar.value)
       console.log('头像已更新:', avatar.value)
     } else if (result.error) {
       console.error('选择头像失败:', result.error)
@@ -464,7 +464,7 @@ async function handleResetAvatar(): Promise<void> {
     avatar.value = defaultAvatar
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateAvatar(avatar.value)
+    await window.monotools.internal.updateAvatar(avatar.value)
     console.log('头像已重置')
   } catch (error) {
     console.error('重置头像失败:', error)
@@ -476,7 +476,7 @@ async function handleAutoPasteChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateAutoPaste(autoPaste.value)
+    await window.monotools.internal.updateAutoPaste(autoPaste.value)
     console.log('自动粘贴配置已更新:', autoPaste.value)
   } catch (error) {
     console.error('保存自动粘贴配置失败:', error)
@@ -488,7 +488,7 @@ async function handleAutoClearChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateAutoClear(autoClear.value)
+    await window.monotools.internal.updateAutoClear(autoClear.value)
     console.log('自动清空配置已更新:', autoClear.value)
   } catch (error) {
     console.error('保存自动清空配置失败:', error)
@@ -500,7 +500,7 @@ async function handleAutoBackToSearchChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateAutoBackToSearch(autoBackToSearch.value)
+    await window.monotools.internal.updateAutoBackToSearch(autoBackToSearch.value)
     console.log('自动返回搜索配置已更新:', autoBackToSearch.value)
   } catch (error) {
     console.error('保存自动返回搜索配置失败:', error)
@@ -511,7 +511,7 @@ async function handleAutoBackToSearchChange(): Promise<void> {
 async function handleThemeChange(): Promise<void> {
   try {
     await saveSettings()
-    await window.ztools.internal.setTheme(theme.value)
+    await window.monotools.internal.setTheme(theme.value)
     console.log('主题配置已更新:', theme.value)
   } catch (error) {
     console.error('更新主题配置失败:', error)
@@ -523,7 +523,7 @@ async function handleShowRecentInSearchChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateShowRecentInSearch(showRecentInSearch.value)
+    await window.monotools.internal.updateShowRecentInSearch(showRecentInSearch.value)
     console.log('显示最近使用配置已更新:', showRecentInSearch.value)
   } catch (error) {
     console.error('保存显示最近使用配置失败:', error)
@@ -535,7 +535,7 @@ async function handleShowMatchRecommendationChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateMatchRecommendation(showMatchRecommendation.value)
+    await window.monotools.internal.updateMatchRecommendation(showMatchRecommendation.value)
     console.log('匹配推荐配置已更新:', showMatchRecommendation.value)
   } catch (error) {
     console.error('保存匹配推荐配置失败:', error)
@@ -547,7 +547,7 @@ async function handleLocalAppSearchChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateLocalAppSearch(localAppSearch.value)
+    await window.monotools.internal.updateLocalAppSearch(localAppSearch.value)
     console.log('本地应用搜索配置已更新:', localAppSearch.value)
   } catch (error) {
     console.error('保存本地应用搜索配置失败:', error)
@@ -559,7 +559,7 @@ async function handleRecentRowsChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateRecentRows(recentRows.value)
+    await window.monotools.internal.updateRecentRows(recentRows.value)
     console.log('最近使用行数已更新:', recentRows.value)
   } catch (error) {
     console.error('保存最近使用行数配置失败:', error)
@@ -571,7 +571,7 @@ async function handlePinnedRowsChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updatePinnedRows(pinnedRows.value)
+    await window.monotools.internal.updatePinnedRows(pinnedRows.value)
     console.log('固定栏行数已更新:', pinnedRows.value)
   } catch (error) {
     console.error('保存固定栏行数配置失败:', error)
@@ -583,7 +583,7 @@ async function handleSearchModeChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateSearchMode(searchMode.value)
+    await window.monotools.internal.updateSearchMode(searchMode.value)
     console.log('搜索框模式已更新:', searchMode.value)
   } catch (error) {
     console.error('保存搜索框模式配置失败:', error)
@@ -595,7 +595,7 @@ async function handleSpaceOpenCommandChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateSpaceOpenCommand(spaceOpenCommand.value)
+    await window.monotools.internal.updateSpaceOpenCommand(spaceOpenCommand.value)
     console.log('空格打开指令已更新:', spaceOpenCommand.value)
   } catch (error) {
     console.error('保存空格打开指令失败:', error)
@@ -607,7 +607,7 @@ async function handleTabTargetChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateTabTarget(tabTargetCommand.value)
+    await window.monotools.internal.updateTabTarget(tabTargetCommand.value)
     console.log('Tab 键目标指令已更新:', tabTargetCommand.value)
   } catch (error) {
     console.error('保存 Tab 键目标指令失败:', error)
@@ -618,7 +618,7 @@ async function handleTabTargetChange(): Promise<void> {
 async function handleTabKeyFunctionChange(): Promise<void> {
   try {
     await saveSettings()
-    await window.ztools.internal.updateTabKeyFunction(tabKeyFunction.value)
+    await window.monotools.internal.updateTabKeyFunction(tabKeyFunction.value)
     console.log('Tab 键功能已更新:', tabKeyFunction.value)
   } catch (error) {
     console.error('保存 Tab 键功能失败:', error)
@@ -630,7 +630,7 @@ async function handleClearTabTarget(): Promise<void> {
   try {
     tabTargetCommand.value = ''
     await saveSettings()
-    await window.ztools.internal.updateTabTarget('')
+    await window.monotools.internal.updateTabTarget('')
     console.log('Tab 键目标指令已清除')
   } catch (error) {
     console.error('清除 Tab 键目标指令失败:', error)
@@ -642,7 +642,7 @@ async function applyTabTargetPreset(preset: string): Promise<void> {
   try {
     tabTargetCommand.value = preset
     await saveSettings()
-    await window.ztools.internal.updateTabTarget(preset)
+    await window.monotools.internal.updateTabTarget(preset)
     console.log('Tab 键目标指令预设已应用:', preset)
   } catch (err) {
     console.error('应用 Tab 键目标指令预设失败:', err)
@@ -654,7 +654,7 @@ async function handleFloatingBallDoubleClickChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updateFloatingBallDoubleClickCommand(
+    await window.monotools.internal.updateFloatingBallDoubleClickCommand(
       floatingBallDoubleClickCommand.value
     )
     console.log('悬浮球双击目标指令已更新:', floatingBallDoubleClickCommand.value)
@@ -668,7 +668,7 @@ async function handleClearFloatingBallDoubleClick(): Promise<void> {
   try {
     floatingBallDoubleClickCommand.value = ''
     await saveSettings()
-    await window.ztools.internal.updateFloatingBallDoubleClickCommand('')
+    await window.monotools.internal.updateFloatingBallDoubleClickCommand('')
     console.log('悬浮球双击目标指令已清除')
   } catch (error) {
     console.error('清除悬浮球双击目标指令失败:', error)
@@ -679,7 +679,7 @@ async function handleClearFloatingBallDoubleClick(): Promise<void> {
 async function handleSuperPanelEnabledChange(): Promise<void> {
   try {
     await saveSettings()
-    await window.ztools.internal.updateSuperPanelConfig({
+    await window.monotools.internal.updateSuperPanelConfig({
       enabled: superPanelEnabled.value,
       mouseButton: superPanelMouseButton.value,
       longPressMs: superPanelLongPressMs.value
@@ -716,7 +716,7 @@ async function handleSuperPanelTriggerModeChange(mode: string | number): Promise
     superPanelLongPressMs.value = longPressMs
 
     await saveSettings()
-    await window.ztools.internal.updateSuperPanelConfig({
+    await window.monotools.internal.updateSuperPanelConfig({
       enabled: superPanelEnabled.value,
       mouseButton: superPanelMouseButton.value,
       longPressMs: superPanelLongPressMs.value
@@ -737,7 +737,7 @@ async function handleSuperPanelLongPressMsChange(): Promise<void> {
       superPanelLongPressMs.value = 3000
     }
     await saveSettings()
-    await window.ztools.internal.updateSuperPanelConfig({
+    await window.monotools.internal.updateSuperPanelConfig({
       enabled: superPanelEnabled.value,
       mouseButton: superPanelMouseButton.value,
       longPressMs: superPanelLongPressMs.value
@@ -752,7 +752,7 @@ async function handleSuperPanelLongPressMsChange(): Promise<void> {
 async function handleAddBlockedApp(): Promise<void> {
   try {
     console.log('[Setting] handleAddBlockedApp 开始')
-    const windowInfo = await window.ztools.internal.getCurrentWindowInfo()
+    const windowInfo = await window.monotools.internal.getCurrentWindowInfo()
     console.log('[Setting] getCurrentWindowInfo 返回:', JSON.stringify(windowInfo))
     if (!windowInfo) {
       error('无法获取当前窗口信息')
@@ -783,7 +783,7 @@ async function handleAddBlockedApp(): Promise<void> {
     )
     await saveSettings()
     console.log('[Setting] saveSettings 完成, 开始调用 updateSuperPanelBlockedApps')
-    await window.ztools.internal.updateSuperPanelBlockedApps(
+    await window.monotools.internal.updateSuperPanelBlockedApps(
       superPanelBlockedApps.value.map((item) => ({ ...item }))
     )
     console.log('[Setting] updateSuperPanelBlockedApps 完成')
@@ -797,7 +797,7 @@ async function handleRemoveBlockedApp(index: number): Promise<void> {
   try {
     superPanelBlockedApps.value.splice(index, 1)
     await saveSettings()
-    await window.ztools.internal.updateSuperPanelBlockedApps(
+    await window.monotools.internal.updateSuperPanelBlockedApps(
       superPanelBlockedApps.value.map((item) => ({ ...item }))
     )
   } catch (err) {
@@ -808,7 +808,7 @@ async function handleRemoveBlockedApp(index: number): Promise<void> {
 // 添加到唤醒黑名单
 async function handleAddWakeupBlacklistApp(): Promise<void> {
   try {
-    const windowInfo = await window.ztools.internal.getCurrentWindowInfo()
+    const windowInfo = await window.monotools.internal.getCurrentWindowInfo()
     if (!windowInfo) {
       error('无法获取当前窗口信息')
       return
@@ -834,7 +834,7 @@ async function handleAddWakeupBlacklistApp(): Promise<void> {
     })
 
     await saveSettings()
-    await window.ztools.internal.updateWakeupBlacklist(
+    await window.monotools.internal.updateWakeupBlacklist(
       wakeupBlacklist.value.map((item) => ({ ...item }))
     )
   } catch (err) {
@@ -847,7 +847,7 @@ async function handleRemoveWakeupBlacklistApp(index: number): Promise<void> {
   try {
     wakeupBlacklist.value.splice(index, 1)
     await saveSettings()
-    await window.ztools.internal.updateWakeupBlacklist(
+    await window.monotools.internal.updateWakeupBlacklist(
       wakeupBlacklist.value.map((item) => ({ ...item }))
     )
   } catch (err) {
@@ -864,7 +864,7 @@ async function handlePrimaryColorChange(color: string): Promise<void> {
 
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updatePrimaryColor(color, customColor.value)
+    await window.monotools.internal.updatePrimaryColor(color, customColor.value)
     console.log('主题色已更新:', color)
   } catch (error) {
     console.error('更新主题色失败:', error)
@@ -880,7 +880,7 @@ async function handleSelectCustomColor(): Promise<void> {
 
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updatePrimaryColor('custom', customColor.value)
+    await window.monotools.internal.updatePrimaryColor('custom', customColor.value)
     console.log('已选择自定义主题色')
   } catch (error) {
     console.error('选择自定义主题色失败:', error)
@@ -906,7 +906,7 @@ async function handleCustomColorChange(event: Event): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新
-    await window.ztools.internal.updatePrimaryColor(primaryColor.value, color)
+    await window.monotools.internal.updatePrimaryColor(primaryColor.value, color)
     console.log('自定义主题色已更新:', color)
   } catch (error) {
     console.error('更新自定义主题色失败:', error)
@@ -918,7 +918,7 @@ async function handleTrayIconChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主进程更新托盘图标显示状态
-    await window.ztools.internal.setTrayIconVisible(showTrayIcon.value)
+    await window.monotools.internal.setTrayIconVisible(showTrayIcon.value)
     console.log('托盘图标显示状态已更新:', showTrayIcon.value)
   } catch (error) {
     console.error('更新托盘图标显示状态失败:', error)
@@ -928,7 +928,7 @@ async function handleTrayIconChange(): Promise<void> {
 // 处理悬浮球开关变化
 async function handleFloatingBallChange(): Promise<void> {
   try {
-    await window.ztools.internal.setFloatingBallEnabled(floatingBallEnabled.value)
+    await window.monotools.internal.setFloatingBallEnabled(floatingBallEnabled.value)
     console.log('悬浮球设置已更新:', floatingBallEnabled.value)
   } catch (err) {
     console.error('更新悬浮球设置失败:', err)
@@ -942,7 +942,7 @@ async function handleFloatingBallLetterChange(): Promise<void> {
   try {
     const letter = floatingBallLetter.value.trim() || 'Z'
     floatingBallLetter.value = letter
-    await window.ztools.internal.setFloatingBallLetter(letter)
+    await window.monotools.internal.setFloatingBallLetter(letter)
     console.log('悬浮球文字已更新:', letter)
   } catch (err) {
     console.error('更新悬浮球文字失败:', err)
@@ -954,7 +954,7 @@ async function handleWindowMaterialChange(): Promise<void> {
   try {
     await saveSettings()
     // 调用主进程更新材质（会广播到主渲染进程）
-    await window.ztools.internal.setWindowMaterial(windowMaterial.value)
+    await window.monotools.internal.setWindowMaterial(windowMaterial.value)
     // 设置插件自己也需要更新 data-material 属性
     document.documentElement.setAttribute('data-material', windowMaterial.value)
   } catch (error) {
@@ -967,7 +967,7 @@ async function handleAcrylicLightOpacityChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新（主渲染进程会应用 CSS 叠加效果）
-    await window.ztools.internal.updateAcrylicOpacity(
+    await window.monotools.internal.updateAcrylicOpacity(
       acrylicLightOpacity.value,
       acrylicDarkOpacity.value
     )
@@ -981,7 +981,7 @@ async function handleAcrylicDarkOpacityChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主渲染进程更新（主渲染进程会应用 CSS 叠加效果）
-    await window.ztools.internal.updateAcrylicOpacity(
+    await window.monotools.internal.updateAcrylicOpacity(
       acrylicLightOpacity.value,
       acrylicDarkOpacity.value
     )
@@ -993,7 +993,7 @@ async function handleAcrylicDarkOpacityChange(): Promise<void> {
 // 处理开机启动变化
 async function handleLaunchAtLoginChange(): Promise<void> {
   try {
-    await window.ztools.internal.setLaunchAtLogin(launchAtLogin.value)
+    await window.monotools.internal.setLaunchAtLogin(launchAtLogin.value)
     console.log('开机启动设置已更新:', launchAtLogin.value)
   } catch (error) {
     console.error('更新开机启动设置失败:', error)
@@ -1028,7 +1028,7 @@ async function handleProxyEnabledChange(): Promise<void> {
   try {
     await saveSettings()
     // 通知主进程更新代理配置
-    await window.ztools.internal.setProxyConfig({
+    await window.monotools.internal.setProxyConfig({
       enabled: proxyEnabled.value,
       url: proxyUrl.value
     })
@@ -1052,7 +1052,7 @@ async function handleProxyUrlChange(): Promise<void> {
 
     await saveSettings()
     // 通知主进程更新代理配置
-    await window.ztools.internal.setProxyConfig({
+    await window.monotools.internal.setProxyConfig({
       enabled: proxyEnabled.value,
       url: proxyUrl.value
     })
@@ -1106,7 +1106,7 @@ async function handleAddCustomInternalApiPluginName(): Promise<void> {
 
   const confirmed = await confirm({
     title: '授权内部 API 风险提示',
-    message: `即将允许插件 "${pluginName}" 调用内部 API。\n\n内部 API 可以读写 ZTools 设置、管理插件、注册快捷键、访问窗口信息并执行其他高权限操作。请仅授权你完全信任的插件；恶意插件可能造成隐私泄露、数据损坏或执行非预期操作。`,
+    message: `即将允许插件 "${pluginName}" 调用内部 API。\n\n内部 API 可以读写 MonoTools 设置、管理插件、注册快捷键、访问窗口信息并执行其他高权限操作。请仅授权你完全信任的插件；恶意插件可能造成隐私泄露、数据损坏或执行非预期操作。`,
     type: 'danger',
     confirmText: '已知风险，继续授权',
     cancelText: '取消'
@@ -1147,7 +1147,7 @@ function isValidProxyUrl(url: string): boolean {
 // 获取平台信息（用于快捷键文案）
 async function getPlatformInfo(): Promise<void> {
   try {
-    const pf = await window.ztools.internal.getPlatform()
+    const pf = await window.monotools.internal.getPlatform()
     if (pf === 'darwin' || pf === 'win32' || pf === 'linux') {
       platform.value = pf
     }
@@ -1162,7 +1162,7 @@ async function getPlatformInfo(): Promise<void> {
 async function loadSettings(): Promise<void> {
   try {
     // 加载数据库中的设置
-    const data = await window.ztools.internal.dbGet('settings-general')
+    const data = await window.monotools.internal.dbGet('settings-general')
     console.log('加载到的设置:', data)
 
     if (data) {
@@ -1233,14 +1233,14 @@ async function loadSettings(): Promise<void> {
     }
 
     // 获取当前实际注册的快捷键
-    const currentShortcut = await window.ztools.internal.getCurrentShortcut()
+    const currentShortcut = await window.monotools.internal.getCurrentShortcut()
     hotkey.value = currentShortcut || defaultHotkey.value
 
     // 应用透明度设置
-    await window.ztools.internal.setWindowOpacity(opacity.value)
+    await window.monotools.internal.setWindowOpacity(opacity.value)
 
     // 获取开机启动状态
-    launchAtLogin.value = await window.ztools.internal.getLaunchAtLogin()
+    launchAtLogin.value = await window.monotools.internal.getLaunchAtLogin()
   } catch (error) {
     console.error('加载设置失败:', error)
   }
@@ -1253,9 +1253,9 @@ async function saveSettings(): Promise<void> {
     const avatarToSave = avatar.value === defaultAvatar ? undefined : avatar.value
 
     // 先读取现有设置，保留本页不管理的字段（如 builtinAppShortcutsEnabled）
-    const existing = (await window.ztools.internal.dbGet('settings-general')) || {}
+    const existing = (await window.monotools.internal.dbGet('settings-general')) || {}
 
-    await window.ztools.internal.dbPut('settings-general', {
+    await window.monotools.internal.dbPut('settings-general', {
       ...existing,
       opacity: opacity.value,
       windowDefaultHeight: windowDefaultHeight.value,

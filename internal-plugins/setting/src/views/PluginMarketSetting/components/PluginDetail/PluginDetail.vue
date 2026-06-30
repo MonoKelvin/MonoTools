@@ -35,7 +35,7 @@ function loadGiscus(): void {
 
   const script = document.createElement('script')
   script.src = 'https://giscus.app/client.js'
-  script.setAttribute('data-repo', 'ZToolsCenter/ZTools')
+  script.setAttribute('data-repo', 'MonoToolsCenter/MonoTools')
   script.setAttribute('data-repo-id', 'R_kgDOQhlrNw')
   script.setAttribute('data-category', 'Comments')
   script.setAttribute('data-category-id', 'DIC_kwDOQhlrN84C4mww')

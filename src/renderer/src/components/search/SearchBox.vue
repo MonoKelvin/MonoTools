@@ -290,7 +290,7 @@ async function toggleCurrentPluginVariantSetting(
 
   let currentList: string[] = []
   try {
-    const data = await window.ztools.dbGet(key)
+    const data = await window.monotools.dbGet(key)
     currentList = normalizeConfigList(data)
   } catch (error) {
     console.debug(`未找到 ${key} 配置`, error)
@@ -299,7 +299,7 @@ async function toggleCurrentPluginVariantSetting(
   const nextList = currentList.includes(currentPluginName)
     ? currentList.filter((n) => n !== currentPluginName)
     : [...currentList, currentPluginName]
-  await window.ztools.dbPut(key, nextList)
+  await window.monotools.dbPut(key, nextList)
   console.log(`已更新 ${key} 配置:`, nextList)
 }
 
@@ -430,14 +430,14 @@ async function onKeydown(event: KeyboardEvent): Promise<void> {
     event.preventDefault()
     // 如果不在插件模式，直接打开设置
     if (props.currentView !== 'plugin' || !windowStore.currentPlugin) {
-      window.ztools.openSettings()
+      window.monotools.openSettings()
     }
     return
   }
 
   // 检测 Command+F (Mac) 或 Ctrl+F (Windows/Linux) 快捷键
   if (event.key === 'f' && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey) {
-    const settings = (await window.ztools.dbGet('settings-general')) || {}
+    const settings = (await window.monotools.dbGet('settings-general')) || {}
     const isEnabled = settings?.builtinAppShortcutsEnabled?.search !== false
     if (!isEnabled) {
       return
@@ -514,7 +514,7 @@ async function handlePaste(event: ClipboardEvent): Promise<void> {
     event.preventDefault()
 
     // 手动粘贴不需要时间限制
-    const copiedContent = await window.ztools.getLastCopiedContent()
+    const copiedContent = await window.monotools.getLastCopiedContent()
 
     if (copiedContent?.type === 'image') {
       // 粘贴的是图片 -> 作为匹配内容
@@ -628,7 +628,7 @@ async function handleDrop(event: DragEvent): Promise<void> {
       const file = files[i]
       // 使用 Electron webUtils 获取文件路径
       try {
-        const filePath = window.ztools.getPathForFile(file)
+        const filePath = window.monotools.getPathForFile(file)
         if (filePath) {
           paths.push(filePath)
           names.push(file.name)
@@ -644,7 +644,7 @@ async function handleDrop(event: DragEvent): Promise<void> {
     }
 
     // 使用主进程提供的异步方法检查文件类型
-    const fileStats = await window.ztools.checkFilePaths(paths)
+    const fileStats = await window.monotools.checkFilePaths(paths)
 
     // 转换为 FileItem[] 格式
     const fileItems: FileItem[] = fileStats
@@ -725,7 +725,7 @@ const useDrag = (): DragHandlers => {
       return
     }
     if (!isDragging) return
-    window.ztools.setWindowPosition(e.screenX - offsetX, e.screenY - offsetY)
+    window.monotools.setWindowPosition(e.screenX - offsetX, e.screenY - offsetY)
   }
 
   const onEnd = (e: MouseEvent): void => {
@@ -741,7 +741,7 @@ const useDrag = (): DragHandlers => {
   const cancelDrag = (): void => {
     isDragging = false
     dragReady = false
-    window.ztools.setWindowSizeLock(false)
+    window.monotools.setWindowSizeLock(false)
     cleanup()
   }
 
@@ -754,7 +754,7 @@ const useDrag = (): DragHandlers => {
     document.addEventListener('mousemove', onMove)
     document.addEventListener('mouseup', onEnd)
 
-    const { x, y } = await window.ztools.getWindowPosition()
+    const { x, y } = await window.monotools.getWindowPosition()
 
     // await 返回后检查：如果期间已经松开鼠标，则不进入拖拽
     if (!dragReady) return
@@ -762,7 +762,7 @@ const useDrag = (): DragHandlers => {
     offsetX = e.screenX - x
     offsetY = e.screenY - y
     isDragging = true
-    window.ztools.setWindowSizeLock(true)
+    window.monotools.setWindowSizeLock(true)
   }
 
   const cleanup = (): void => {
@@ -856,19 +856,19 @@ onMounted(() => {
   }
 
   // 监听 AI 状态变化
-  window.ztools.onAiStatusChanged?.((status: 'idle' | 'sending' | 'receiving') => {
+  window.monotools.onAiStatusChanged?.((status: 'idle' | 'sending' | 'receiving') => {
     windowStore.setAiRequestStatus(status)
   })
 
   // 监听菜单命令
   cleanupContextMenuListener?.()
-  cleanupContextMenuListener = window.ztools.onContextMenuCommand(async (command) => {
+  cleanupContextMenuListener = window.monotools.onContextMenuCommand(async (command) => {
     if (command === 'open-devtools') {
-      window.ztools.openPluginDevTools()
+      window.monotools.openPluginDevTools()
     } else if (command === 'kill-plugin') {
       try {
         // 调用新接口：终止插件并返回搜索页面
-        const result = await window.ztools.killPluginAndReturn(windowStore.currentPlugin!.path)
+        const result = await window.monotools.killPluginAndReturn(windowStore.currentPlugin!.path)
         if (!result.success) {
           alert(`终止插件失败: ${result.error}`)
         }
@@ -878,7 +878,7 @@ onMounted(() => {
       }
     } else if (command === 'detach-plugin') {
       try {
-        const result = await window.ztools.detachPlugin()
+        const result = await window.monotools.detachPlugin()
         if (!result.success) {
           alert(`分离插件失败: ${result.error}`)
         }
@@ -922,7 +922,7 @@ async function handleDoubleClick(): Promise<void> {
   if (props.currentView === 'plugin' && windowStore.currentPlugin) {
     console.log('双击搜索框，触发插件分离')
     try {
-      const result = await window.ztools.detachPlugin()
+      const result = await window.monotools.detachPlugin()
       if (!result.success) {
         console.error('分离插件失败:', result.error)
       }
@@ -947,11 +947,11 @@ async function handleSettingsClick(): Promise<void> {
     let autoDetachPlugins: string[] = []
     let autoStartPlugins: string[] = []
     try {
-      const killData = await window.ztools.dbGet('outKillPlugin')
+      const killData = await window.monotools.dbGet('outKillPlugin')
       outKillPlugins = normalizeConfigList(killData)
-      const detachData = await window.ztools.dbGet('autoDetachPlugin')
+      const detachData = await window.monotools.dbGet('autoDetachPlugin')
       autoDetachPlugins = normalizeConfigList(detachData)
-      const startData = await window.ztools.dbGet('autoStartPlugin')
+      const startData = await window.monotools.dbGet('autoStartPlugin')
       autoStartPlugins = normalizeConfigList(startData)
     } catch (error) {
       console.log('读取配置失败（可能不存在）:', error)
@@ -964,7 +964,7 @@ async function handleSettingsClick(): Promise<void> {
     const isAutoStart = !!currentPluginName && autoStartPlugins.includes(currentPluginName)
 
     // 根据平台显示不同的快捷键
-    const platform = window.ztools.getPlatform()
+    const platform = window.monotools.getPlatform()
     const detachShortcut = platform === 'darwin' ? '⌘+D' : 'Ctrl+D'
     const killShortcut = platform === 'darwin' ? '⌘+Q' : 'Ctrl+Q'
 
@@ -997,11 +997,11 @@ async function handleSettingsClick(): Promise<void> {
       { id: 'kill-plugin', label: `结束运行 (${killShortcut})` }
     ]
 
-    await window.ztools.showContextMenu(menuItems)
+    await window.monotools.showContextMenu(menuItems)
   } else {
     // 否则打开设置插件
     console.log('打开设置插件')
-    window.ztools.openSettings()
+    window.monotools.openSettings()
   }
 }
 
@@ -1016,7 +1016,7 @@ async function handleUpdateClick(): Promise<void> {
     }
 
     // 执行升级
-    const result = await window.ztools.updater.installDownloadedUpdate()
+    const result = await window.monotools.updater.installDownloadedUpdate()
     if (!result.success) {
       alert(`升级失败: ${result.error}`)
     }

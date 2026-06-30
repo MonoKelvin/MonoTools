@@ -33,7 +33,7 @@ export class DatabaseAPI {
     }
 
     if (pluginName === 'ZTOOLS') {
-      return { pluginName: 'ZTOOLS', prefix: 'ZTOOLS/', isHostData: true }
+      return { pluginName: 'ZTOOLS', prefix: 'MONOTOOLS/', isHostData: true }
     }
 
     return { pluginName, prefix: getPluginDataPrefix(pluginName), isHostData: false }
@@ -354,13 +354,13 @@ export class DatabaseAPI {
     })
 
     // ============ 主程序渲染进程专用API（直接操作 ZTOOLS 命名空间） ============
-    ipcMain.handle('ztools:db-put', (_event, key: string, data: any) => {
-      // console.log('[Database] ztools:db-put', key, data)
+    ipcMain.handle('monotools:db-put', (_event, key: string, data: any) => {
+      // console.log('[Database] monotools:db-put', key, data)
       return this.dbPut(key, data)
     })
 
-    ipcMain.handle('ztools:db-get', (_event, key: string) => {
-      console.log('[Database] ztools:db-get', key)
+    ipcMain.handle('monotools:db-get', (_event, key: string) => {
+      console.log('[Database] monotools:db-get', key)
       return this.dbGet(key)
     })
 
@@ -392,7 +392,7 @@ export class DatabaseAPI {
    */
   public dbPut(key: string, data: any): any {
     try {
-      const docId = `ZTOOLS/${key}`
+      const docId = `MONOTOOLS/${key}`
 
       // 将数据包装到 data 字段中，以正确支持数组和对象
       const doc: any = {
@@ -415,7 +415,7 @@ export class DatabaseAPI {
 
   public dbGet(key: string): any {
     try {
-      const docId = `ZTOOLS/${key}`
+      const docId = `MONOTOOLS/${key}`
       const doc = lmdbInstance.get(docId)
 
       if (!doc) {
@@ -480,7 +480,7 @@ export class DatabaseAPI {
         }
       }
 
-      const pluginsDoc = lmdbInstance.get('ZTOOLS/plugins')
+      const pluginsDoc = lmdbInstance.get('MONOTOOLS/plugins')
       const plugins = pluginsDoc?.data || []
       const pluginsByName = new Map<string, any>()
       for (const plugin of plugins) {
@@ -500,29 +500,29 @@ export class DatabaseAPI {
         } satisfies PluginDataRecord
       })
 
-      // 添加 ZTOOLS/ 主程序数据统计
-      const ztoolsDocs = lmdbInstance.allDocs('ZTOOLS/')
-      const ztoolsDocCount = ztoolsDocs.length
+      // 添加 MONOTOOLS/ 主程序数据统计
+      const monotoolsDocs = lmdbInstance.allDocs('MONOTOOLS/')
+      const monotoolsDocCount = monotoolsDocs.length
 
-      // 统计 ZTOOLS/ 的附件
-      let ztoolsAttachmentCount = 0
-      const ztoolsAttachmentPrefix = 'attachment-ext:ZTOOLS/'
+      // 统计 MONOTOOLS/ 的附件
+      let monotoolsAttachmentCount = 0
+      const monotoolsAttachmentPrefix = 'attachment-ext:MONOTOOLS/'
       for (const { key } of attachmentDb.getRange({
-        start: ztoolsAttachmentPrefix,
-        end: this.getNextPrefix(ztoolsAttachmentPrefix)
+        start: monotoolsAttachmentPrefix,
+        end: this.getNextPrefix(monotoolsAttachmentPrefix)
       })) {
-        if (key.startsWith(ztoolsAttachmentPrefix)) {
-          ztoolsAttachmentCount++
+        if (key.startsWith(monotoolsAttachmentPrefix)) {
+          monotoolsAttachmentCount++
         }
       }
 
       // 将主程序数据插入到列表最前面
-      if (ztoolsDocCount > 0 || ztoolsAttachmentCount > 0) {
+      if (monotoolsDocCount > 0 || monotoolsAttachmentCount > 0) {
         data.unshift({
           pluginName: 'ZTOOLS',
           pluginTitle: '主程序',
-          docCount: ztoolsDocCount,
-          attachmentCount: ztoolsAttachmentCount,
+          docCount: monotoolsDocCount,
+          attachmentCount: monotoolsAttachmentCount,
           logo: null,
           isDevelopment: false
         })

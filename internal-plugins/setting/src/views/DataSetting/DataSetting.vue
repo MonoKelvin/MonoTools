@@ -74,7 +74,7 @@ const currentPluginDetailTitle = computed(() => {
 // 加载插件数据统计
 async function loadPluginData(): Promise<void> {
   try {
-    const result = await window.ztools.internal.getPluginDataStats()
+    const result = await window.monotools.internal.getPluginDataStats()
     if (result.success) {
       pluginDataList.value = result.data || []
     }
@@ -92,7 +92,7 @@ async function viewPluginDocs(pluginData: PluginData): Promise<void> {
   currentLevel.value = 'docList'
 
   try {
-    const result = await window.ztools.internal.getPluginDocKeys(pluginData.pluginName)
+    const result = await window.monotools.internal.getPluginDocKeys(pluginData.pluginName)
     if (result.success) {
       docKeys.value = result.data || []
     }
@@ -115,7 +115,7 @@ async function deleteDocContent(docItem: DocItem): Promise<void> {
   if (!confirmed) return
 
   try {
-    const result = await window.ztools.internal.deletePluginDoc(
+    const result = await window.monotools.internal.deletePluginDoc(
       currentPluginData.value.pluginName,
       docItem.key
     )
@@ -140,7 +140,7 @@ async function exportDocContent(docItem: DocItem): Promise<void> {
   if (!currentPluginData.value) return
 
   try {
-    const result = await window.ztools.internal.exportPluginDoc(
+    const result = await window.monotools.internal.exportPluginDoc(
       currentPluginData.value.pluginName,
       docItem.key
     )
@@ -164,7 +164,7 @@ async function viewDocContent(key: string): Promise<void> {
   currentLevel.value = 'docDetail'
 
   try {
-    const result = await window.ztools.internal.getPluginDoc(
+    const result = await window.monotools.internal.getPluginDoc(
       currentPluginData.value.pluginName,
       key
     )
@@ -215,7 +215,7 @@ async function handleClearData(): Promise<void> {
   if (!confirmed) return
 
   try {
-    const result = await window.ztools.internal.clearPluginData(currentPluginData.value.pluginName)
+    const result = await window.monotools.internal.clearPluginData(currentPluginData.value.pluginName)
     if (result.success) {
       success(`已成功清空 ${result.deletedCount} 个文档`)
       // 关闭弹窗
@@ -268,7 +268,7 @@ onUnmounted(() => {
             v-for="pluginData in filteredPluginDataList"
             :key="getPluginDataKey(pluginData)"
             class="card plugin-card"
-            :class="{ 'ztools-card': pluginData.pluginName === 'ZTOOLS' }"
+            :class="{ 'monotools-card': pluginData.pluginName === 'ZTOOLS' }"
             @click="viewPluginDocs(pluginData)"
           >
             <!-- 图标区域（含 DEV 角标） -->
@@ -276,7 +276,7 @@ onUnmounted(() => {
               <!-- 主程序特殊图标 -->
               <div
                 v-if="pluginData.pluginName === 'ZTOOLS'"
-                class="plugin-icon-placeholder ztools-icon"
+                class="plugin-icon-placeholder monotools-icon"
               >
                 <div class="i-z-database font-size-24px" />
               </div>
@@ -500,12 +500,12 @@ onUnmounted(() => {
 }
 
 /* 主程序数据卡片特殊样式 */
-.plugin-card.ztools-card .plugin-name {
+.plugin-card.monotools-card .plugin-name {
   color: var(--primary-color);
   font-weight: 600;
 }
 
-.plugin-icon-placeholder.ztools-icon {
+.plugin-icon-placeholder.monotools-icon {
   background: var(--primary-color);
   color: white;
   opacity: 1;

@@ -75,22 +75,22 @@ addZtoolsCodeEventListener('function.pin-to-search', async (e) => {
     }
 
     // 调用固定 API（内置插件使用 internal 命名空间）
-    await window.ztools.internal.pinApp(command)
+    await window.monotools.internal.pinApp(command)
   }
 
   // 固定完成后，显示提示并退出插件
   if (files.length > 0) {
-    await window.ztools.showNotification(
+    await window.monotools.showNotification(
       `已固定 ${files.length} 个${files.length === 1 ? (files[0].isDirectory ? '文件夹' : '文件') : '项'}`
     )
     // 退出插件（内置插件通过 outPlugin 退出）
-    await window.ztools.outPlugin()
+    await window.monotools.outPlugin()
   }
 })
 
 /**
- * 退出 ZTools 应用
+ * 退出 MonoTools 应用
  */
 addZtoolsCodeEventListener('function.exit', () => {
-  void window.ztools.internal.quitApp()
+  void window.monotools.internal.quitApp()
 })

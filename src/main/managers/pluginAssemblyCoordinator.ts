@@ -225,11 +225,11 @@ export class PluginAssemblyCoordinator {
     try {
       // 第一步：通知主渲染“当前装配目标 token”
       await mainWindow.webContents.executeJavaScript(
-        `window.ztools?.setAssemblyTarget?.(${JSON.stringify(token)})`
+        `window.monotools?.setAssemblyTarget?.(${JSON.stringify(token)})`
       )
       // 第二步：读取主渲染回执 token，确保主/插件视图状态一致
       const returned = await mainWindow.webContents.executeJavaScript(
-        `window.ztools?.endAssemblyPlugin?.()`
+        `window.monotools?.endAssemblyPlugin?.()`
       )
       // 只有 token 一致才允许继续展示/进入插件
       const ok = returned === token

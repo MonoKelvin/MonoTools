@@ -398,7 +398,7 @@ export async function scanApplications(): Promise<Command[]> {
         )
 
         // 应用程序直接使用 .app 路径交给原生层提取图标
-        const iconUrl = `ztools-icon://${encodeURIComponent(appPath)}`
+        const iconUrl = `monotools-icon://${encodeURIComponent(appPath)}`
 
         return {
           name,
@@ -412,7 +412,7 @@ export async function scanApplications(): Promise<Command[]> {
         return {
           name,
           path: appPath,
-          icon: `ztools-icon://${encodeURIComponent(appPath)}`,
+          icon: `monotools-icon://${encodeURIComponent(appPath)}`,
           acronym: extractAcronym(name)
         }
       }

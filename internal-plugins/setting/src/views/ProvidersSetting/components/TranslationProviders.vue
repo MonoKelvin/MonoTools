@@ -36,8 +36,8 @@ async function load(): Promise<void> {
   loading.value = true
   try {
     const [allRes, setRes] = await Promise.all([
-      window.ztools.internal.providers.getAll('translation'),
-      window.ztools.internal.providers.getSettings()
+      window.monotools.internal.providers.getAll('translation'),
+      window.monotools.internal.providers.getSettings()
     ])
     if (allRes.success && allRes.data) providers.value = allRes.data
     if (setRes.success && setRes.data) settings.value = setRes.data
@@ -59,7 +59,7 @@ function isDefault(p: ProviderEntry): boolean {
 
 async function handleToggle(p: ProviderEntry, enabled: boolean): Promise<void> {
   try {
-    const res = await window.ztools.internal.providers.setEnabled(p.id, enabled)
+    const res = await window.monotools.internal.providers.setEnabled(p.id, enabled)
     if (res.success && res.data) {
       settings.value = res.data
       success(enabled ? '已启用' : '已禁用')
@@ -74,7 +74,7 @@ async function handleToggle(p: ProviderEntry, enabled: boolean): Promise<void> {
 
 async function handleSetDefault(p: ProviderEntry): Promise<void> {
   try {
-    const res = await window.ztools.internal.providers.setDefault('translation', p.id)
+    const res = await window.monotools.internal.providers.setDefault('translation', p.id)
     if (res.success && res.data) {
       settings.value = res.data
       success(`已设为默认：${p.label}`)
@@ -92,7 +92,7 @@ const bergamot = computed(() => providers.value.find((p) => p.id === 'builtin-be
 
 async function refreshEngineStatus(): Promise<void> {
   try {
-    const res = await window.ztools.internal.providers.getTranslationStatus()
+    const res = await window.monotools.internal.providers.getTranslationStatus()
     engineStatus.value = res.status
     engineError.value = res.error || ''
   } catch {
@@ -102,7 +102,7 @@ async function refreshEngineStatus(): Promise<void> {
 
 async function handleBergamotToggle(enabled: boolean): Promise<void> {
   try {
-    await window.ztools.internal.providers.setTranslationEnabled(enabled)
+    await window.monotools.internal.providers.setTranslationEnabled(enabled)
     // 开启后立即拉取状态并轮询，直到 ready / error
     await refreshEngineStatus()
     if (

@@ -289,7 +289,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
    */
   async function loadSuperPanelPinnedData(): Promise<void> {
     try {
-      superPanelPinned.value = await window.ztools.getSuperPanelPinned()
+      superPanelPinned.value = await window.monotools.getSuperPanelPinned()
     } catch {
       superPanelPinned.value = []
     }
@@ -468,7 +468,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   async function loadCommandAliases(): Promise<CommandAliasStore> {
     try {
-      const data = await window.ztools.dbGet(COMMAND_ALIASES_KEY)
+      const data = await window.monotools.dbGet(COMMAND_ALIASES_KEY)
       return normalizeCommandAliases(data)
     } catch (error) {
       console.error('加载指令别名失败:', error)
@@ -497,7 +497,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   async function loadDisabledCommands(): Promise<void> {
     try {
-      const data = await window.ztools.dbGet(DISABLED_COMMANDS_KEY)
+      const data = await window.monotools.dbGet(DISABLED_COMMANDS_KEY)
       if (data && Array.isArray(data)) {
         disabledCommands.value = data
       }
@@ -508,7 +508,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   async function loadDisabledPlugins(): Promise<void> {
     try {
-      const data = await window.ztools.getDisabledPlugins()
+      const data = await window.monotools.getDisabledPlugins()
       setDisabledPluginPaths(data)
     } catch (error) {
       console.error('加载禁用插件列表失败:', error)
@@ -518,7 +518,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   async function loadEnabledMainPushPlugins(): Promise<void> {
     try {
-      const data = await window.ztools.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY)
+      const data = await window.monotools.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY)
       enabledMainPushPluginNames.value = normalizeConfigList(data)
     } catch (error) {
       console.error('加载启用 mainPush 插件列表失败:', error)
@@ -528,7 +528,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
   async function loadSearchPreference(): Promise<void> {
     try {
-      const data = await window.ztools.dbGet('search-preference')
+      const data = await window.monotools.dbGet('search-preference')
       if (data && typeof data === 'object') {
         searchPreference.value = data
       }
@@ -551,7 +551,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
       name: command.name
     }
     try {
-      await window.ztools.dbPut(
+      await window.monotools.dbPut(
         'search-preference',
         JSON.parse(JSON.stringify(searchPreference.value))
       )
@@ -582,22 +582,22 @@ export const useCommandDataStore = defineStore('commandData', () => {
       ])
 
       // 监听后端历史记录变化事件
-      window.ztools.onHistoryChanged(() => {
+      window.monotools.onHistoryChanged(() => {
         loadHistoryData()
       })
 
       // 监听指令列表变化事件（应用文件夹变化、插件变化时触发）
-      window.ztools.onAppsChanged(() => {
+      window.monotools.onAppsChanged(() => {
         loadCommands()
       })
 
       // 监听本地启动项变化事件（添加/删除/别名修改时触发，无需重新扫描系统应用）
-      window.ztools.onLocalShortcutsChanged(() => {
+      window.monotools.onLocalShortcutsChanged(() => {
         reloadLocalShortcuts()
       })
 
       // 监听固定列表变化事件
-      window.ztools.onPinnedChanged(() => {
+      window.monotools.onPinnedChanged(() => {
         // 如果是本地触发的更新，忽略此事件，避免重复加载
         if (isLocalPinnedUpdate) {
           isLocalPinnedUpdate = false
@@ -607,17 +607,17 @@ export const useCommandDataStore = defineStore('commandData', () => {
       })
 
       // 监听超级面板固定列表变化事件
-      window.ztools.onSuperPanelPinnedChanged(() => {
+      window.monotools.onSuperPanelPinnedChanged(() => {
         loadSuperPanelPinnedData()
       })
 
       // 监听禁用指令列表变化事件
-      window.ztools.onDisabledCommandsChanged(() => {
+      window.monotools.onDisabledCommandsChanged(() => {
         loadDisabledCommands()
       })
 
       // 监听指令别名变化事件，仅基于当前缓存重建 alias 展开，避免重复扫描系统应用。
-      window.ztools.onCommandAliasesChanged(() => {
+      window.monotools.onCommandAliasesChanged(() => {
         reloadCommandAliases()
       })
 
@@ -635,7 +635,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
   // 加载历史记录数据
   async function loadHistoryData(): Promise<void> {
     try {
-      const data = await window.ztools.dbGet(HISTORY_DOC_ID)
+      const data = await window.monotools.dbGet(HISTORY_DOC_ID)
 
       if (data && Array.isArray(data)) {
         // 创建当前所有指令的 path Set（用于验证历史记录是否仍然有效）
@@ -692,8 +692,8 @@ export const useCommandDataStore = defineStore('commandData', () => {
   async function loadPinnedData(): Promise<void> {
     try {
       const [data, plugins] = await Promise.all([
-        window.ztools.dbGet(PINNED_DOC_ID),
-        window.ztools.getAllPlugins()
+        window.monotools.dbGet(PINNED_DOC_ID),
+        window.monotools.getAllPlugins()
       ])
 
       if (data && Array.isArray(data)) {
@@ -733,9 +733,9 @@ export const useCommandDataStore = defineStore('commandData', () => {
   async function reloadPluginCommands(): Promise<void> {
     try {
       const [plugins, disabledPlugins, enabledMainPushPlugins, commandAliases] = await Promise.all([
-        window.ztools.getAllPlugins(),
-        window.ztools.getDisabledPlugins(),
-        window.ztools.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY),
+        window.monotools.getAllPlugins(),
+        window.monotools.getDisabledPlugins(),
+        window.monotools.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY),
         loadCommandAliases()
       ])
       setDisabledPluginPaths(disabledPlugins)
@@ -980,18 +980,18 @@ export const useCommandDataStore = defineStore('commandData', () => {
     try {
       const [rawApps, plugins, disabledPlugins, enabledMainPushPlugins, commandAliases] =
         await Promise.all([
-          window.ztools.getApps(),
-          window.ztools.getAllPlugins(),
-          window.ztools.getDisabledPlugins(),
-          window.ztools.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY),
+          window.monotools.getApps(),
+          window.monotools.getAllPlugins(),
+          window.monotools.getDisabledPlugins(),
+          window.monotools.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY),
           loadCommandAliases()
         ])
 
       let settingCommands: Command[] = []
       try {
-        const isWindows = window.ztools.getPlatform() === 'win32'
+        const isWindows = window.monotools.getPlatform() === 'win32'
         if (isWindows) {
-          const settings = await window.ztools.getSystemSettings()
+          const settings = await window.monotools.getSystemSettings()
           settingCommands = settings.map((s: any) => ({
             name: s.name,
             path: s.uri,
@@ -1015,7 +1015,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
 
       let localShortcuts: Command[] = []
       try {
-        const shortcuts = await window.ztools.localShortcuts.getAll()
+        const shortcuts = await window.monotools.localShortcuts.getAll()
         localShortcuts = shortcuts.map((s: any) => ({
           name: s.alias || s.name,
           path: s.path,
@@ -1059,7 +1059,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
    */
   async function reloadLocalShortcuts(): Promise<void> {
     try {
-      const shortcuts = await window.ztools.localShortcuts.getAll()
+      const shortcuts = await window.monotools.localShortcuts.getAll()
       localShortcutCommandsCache.value = shortcuts.map((s: any) => ({
         name: s.alias || s.name,
         path: s.path,
@@ -1388,7 +1388,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
     featureCode?: string,
     name?: string
   ): Promise<void> {
-    await window.ztools.removeFromHistory(commandPath, featureCode, name)
+    await window.monotools.removeFromHistory(commandPath, featureCode, name)
     // 后端会发送 history-changed 事件，触发重新加载
   }
 
@@ -1407,7 +1407,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
         pluginName: cmd.pluginName
       }))
 
-      await window.ztools.dbPut(PINNED_DOC_ID, cleanData)
+      await window.monotools.dbPut(PINNED_DOC_ID, cleanData)
     } catch (error) {
       console.error('保存固定列表失败:', error)
     }
@@ -1445,7 +1445,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
   async function pinCommand(command: Command): Promise<void> {
     // 将 Vue 响应式对象转换为纯对象，避免 IPC 传递时的克隆错误
     const plainCommand = JSON.parse(JSON.stringify(command))
-    await window.ztools.pinApp(plainCommand)
+    await window.monotools.pinApp(plainCommand)
     // 后端会发送 pinned-changed 事件，触发重新加载
   }
 
@@ -1457,7 +1457,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
     featureCode?: string,
     name?: string
   ): Promise<void> {
-    await window.ztools.unpinApp(commandPath, featureCode, name)
+    await window.monotools.unpinApp(commandPath, featureCode, name)
     // 后端会发送 pinned-changed 事件，触发重新加载
   }
 
@@ -1489,7 +1489,7 @@ export const useCommandDataStore = defineStore('commandData', () => {
     // 异步保存到后端，不等待完成
     // 将 Vue 响应式对象数组转换为纯对象数组，避免 IPC 传递时的克隆错误
     const plainOrder = JSON.parse(JSON.stringify(newOrder))
-    window.ztools.updatePinnedOrder(plainOrder).catch((error) => {
+    window.monotools.updatePinnedOrder(plainOrder).catch((error) => {
       console.error('保存固定列表顺序失败:', error)
       // 如果保存失败，重置标志并重新从后端加载数据
       isLocalPinnedUpdate = false

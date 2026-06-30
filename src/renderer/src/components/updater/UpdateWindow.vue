@@ -5,7 +5,7 @@
       <img :src="logo" class="header-icon" draggable="false" />
       <div class="header-info">
         <div class="title">发现新版本 {{ version }}</div>
-        <div class="subtitle">ZTools</div>
+        <div class="subtitle">MonoTools</div>
       </div>
     </div>
 
@@ -109,8 +109,8 @@ onMounted(() => {
   window.electron?.ipcRenderer.send('updater:window-ready')
 
   // 初始化窗口材质
-  if (window.ztools?.getWindowMaterial) {
-    window.ztools
+  if (window.monotools?.getWindowMaterial) {
+    window.monotools
       .getWindowMaterial()
       .then((material) => {
         document.documentElement.setAttribute('data-material', material)
@@ -122,16 +122,16 @@ onMounted(() => {
   }
 
   // 监听窗口材质更新
-  if (window.ztools?.onUpdateWindowMaterial) {
-    window.ztools.onUpdateWindowMaterial((material) => {
+  if (window.monotools?.onUpdateWindowMaterial) {
+    window.monotools.onUpdateWindowMaterial((material) => {
       document.documentElement.setAttribute('data-material', material)
       applyAcrylicOverlay()
     })
   }
 
   // 监听亚克力透明度更新
-  if (window.ztools?.onUpdateAcrylicOpacity) {
-    window.ztools.onUpdateAcrylicOpacity((data) => {
+  if (window.monotools?.onUpdateAcrylicOpacity) {
+    window.monotools.onUpdateAcrylicOpacity((data) => {
       acrylicLightOpacity.value = data.lightOpacity
       acrylicDarkOpacity.value = data.darkOpacity
       applyAcrylicOverlay()

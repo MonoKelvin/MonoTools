@@ -791,9 +791,9 @@ export class PluginDevProjectsAPI {
       // 定位开发者插件的安装目录（优先使用开发版本，因为正式安装版可能不含模板）
       const installedPlugins = this.deps.readInstalledPlugins()
       const devVersionPlugin = installedPlugins.find(
-        (p) => p?.name === 'ztools-developer-plugin__dev'
+        (p) => p?.name === 'monotools-developer-plugin__dev'
       )
-      const prodVersionPlugin = installedPlugins.find((p) => p?.name === 'ztools-developer-plugin')
+      const prodVersionPlugin = installedPlugins.find((p) => p?.name === 'monotools-developer-plugin')
       const devPlugin = devVersionPlugin || prodVersionPlugin
       if (!devPlugin?.path) {
         return { success: false, error: '开发者工具插件未安装' }

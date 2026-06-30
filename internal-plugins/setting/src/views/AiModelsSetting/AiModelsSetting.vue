@@ -39,7 +39,7 @@ const editingModel = ref<AiModel | null>(null)
 // 加载模型列表
 async function loadModels(): Promise<void> {
   try {
-    const result = await window.ztools.internal.aiModels.getAll()
+    const result = await window.monotools.internal.aiModels.getAll()
     if (result.success && result.data) {
       models.value = result.data
     }
@@ -91,7 +91,7 @@ async function handleSave(model: AiModel): Promise<void> {
 
     if (editingModel.value) {
       // 更新模型
-      const result = await window.ztools.internal.aiModels.update(modelData)
+      const result = await window.monotools.internal.aiModels.update(modelData)
       if (result.success) {
         success('模型更新成功')
         await loadModels()
@@ -101,7 +101,7 @@ async function handleSave(model: AiModel): Promise<void> {
       }
     } else {
       // 添加模型
-      const result = await window.ztools.internal.aiModels.add(modelData)
+      const result = await window.monotools.internal.aiModels.add(modelData)
       if (result.success) {
         success('模型添加成功')
         await loadModels()
@@ -129,7 +129,7 @@ async function handleDelete(modelId: string): Promise<void> {
 
   isDeleting.value = true
   try {
-    const result = await window.ztools.internal.aiModels.delete(modelId)
+    const result = await window.monotools.internal.aiModels.delete(modelId)
     if (result.success) {
       success('模型删除成功')
       await loadModels()

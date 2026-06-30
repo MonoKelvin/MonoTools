@@ -71,7 +71,7 @@ describe('scanDirectoryFlat（扁平根扫描）', () => {
     expect(apps).toHaveLength(1)
     expect(apps[0].name).toBe('App1')
     expect(apps[0].path).toBe(path.join(ROOT, 'App1.lnk'))
-    expect(apps[0].icon).toContain('ztools-icon://')
+    expect(apps[0].icon).toContain('monotools-icon://')
   })
 
   it('不下钻子目录（子目录内 .lnk 不被收集——核心不变式）', async () => {

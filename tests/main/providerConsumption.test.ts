@@ -138,15 +138,15 @@ describe('plugin preload provider consumption surface', () => {
 
   it('exposes providers namespace with getProviders/getDefaultProvider/invokeProvider', async () => {
     require(preloadPath)
-    const ztools = (globalThis as any).window.ztools
+    const monotools = (globalThis as any).window.monotools
 
-    expect(typeof ztools.providers.getProviders).toBe('function')
-    expect(typeof ztools.providers.getDefaultProvider).toBe('function')
-    expect(typeof ztools.providers.invokeProvider).toBe('function')
+    expect(typeof monotools.providers.getProviders).toBe('function')
+    expect(typeof monotools.providers.getDefaultProvider).toBe('function')
+    expect(typeof monotools.providers.invokeProvider).toBe('function')
 
-    await ztools.providers.getProviders('translation')
-    await ztools.providers.getDefaultProvider('translation')
-    await ztools.providers.invokeProvider('translation', { text: 'hi' }, 'p1')
+    await monotools.providers.getProviders('translation')
+    await monotools.providers.getDefaultProvider('translation')
+    await monotools.providers.invokeProvider('translation', { text: 'hi' }, 'p1')
 
     // preload 的 ipcInvoke 内部走 'plugin.api' 通道，参数顺序为 (channel, apiName, args)
     expect(ipcInvoke).toHaveBeenNthCalledWith(1, 'plugin.api', 'providersGetProviders', {
@@ -164,9 +164,9 @@ describe('plugin preload provider consumption surface', () => {
 
   it('translate sugar invokes translation provider with optional from/to/providerId', async () => {
     require(preloadPath)
-    const ztools = (globalThis as any).window.ztools
+    const monotools = (globalThis as any).window.monotools
 
-    await ztools.translate('hello', { from: 'en', to: 'zh', providerId: 'p1' })
+    await monotools.translate('hello', { from: 'en', to: 'zh', providerId: 'p1' })
 
     expect(ipcInvoke).toHaveBeenCalledWith('plugin.api', 'providersInvoke', {
       type: 'translation',
@@ -177,9 +177,9 @@ describe('plugin preload provider consumption surface', () => {
 
   it('ocr sugar invokes ocr provider with optional lang/providerId', async () => {
     require(preloadPath)
-    const ztools = (globalThis as any).window.ztools
+    const monotools = (globalThis as any).window.monotools
 
-    await ztools.ocr('data:image/png;base64,xxx', { lang: 'eng', providerId: 'p2' })
+    await monotools.ocr('data:image/png;base64,xxx', { lang: 'eng', providerId: 'p2' })
 
     expect(ipcInvoke).toHaveBeenCalledWith('plugin.api', 'providersInvoke', {
       type: 'ocr',
@@ -190,10 +190,10 @@ describe('plugin preload provider consumption surface', () => {
 
   it('translate/ocr work without options (providerId undefined)', async () => {
     require(preloadPath)
-    const ztools = (globalThis as any).window.ztools
+    const monotools = (globalThis as any).window.monotools
 
-    await ztools.translate('hello')
-    await ztools.ocr('img.png')
+    await monotools.translate('hello')
+    await monotools.ocr('img.png')
 
     expect(ipcInvoke).toHaveBeenNthCalledWith(1, 'plugin.api', 'providersInvoke', {
       type: 'translation',

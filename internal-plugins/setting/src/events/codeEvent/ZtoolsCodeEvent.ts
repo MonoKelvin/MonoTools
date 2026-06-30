@@ -107,7 +107,7 @@ export function initZtoolsBaseEventHandler(options: InitBaseEventHandlerOptions 
   const height =
     typeof options.pluginHeight === 'function' ? options.pluginHeight() : options.pluginHeight
   if (height) {
-    ztools?.setExpendHeight(height)
+    monotools?.setExpendHeight(height)
   }
 
   addZtoolsCodeEventListener('ui.router', (e) => {
@@ -123,7 +123,7 @@ export function initZtoolsBaseEventHandler(options: InitBaseEventHandlerOptions 
       })
       .then(() => {})
     if (height) {
-      ztools.setExpendHeight(height)
+      monotools.setExpendHeight(height)
     }
   })
 }

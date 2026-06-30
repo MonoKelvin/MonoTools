@@ -186,7 +186,7 @@ export class AppsAPI {
         const hasOldFormat = cachedApps.some(
           (app) =>
             app.icon &&
-            !app.icon.startsWith('ztools-icon://') &&
+            !app.icon.startsWith('monotools-icon://') &&
             !app.icon.startsWith('data:') &&
             !app.icon.startsWith('http') &&
             // Windows 上的静态 png 资源除外（通常是手动转换的）
@@ -200,7 +200,7 @@ export class AppsAPI {
         if (cacheVersion !== AppsAPI.APP_CACHE_VERSION) {
           console.log('[Commands] 检测到旧版应用缓存，将重新扫描以刷新本地化名称索引...')
         } else if (hasOldFormat) {
-          console.log('[Commands] 检测到旧格式图标缓存，将重新扫描并更新为 ztools-icon 协议...')
+          console.log('[Commands] 检测到旧格式图标缓存，将重新扫描并更新为 monotools-icon 协议...')
         } else {
           console.log(`从缓存读取到 ${cachedApps.length} 个应用`)
           return cachedApps
@@ -250,7 +250,7 @@ export class AppsAPI {
       }
     }
 
-    // 注意：windowsScanner 已经在扫描时生成了 ztools-icon:// 协议 URL
+    // 注意：windowsScanner 已经在扫描时生成了 monotools-icon:// 协议 URL
     // 不需要再进行图标提取或文件转换，直接使用扫描结果即可
 
     // 保存到数据库缓存

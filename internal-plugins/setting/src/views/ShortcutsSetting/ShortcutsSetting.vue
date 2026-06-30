@@ -321,7 +321,7 @@ async function saveAliasMappings(nextStore: CommandAliasStore): Promise<boolean>
   try {
     const normalized = normalizeCommandAliases(nextStore)
     // 保存前再次做一次归一化，并转成普通对象，避免把 Vue 响应式代理直接发给 IPC
-    await window.ztools.internal.updateCommandAliases(JSON.parse(JSON.stringify(normalized)))
+    await window.monotools.internal.updateCommandAliases(JSON.parse(JSON.stringify(normalized)))
     aliasMappings.value = normalized
     return true
   } catch (err: any) {
@@ -333,7 +333,7 @@ async function saveAliasMappings(nextStore: CommandAliasStore): Promise<boolean>
 
 async function loadGlobalShortcuts(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet('global-shortcuts')
+    const data = await window.monotools.internal.dbGet('global-shortcuts')
     globalShortcuts.value = (data || []).map((shortcut: any) => ({
       ...shortcut,
       autoCopy: shortcut.autoCopy ?? false // 默认禁用
@@ -345,7 +345,7 @@ async function loadGlobalShortcuts(): Promise<void> {
 
 async function loadAppShortcuts(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet('app-shortcuts')
+    const data = await window.monotools.internal.dbGet('app-shortcuts')
     appShortcuts.value = data || []
   } catch (err) {
     console.error('加载应用快捷键失败:', err)
@@ -354,7 +354,7 @@ async function loadAppShortcuts(): Promise<void> {
 
 async function loadBuiltInShortcutSettings(): Promise<void> {
   try {
-    const settings = (await window.ztools.internal.dbGet('settings-general')) || {}
+    const settings = (await window.monotools.internal.dbGet('settings-general')) || {}
     const config = settings.builtinAppShortcutsEnabled || {}
     builtInShortcutsEnabled.value = {
       ...DEFAULT_BUILTIN_SHORTCUTS_ENABLED,
@@ -367,7 +367,7 @@ async function loadBuiltInShortcutSettings(): Promise<void> {
 
 async function loadAliasMappings(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet(COMMAND_ALIASES_KEY)
+    const data = await window.monotools.internal.dbGet(COMMAND_ALIASES_KEY)
     // 设置页统一读取归一化后的 alias store，兼容旧版 string[] 结构
     aliasMappings.value = normalizeCommandAliases(data)
   } catch (err) {
@@ -377,7 +377,7 @@ async function loadAliasMappings(): Promise<void> {
 
 async function loadAliasTargets(): Promise<void> {
   try {
-    const result = await window.ztools.internal.getCommands()
+    const result = await window.monotools.internal.getCommands()
     const pluginMap = new Map((result.plugins || []).map((plugin: any) => [plugin.name, plugin]))
     const targetMap = new Map<string, ShortcutsSettingAliasCommandOption>()
 
@@ -510,14 +510,14 @@ async function handleToggleBuiltInShortcut(
   enabled: boolean
 ): Promise<void> {
   try {
-    const settings = (await window.ztools.internal.dbGet('settings-general')) || {}
+    const settings = (await window.monotools.internal.dbGet('settings-general')) || {}
     const nextConfig = {
       ...DEFAULT_BUILTIN_SHORTCUTS_ENABLED,
       ...(settings.builtinAppShortcutsEnabled || {}),
       [key]: enabled
     }
     settings.builtinAppShortcutsEnabled = nextConfig
-    await window.ztools.internal.dbPut('settings-general', settings)
+    await window.monotools.internal.dbPut('settings-general', settings)
     builtInShortcutsEnabled.value = nextConfig
     success(enabled ? '已启用内置快捷键' : '已禁用内置快捷键')
   } catch (err: any) {
@@ -534,7 +534,7 @@ function handleBuiltInToggleChange(key: BuiltInShortcutKey, event: Event): void 
 
 async function saveGlobalShortcuts(): Promise<void> {
   try {
-    await window.ztools.internal.dbPut(
+    await window.monotools.internal.dbPut(
       'global-shortcuts',
       JSON.parse(JSON.stringify(globalShortcuts.value))
     )
@@ -545,7 +545,7 @@ async function saveGlobalShortcuts(): Promise<void> {
 
 async function saveAppShortcuts(): Promise<void> {
   try {
-    await window.ztools.internal.dbPut(
+    await window.monotools.internal.dbPut(
       'app-shortcuts',
       JSON.parse(JSON.stringify(appShortcuts.value))
     )
@@ -687,10 +687,10 @@ async function handleSaveGlobalShortcut(
 
     try {
       if (oldShortcut !== recordedShortcut) {
-        await window.ztools.internal.unregisterGlobalShortcut(oldShortcut)
+        await window.monotools.internal.unregisterGlobalShortcut(oldShortcut)
       }
 
-      const result = await window.ztools.internal.registerGlobalShortcut(
+      const result = await window.monotools.internal.registerGlobalShortcut(
         recordedShortcut,
         targetCommand,
         autoCopy
@@ -709,7 +709,7 @@ async function handleSaveGlobalShortcut(
         closeEditor()
       } else {
         if (oldShortcut !== recordedShortcut) {
-          await window.ztools.internal.registerGlobalShortcut(
+          await window.monotools.internal.registerGlobalShortcut(
             oldShortcut,
             editingShortcut.value.target,
             autoCopy
@@ -719,7 +719,7 @@ async function handleSaveGlobalShortcut(
       }
     } catch (err: any) {
       if (oldShortcut !== recordedShortcut) {
-        await window.ztools.internal.registerGlobalShortcut(
+        await window.monotools.internal.registerGlobalShortcut(
           oldShortcut,
           editingShortcut.value.target,
           autoCopy
@@ -749,7 +749,7 @@ async function handleSaveGlobalShortcut(
   await saveGlobalShortcuts()
 
   try {
-    const result = await window.ztools.internal.registerGlobalShortcut(
+    const result = await window.monotools.internal.registerGlobalShortcut(
       recordedShortcut,
       targetCommand,
       false // 新建快捷键默认禁用自动复制
@@ -787,10 +787,10 @@ async function handleSaveAppShortcut(
 
     try {
       if (oldShortcut !== recordedShortcut) {
-        await window.ztools.internal.unregisterAppShortcut(oldShortcut)
+        await window.monotools.internal.unregisterAppShortcut(oldShortcut)
       }
 
-      const result = await window.ztools.internal.registerAppShortcut(
+      const result = await window.monotools.internal.registerAppShortcut(
         recordedShortcut,
         targetCommand
       )
@@ -807,7 +807,7 @@ async function handleSaveAppShortcut(
         closeEditor()
       } else {
         if (oldShortcut !== recordedShortcut) {
-          await window.ztools.internal.registerAppShortcut(
+          await window.monotools.internal.registerAppShortcut(
             oldShortcut,
             editingShortcut.value.target
           )
@@ -816,7 +816,7 @@ async function handleSaveAppShortcut(
       }
     } catch (err: any) {
       if (oldShortcut !== recordedShortcut) {
-        await window.ztools.internal.registerAppShortcut(oldShortcut, editingShortcut.value.target)
+        await window.monotools.internal.registerAppShortcut(oldShortcut, editingShortcut.value.target)
       }
       console.error('更新应用快捷键失败:', err)
       error(`更新应用快捷键失败: ${err.message || '未知错误'}`)
@@ -841,7 +841,7 @@ async function handleSaveAppShortcut(
   await saveAppShortcuts()
 
   try {
-    const result = await window.ztools.internal.registerAppShortcut(recordedShortcut, targetCommand)
+    const result = await window.monotools.internal.registerAppShortcut(recordedShortcut, targetCommand)
     if (result.success) {
       success('应用快捷键添加成功!')
       closeEditor()
@@ -876,7 +876,7 @@ async function handleDelete(id: string): Promise<void> {
   isDeleting.value = true
   try {
     if (isGlobal) {
-      const result = await window.ztools.internal.unregisterGlobalShortcut(shortcut.shortcut)
+      const result = await window.monotools.internal.unregisterGlobalShortcut(shortcut.shortcut)
       if (result.success) {
         globalShortcuts.value = globalShortcuts.value.filter((s) => s.id !== id)
         await saveGlobalShortcuts()
@@ -884,7 +884,7 @@ async function handleDelete(id: string): Promise<void> {
         error(`快捷键删除失败: ${result.error}`)
       }
     } else {
-      const result = await window.ztools.internal.unregisterAppShortcut(shortcut.shortcut)
+      const result = await window.monotools.internal.unregisterAppShortcut(shortcut.shortcut)
       if (result.success) {
         appShortcuts.value = appShortcuts.value.filter((s) => s.id !== id)
         await saveAppShortcuts()
@@ -934,7 +934,7 @@ async function handleAutoCopyToggle(shortcut: any, event: Event): Promise<void> 
       ...(s.configurable !== undefined && { configurable: s.configurable }),
       ...(s.configKey !== undefined && { configKey: s.configKey })
     }))
-    await window.ztools.internal.dbPut('global-shortcuts', dataToSave)
+    await window.monotools.internal.dbPut('global-shortcuts', dataToSave)
     console.log('[AutoCopy] 数据库保存成功')
 
     // 3. 通知主进程更新配置
@@ -942,7 +942,7 @@ async function handleAutoCopyToggle(shortcut: any, event: Event): Promise<void> 
       shortcut: shortcut.shortcut,
       autoCopy: newAutoCopy
     })
-    const result = await window.ztools.internal.updateGlobalShortcutConfig(shortcut.shortcut, {
+    const result = await window.monotools.internal.updateGlobalShortcutConfig(shortcut.shortcut, {
       autoCopy: newAutoCopy
     })
     console.log('[AutoCopy] 主进程配置更新结果:', result)

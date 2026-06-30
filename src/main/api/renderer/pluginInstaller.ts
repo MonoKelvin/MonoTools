@@ -258,7 +258,7 @@ export class PluginInstallerAPI {
     }
     this.marketDownloadTasks.set(pluginName, task)
 
-    const tempDir = path.join(app.getPath('temp'), 'ztools-plugin-download', taskId)
+    const tempDir = path.join(app.getPath('temp'), 'monotools-plugin-download', taskId)
     const tempFilePath = path.join(tempDir, `${safePluginName}.zpx`)
 
     try {
@@ -401,7 +401,7 @@ export class PluginInstallerAPI {
 
   /**
    * 从 npm 安装插件
-   * @param packageName npm 包名（支持作用域包，如 @ztools/example）
+   * @param packageName npm 包名（支持作用域包，如 @monotools/example）
    * @param useChinaMirror 是否使用国内镜像（默认 false）
    */
   public async installPluginFromNpm(packageName: string, useChinaMirror = false): Promise<any> {
@@ -444,7 +444,7 @@ export class PluginInstallerAPI {
       console.log('[Plugins] Tarball URL:', tarballUrl)
 
       // 3. 创建临时目录并下载 tarball
-      const tempDir = path.join(app.getPath('temp'), 'ztools-npm-download')
+      const tempDir = path.join(app.getPath('temp'), 'monotools-npm-download')
       await fs.mkdir(tempDir, { recursive: true })
 
       const tarballPath = path.join(tempDir, `${Date.now()}.tgz`)
@@ -484,7 +484,7 @@ export class PluginInstallerAPI {
       } catch {
         // 清理临时文件
         await fs.rm(tempDir, { recursive: true, force: true })
-        return { success: false, error: '这不是一个有效的 ZTools 插件包（缺少 plugin.json）' }
+        return { success: false, error: '这不是一个有效的 MonoTools 插件包（缺少 plugin.json）' }
       }
 
       // 7. 读取并验证 plugin.json
@@ -605,7 +605,7 @@ export class PluginInstallerAPI {
         `${pad(now.getSeconds())}`
 
       const downloadsDir = app.getPath('downloads')
-      const exportDir = path.join(downloadsDir, `ztools-plugins-${timestamp}`)
+      const exportDir = path.join(downloadsDir, `monotools-plugins-${timestamp}`)
 
       await fs.mkdir(exportDir, { recursive: true })
 

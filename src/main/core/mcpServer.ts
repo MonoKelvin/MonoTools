@@ -216,7 +216,7 @@ class McpServer {
 
     if (req.method === 'GET' && pathname === '/mcp') {
       this.sendRawJson(res, 200, {
-        name: 'ZTools MCP',
+        name: 'MonoTools MCP',
         protocolVersion: MCP_PROTOCOL_VERSION,
         message: 'Use POST /mcp with JSON-RPC 2.0'
       })
@@ -333,7 +333,7 @@ class McpServer {
             tools: {}
           },
           serverInfo: {
-            name: 'ztools-mcp',
+            name: 'monotools-mcp',
             version: app.getVersion()
           }
         }

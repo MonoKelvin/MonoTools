@@ -115,7 +115,7 @@ async function togglePin(plugin: any): Promise<void> {
   try {
     // 将 Vue 响应式数组转换为普通数组，避免 IPC 克隆错误
     const plainArray = [...pinnedPluginPaths.value]
-    await window.ztools.internal.dbPut(PINNED_PLUGINS_KEY, plainArray)
+    await window.monotools.internal.dbPut(PINNED_PLUGINS_KEY, plainArray)
   } catch (e) {
     console.error('保存置顶列表失败:', e)
   }
@@ -126,8 +126,8 @@ async function loadPlugins(): Promise<void> {
   isLoading.value = true
   try {
     const [installedPlugins, disabledPlugins] = await Promise.all([
-      window.ztools.internal.getPlugins(),
-      window.ztools.internal.getDisabledPlugins()
+      window.monotools.internal.getPlugins(),
+      window.monotools.internal.getDisabledPlugins()
     ])
     disabledPluginPaths.value = disabledPlugins
     plugins.value = buildPluginList(installedPlugins)
@@ -170,11 +170,11 @@ let marketCheckSeq = 0
 async function checkMarketUpdates(): Promise<void> {
   const seq = ++marketCheckSeq
   try {
-    const marketResult = await window.ztools.internal.fetchPluginMarket()
+    const marketResult = await window.monotools.internal.fetchPluginMarket()
     if (seq !== marketCheckSeq) return // 已被新调用取代，丢弃结果
     if (!marketResult.success || !Array.isArray(marketResult.data)) return
 
-    const currentPlatform = window.ztools.internal.getPlatform()
+    const currentPlatform = window.monotools.internal.getPlatform()
     const marketPluginMap = new Map<string, any>()
     for (const marketPlugin of marketResult.data) {
       if (!marketPlugin?.name) continue
@@ -282,7 +282,7 @@ async function handleUpgradeAllPlugins(): Promise<void> {
 // 加载运行中的插件
 async function loadRunningPlugins(): Promise<void> {
   try {
-    const result = await window.ztools.internal.getRunningPlugins()
+    const result = await window.monotools.internal.getRunningPlugins()
     runningPlugins.value = result
   } catch (error) {
     console.error('加载运行中插件失败:', error)
@@ -301,7 +301,7 @@ async function importPlugin(): Promise<void> {
   isImporting.value = true
   try {
     // 仅选择文件，不直接安装
-    const result = await window.ztools.internal.selectPluginFile()
+    const result = await window.monotools.internal.selectPluginFile()
     if (result.success && result.filePath) {
       void router.replace({
         name: 'PluginInstaller',
@@ -328,7 +328,7 @@ async function handleUninstallFromDetail(
 
   isDeleting.value = true
   try {
-    const result = await window.ztools.internal.deletePlugin(plugin.path, options)
+    const result = await window.monotools.internal.deletePlugin(plugin.path, options)
     if (result.success) {
       success(options.deleteData ? '插件已卸载，插件数据已删除' : '插件已卸载，插件数据已保留')
       // 关闭详情面板
@@ -352,7 +352,7 @@ async function handleKillPlugin(plugin: any): Promise<void> {
 
   isKilling.value = true
   try {
-    const result = await window.ztools.internal.killPlugin(plugin.path)
+    const result = await window.monotools.internal.killPlugin(plugin.path)
     if (result.success) {
       // 重新加载运行状态
       await loadRunningPlugins()
@@ -392,7 +392,7 @@ async function handleKillAllPlugins(): Promise<void> {
     // 逐个停止插件
     for (const pluginPath of pluginPaths) {
       try {
-        const result = await window.ztools.internal.killPlugin(pluginPath)
+        const result = await window.monotools.internal.killPlugin(pluginPath)
         if (result.success) {
           successCount++
         } else {
@@ -435,7 +435,7 @@ async function handleOpenPlugin(plugin: any): Promise<void> {
   }
 
   try {
-    const result = await window.ztools.internal.launch({
+    const result = await window.monotools.internal.launch({
       path: plugin.path,
       type: 'plugin',
       name: plugin.title || plugin.name, // 传递插件名称
@@ -455,7 +455,7 @@ async function handleOpenPlugin(plugin: any): Promise<void> {
 // 打开插件目录
 async function handleOpenFolder(plugin: any): Promise<void> {
   try {
-    await window.ztools.internal.revealInFinder(plugin.path)
+    await window.monotools.internal.revealInFinder(plugin.path)
   } catch (err: any) {
     console.error('打开目录失败:', err)
     error(`打开目录失败: ${err.message || '未知错误'}`)
@@ -464,7 +464,7 @@ async function handleOpenFolder(plugin: any): Promise<void> {
 
 async function handleTogglePluginDisabled(plugin: any, disabled: boolean): Promise<void> {
   try {
-    const result = await window.ztools.internal.setPluginDisabled(plugin.path, disabled)
+    const result = await window.monotools.internal.setPluginDisabled(plugin.path, disabled)
     if (!result.success) {
       error(`更新插件状态失败: ${result.error || '未知错误'}`)
       return
@@ -500,7 +500,7 @@ async function handleExportAllPlugins(): Promise<void> {
   showMoreMenu.value = false
 
   try {
-    const result = await window.ztools.internal.exportAllPlugins()
+    const result = await window.monotools.internal.exportAllPlugins()
     if (result.success) {
       success(`导出成功，共 ${result.count} 个插件`)
     } else {
@@ -541,7 +541,7 @@ function handleClickOutside(e: MouseEvent): void {
 // 初始化时加载插件列表
 onMounted(async () => {
   try {
-    const data = await window.ztools.internal.dbGet(PINNED_PLUGINS_KEY)
+    const data = await window.monotools.internal.dbGet(PINNED_PLUGINS_KEY)
     pinnedPluginPaths.value = Array.isArray(data) ? data : []
   } catch (e) {
     console.error('加载置顶列表失败:', e)
@@ -552,7 +552,7 @@ onMounted(async () => {
   window.addEventListener('click', handleClickOutside)
 })
 
-// 处理对应 ztools code 进来的功能
+// 处理对应 monotools code 进来的功能
 useJumpFunction((state) => {
   void loadRunningPlugins()
   if (state.payload) {
@@ -645,7 +645,7 @@ async function handleInstallFromNpm(data: {
 
   isImportingNpm.value = true
   try {
-    const result = await window.ztools.internal.installPluginFromNpm({
+    const result = await window.monotools.internal.installPluginFromNpm({
       packageName: data.packageName,
       useChinaMirror: data.useChinaMirror
     })

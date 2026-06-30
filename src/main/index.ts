@@ -1,5 +1,5 @@
 import { platform } from '@electron-toolkit/utils'
-import { app, BrowserWindow, session, webContents } from 'electron'
+import { app, BrowserWindow, session, webContents, shell } from 'electron'
 import log from 'electron-log'
 import path from 'path'
 import lmdbInstance from './core/lmdb/lmdbInstance'
@@ -15,10 +15,11 @@ import { loadInternalPlugins } from './core/internalPluginLoader'
 import { startInternalPluginServer } from './core/internalPluginServer'
 import pluginManager from './managers/pluginManager'
 import windowManager from './managers/windowManager'
+import { DataMigrationManager } from './core/dataMigrationManager'
 
 // Windows 平台需要设置 AppUserModelId 才能让单例锁正常工作
 if (process.platform === 'win32') {
-  app.setAppUserModelId('link.eiot.ztools')
+  app.setAppUserModelId('link.eiot.monotools')
 }
 
 // 单例锁
@@ -65,7 +66,7 @@ registerIconScheme()
 // ========== GPU 加速控制（必须在 app.ready 之前）==========
 // app.disableHardwareAcceleration() 只能在 app ready 之前生效，所以需要提前直接读数据库
 try {
-  const settingsDoc = lmdbInstance.get('ZTOOLS/settings-general')
+  const settingsDoc = lmdbInstance.get('MONOTOOLS/settings-general')
   if (settingsDoc?.data?.disableGpuAcceleration === true) {
     app.disableHardwareAcceleration()
     console.log('[Main] 已禁用 GPU 硬件加速（用户设置）')
@@ -116,8 +117,131 @@ export function getCurrentShortcut(): string {
   return windowManager.getCurrentShortcut()
 }
 
+// 数据迁移管理器
+let migrationManager: DataMigrationManager | null = null
+let migrationWindow: BrowserWindow | null = null
+let isMigrationInProgress = false
+
+/**
+ * 显示迁移进度窗口
+ */
+function showMigrationWindow(message: string, complete = false): void {
+  migrationWindow = new BrowserWindow({
+    width: 500,
+    height: 300,
+    resizable: false,
+    frame: true,
+    backgroundColor: '#1e1e1e',
+    title: 'MonoTools',
+    autoHideMenuBar: true
+  })
+
+  migrationWindow.setMenuBarVisibility(false)
+  migrationWindow.loadFile(path.join(__dirname, '../renderer/migration.html'))
+
+  // 注入消息
+  const webContents = migrationWindow.webContents
+  webContents.on('did-finish-load', () => {
+    webContents.executeJavaScript(`
+      document.getElementById('migration-message').textContent = '${message}'
+      document.getElementById('migration-complete').style.display = '${complete ? 'block' : 'none'}'
+    `)
+  })
+
+  // 窗口关闭时如果还在迁移中，强制关闭应用
+  migrationWindow.on('close', (event) => {
+    if (isMigrationInProgress && !complete) {
+      event.preventDefault()
+    }
+  })
+}
+
+/**
+ * 显示迁移完成窗口并重启应用
+ */
+function showMigrationCompleteAndRestart(): void {
+  showMigrationWindow('迁移完成！\n正在重新启动应用...', true)
+
+  setTimeout(() => {
+    migrationWindow?.close()
+    // 重启应用
+    app.relaunch()
+    app.quit()
+  }, 2000)
+}
+
+/**
+ * 执行数据迁移
+ */
+async function performMigration(): Promise<void> {
+  isMigrationInProgress = true
+  showMigrationWindow('正在迁移您的数据...')
+
+  try {
+    migrationManager = new DataMigrationManager()
+
+    if (!migrationManager.needsMigration()) {
+      console.log('[Main] 未检测到 ZTools 数据，无需迁移')
+      showMigrationCompleteAndRestart()
+      return
+    }
+
+    console.log('[Main] 检测到 ZTools 数据，开始迁移...')
+
+    // 显示迁移进度
+    showMigrationWindow('正在迁移剪贴板历史...')
+
+    // 执行迁移
+    const success = await migrationManager.migrate()
+
+    if (success) {
+      console.log('[Main] 数据迁移成功')
+
+      // 清理旧数据
+      await migrationManager.cleanupOldData()
+
+      // 显示完成并重启
+      showMigrationCompleteAndRestart()
+    } else {
+      throw new Error('迁移失败')
+    }
+  } catch (error) {
+    console.error('[Main] 数据迁移失败:', error)
+    isMigrationInProgress = false
+
+    // 显示错误消息
+    showMigrationWindow('迁移失败！\n\n错误: ' + (error as Error).message)
+  }
+}
+
+// 初始化迁移管理器（在 app ready 之前）
+let needsMigration = false
+if (!isMigrationInProgress) {
+  // 检查是否是从迁移模式重启的
+  const args = process.argv.slice(1)
+  const wasMigrating = args.includes('--migration-complete')
+
+  if (wasMigrating) {
+    // 迁移完成后的首次启动
+    console.log('[Main] 检测到迁移完成，清理迁移标记')
+  } else {
+    // 检查是否需要迁移
+    const migrationManager = new DataMigrationManager()
+    if (migrationManager.needsMigration()) {
+      // 执行迁移
+      needsMigration = true
+      performMigration()
+    }
+  }
+}
+
+// 检查是否需要迁移
+if (needsMigration) {
+  throw new Error('Migration needed, restart application to complete')
+}
+
 app.whenReady().then(async () => {
-  // 注册自定义图标协议到默认 session (ztools-icon://)
+  // 注册自定义图标协议到默认 session (monotools-icon://)
   registerIconProtocolForSession(session.defaultSession)
 
   // 启动内置插件本地 HTTP server（仅生产环境，解决 file:// 下的 CSP 限制）

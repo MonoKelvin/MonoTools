@@ -60,7 +60,7 @@ describe('database plugin isolation', () => {
       if (prefix === 'PLUGIN/') {
         return [{ _id: 'PLUGIN/demo/settings' }, { _id: 'PLUGIN/demo__dev/settings' }]
       }
-      if (prefix === 'ZTOOLS/') {
+      if (prefix === 'MONOTOOLS/') {
         return []
       }
       return []
@@ -77,7 +77,7 @@ describe('database plugin isolation', () => {
     })
 
     mockLmdb.get.mockImplementation((key: string) => {
-      if (key === 'ZTOOLS/plugins') {
+      if (key === 'MONOTOOLS/plugins') {
         return {
           data: [
             {

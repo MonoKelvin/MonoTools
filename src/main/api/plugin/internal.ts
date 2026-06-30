@@ -84,7 +84,7 @@ export class InternalPluginAPI {
    * 注册仅允许内置插件访问的 IPC 能力。
    */
   private setupIPC(): void {
-    // ==================== 数据库 API (ZTOOLS/ 命名空间) ====================
+    // ==================== 数据库 API (MONOTOOLS/ 命名空间) ====================
     ipcMain.handle('internal:db-put', (event, key: string, value: any) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:db-put')

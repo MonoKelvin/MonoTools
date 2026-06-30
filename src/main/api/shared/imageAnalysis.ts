@@ -18,7 +18,7 @@ export async function analyzeImage(imagePath: string): Promise<ImageAnalysisResu
   try {
     // 1. 处理不同格式的图片输入
     let imageBuffer: Buffer
-    if (imagePath.startsWith('ztools-icon://')) {
+    if (imagePath.startsWith('monotools-icon://')) {
       // 动态生成的应用图标，不做颜色分析，直接返回默认值
       // 避免尝试作为文件读取导致 ENOENT 错误
       return { isSimpleIcon: false, mainColor: null, isDark: false, needsAdaptation: false }

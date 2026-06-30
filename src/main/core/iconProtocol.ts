@@ -68,13 +68,13 @@ function createIconResponse(buffer: Buffer): Response {
 }
 
 /**
- * 注册 ztools-icon:// 为特权协议
+ * 注册 monotools-icon:// 为特权协议
  * 必须在 app.ready 之前调用
  */
 export function registerIconScheme(): void {
   protocol.registerSchemesAsPrivileged([
     {
-      scheme: 'ztools-icon',
+      scheme: 'monotools-icon',
       privileges: {
         bypassCSP: true,
         secure: true,
@@ -108,17 +108,17 @@ export async function getFileIconAsBase64(filePath: string): Promise<string> {
 }
 
 /**
- * 在指定 session 中注册 ztools-icon:// 协议 handler
+ * 在指定 session 中注册 monotools-icon:// 协议 handler
  * 供内置插件使用（外部插件不需要访问应用图标）
  */
 export function registerIconProtocolForSession(targetSession: Electron.Session): void {
-  if (targetSession.protocol.isProtocolHandled('ztools-icon')) {
+  if (targetSession.protocol.isProtocolHandled('monotools-icon')) {
     return
   }
 
-  targetSession.protocol.handle('ztools-icon', async (request) => {
+  targetSession.protocol.handle('monotools-icon', async (request) => {
     try {
-      const urlPath = request.url.replace('ztools-icon://', '')
+      const urlPath = request.url.replace('monotools-icon://', '')
       const iconPath = decodeURIComponent(urlPath)
 
       // 命中内存缓存：刷新 LRU 并返回

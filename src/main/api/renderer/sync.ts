@@ -134,7 +134,7 @@ export class SyncAPI {
     ipcMain.handle('sync:get-unsynced-count', async () => {
       try {
         // 同步白名单（不包括 command-history 和 pinned-commands 以保护隐私）
-        const syncPrefixes = ['ZTOOLS/settings-general', 'PLUGIN/']
+        const syncPrefixes = ['MONOTOOLS/settings-general', 'PLUGIN/']
         let count = 0
 
         for (const prefix of syncPrefixes) {

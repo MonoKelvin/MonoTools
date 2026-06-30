@@ -1,16 +1,16 @@
-# ZTools
+# MonoTools
 
 <div align="center">
 
-<img src="./.github/assets/icon.png" alt="ZTools Logo" width="120">
+<img src="./.github/assets/icon.png" alt="MonoTools Logo" width="120">
 
 **一个高性能、可扩展的应用启动器和插件平台**
 
 _uTools 的开源实现 | 支持 macOS 和 Windows_
 
-[![GitHub release](https://img.shields.io/github/v/release/lzx8589561/ZTools)](https://github.com/ZToolsCenter/ZTools/releases)
-[![License](https://img.shields.io/github/license/lzx8589561/ZTools)](./LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/ZToolsCenter/ZTools)
+[![GitHub release](https://img.shields.io/github/v/release/lzx8589561/MonoTools)](https://github.com/MonoToolsCenter/MonoTools/releases)
+[![License](https://img.shields.io/github/license/lzx8589561/MonoTools)](./LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/MonoToolsCenter/MonoTools)
 
 [English](./README_EN.md) | 简体中文
 
@@ -33,7 +33,7 @@ _uTools 的开源实现 | 支持 macOS 和 Windows_
 ## 📸 预览
 
 <div align="center">
-  <img src="./.github/assets/demo.gif" alt="ZTools 演示" width="600">
+  <img src="./.github/assets/demo.gif" alt="MonoTools 演示" width="600">
   <p><i>快速启动应用和搜索功能演示</i></p>
 </div>
 
@@ -70,17 +70,17 @@ _uTools 的开源实现 | 支持 macOS 和 Windows_
 
 #### 方式 1：下载预编译版本（推荐）
 
-从 [Releases](https://github.com/ZToolsCenter/ZTools/releases) 页面下载最新版本：
+从 [Releases](https://github.com/MonoToolsCenter/MonoTools/releases) 页面下载最新版本：
 
-- **macOS**: `ztools-x.x.x.dmg` 或 `ZTools-x.x.x-arm64-mac.zip`
-- **Windows**: `ztools-x.x.x-setup.exe` 或 `ztools-x.x.x-win.zip`
+- **macOS**: `monotools-x.x.x.dmg` 或 `MonoTools-x.x.x-arm64-mac.zip`
+- **Windows**: `monotools-x.x.x-setup.exe` 或 `monotools-x.x.x-win.zip`
 
 #### 方式 2：从源码构建
 
 ```bash
 # 克隆仓库
-git clone https://github.com/ZToolsCenter/ZTools.git
-cd ZTools
+git clone https://github.com/MonoToolsCenter/MonoTools.git
+cd MonoTools
 
 # 安装依赖
 pnpm install
@@ -104,7 +104,7 @@ pnpm build:linux:arm64 # Linux (按 arm64 架构打包)
 
 ### 插件市场
 
-ZTools 提供内置的插件市场，可以方便地浏览和安装插件：
+MonoTools 提供内置的插件市场，可以方便地浏览和安装插件：
 
 **主要功能**：
 
@@ -115,14 +115,14 @@ ZTools 提供内置的插件市场，可以方便地浏览和安装插件：
 
 **使用方法**：
 
-1. 打开 ZTools 设置（点击头像）
+1. 打开 MonoTools 设置（点击头像）
 2. 切换到"插件市场"标签
 3. 浏览并安装感兴趣的插件
 4. 已安装插件会显示"打开"或"升级"按钮
 
 **技术实现**：
 
-- 插件托管在 GitHub Releases（[ZTools-plugins](https://github.com/ZToolsCenter/ZTools-plugins/releases)）
+- 插件托管在 GitHub Releases（[MonoTools-plugins](https://github.com/MonoToolsCenter/MonoTools-plugins/releases)）
 - 插件列表：从 `plugins.json` 文件获取插件信息和下载链接
 - 插件包格式：ZIP 压缩包，包含 `plugin.json` 和插件文件
 - 版本比较：自动对比本地版本和市场版本（语义化版本号）
@@ -130,7 +130,7 @@ ZTools 提供内置的插件市场，可以方便地浏览和安装插件：
 
 ### 应用内更新
 
-ZTools 支持应用内一键更新，无需手动下载安装包：
+MonoTools 支持应用内一键更新，无需手动下载安装包：
 
 **更新流程**：
 
@@ -141,14 +141,14 @@ ZTools 支持应用内一键更新，无需手动下载安装包：
 
 **技术实现**：
 
-- 更新源：GitHub Releases（[ZTools](https://github.com/ZToolsCenter/ZTools/releases)）
+- 更新源：GitHub Releases（[MonoTools](https://github.com/MonoToolsCenter/MonoTools/releases)）
 - 更新信息文件：`latest.yml`（包含版本号、更新日志等）
 - 更新包格式：ZIP 压缩包，命名格式为 `update-{platform}-{arch}-{version}.zip`
   - 示例：`update-darwin-arm64-1.2.8.zip`（macOS Apple Silicon）
   - 示例：`update-win32-x64-1.2.8.zip`（Windows x64）
-- 更新程序：独立的 `ztools-updater` 可执行文件
-  - macOS: `ztools-updater`（位于 Contents/MacOS/）
-  - Windows: `ztools-agent.exe`（位于应用根目录）
+- 更新程序：独立的 `monotools-updater` 可执行文件
+  - macOS: `monotools-updater`（位于 Contents/MacOS/）
+  - Windows: `monotools-agent.exe`（位于应用根目录）
 - 更新流程：
   1. 从 GitHub Releases 下载 `latest.yml` 获取最新版本信息
   2. 下载对应平台的更新包
@@ -164,18 +164,18 @@ ZTools 支持应用内一键更新，无需手动下载安装包：
 
 ## 🧩 插件开发
 
-ZTools 是一个强大、可扩展的插件平台，使用自定义插件提升您的生产力。通过简单的配置、丰富的 API 以及跨平台支持，您可以轻松开发出功能强大的插件。
+MonoTools 是一个强大、可扩展的插件平台，使用自定义插件提升您的生产力。通过简单的配置、丰富的 API 以及跨平台支持，您可以轻松开发出功能强大的插件。
 
 **插件系统特点**：
 
 - 📝 **简单配置** - 通过标准的 `plugin.json` 文件轻松定义插件，无需复杂的设置
-- 🔌 **丰富的 API** - 通过全局 `ztools` 对象访问系统能力，包括通知、模拟输入和持久化存储
+- 🔌 **丰富的 API** - 通过全局 `monotools` 对象访问系统能力，包括通知、模拟输入和持久化存储
 - 🎯 **灵活的指令** - 使用文本、正则或全局钩子触发您的插件，以适应任何工作流
 - 🌍 **跨平台** - 一次构建，在 Windows、macOS 和 Linux 上运行，在所有设备上获得一致的体验
 
-> 📖 **完整文档**：查看 [ZTools 开发者文档](https://ztoolscenter.github.io/ZTools-doc/) 了解更多详情
+> 📖 **完整文档**：查看 [MonoTools 开发者文档](https://monotoolscenter.github.io/MonoTools-doc/) 了解更多详情
 
-ZTools 提供完整的插件系统，支持两种类型：
+MonoTools 提供完整的插件系统，支持两种类型：
 
 ### UI 插件
 
@@ -226,7 +226,7 @@ window.exports = {
     args: {
       enter: async (action) => {
         // 处理逻辑
-        window.ztools.showNotification('执行完成')
+        window.monotools.showNotification('执行完成')
         return { success: true }
       }
     }
@@ -236,7 +236,7 @@ window.exports = {
 
 ### 插件 API
 
-ZTools 提供丰富的 API：
+MonoTools 提供丰富的 API：
 
 - **数据库 API** - 持久化数据存储
 - **剪贴板 API** - 访问和监听剪贴板
@@ -262,7 +262,7 @@ ZTools 提供丰富的 API：
 ## 📁 项目结构
 
 ```
-ztools/
+monotools/
 ├── src/
 │   ├── main/              # 主进程
 │   │   ├── api/          # IPC API 模块
@@ -298,12 +298,12 @@ ztools/
 
 1. 先 fork 仓库
 
-- 如果需要贡献代码请 fork [ztools-api-types](https://github.com/ZToolsCenter/ztools-api-types) 和 [ztools-plugin-cli](https://github.com/ZToolsCenter/ztools-plugin-cli) 仓库
+- 如果需要贡献代码请 fork [monotools-api-types](https://github.com/MonoToolsCenter/monotools-api-types) 和 [monotools-plugin-cli](https://github.com/MonoToolsCenter/monotools-plugin-cli) 仓库
 
 2. 拉取完整代码
 
 ```bash
-git clone https://github.com/ZToolsCenter/ZTools.git --recurse-submodules
+git clone https://github.com/MonoToolsCenter/MonoTools.git --recurse-submodules
 ```
 
 ### 开发命令
@@ -361,12 +361,12 @@ pnpm build:unpack       # 打包但不生成安装包（调试用）
 
 ## 🐛 问题反馈
 
-遇到问题？请在 [Issues](https://github.com/ZToolsCenter/ZTools/issues) 中反馈。
+遇到问题？请在 [Issues](https://github.com/MonoToolsCenter/MonoTools/issues) 中反馈。
 
 提交 Issue 时请包含：
 
 - 操作系统版本
-- ZTools 版本
+- MonoTools 版本
 - 复现步骤
 - 错误日志（如有）
 
@@ -376,9 +376,9 @@ pnpm build:unpack       # 打包但不生成安装包（调试用）
 
 ## 💖 赞助支持
 
-如果 ZTools 对你有帮助，欢迎通过爱发电赞助支持项目的持续开发：
+如果 MonoTools 对你有帮助，欢迎通过爱发电赞助支持项目的持续开发：
 
-<a href="https://afdian.com/a/ZTools">
+<a href="https://afdian.com/a/MonoTools">
   <img src="https://img.shields.io/badge/爱发电-赞助支持-946ce6?style=for-the-badge" alt="爱发电">
 </a>
 
@@ -391,7 +391,7 @@ pnpm build:unpack       # 打包但不生成安装包（调试用）
 
 ## ⭐ Star 历史
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/ZTools&type=Date)](https://star-history.com/#lzx8589561/ZTools&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/MonoTools&type=Date)](https://star-history.com/#lzx8589561/MonoTools&Date)
 
 ---
 

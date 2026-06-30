@@ -696,7 +696,7 @@ export class PluginsAPI {
     pluginName: string
   ): Promise<{ success: boolean; content?: string; error?: string }> {
     try {
-      const baseUrl = `https://raw.githubusercontent.com/ZToolsCenter/ZTools-plugins/main/plugins/${pluginName}`
+      const baseUrl = `https://raw.githubusercontent.com/MonoToolsCenter/MonoTools-plugins/main/plugins/${pluginName}`
       const readmeUrl = `${baseUrl}/README.md`
 
       console.log('[Plugins] 从远程加载 README:', readmeUrl)
@@ -757,11 +757,11 @@ export class PluginsAPI {
   } {
     try {
       if (pluginName === 'ZTOOLS') {
-        const allData = lmdbInstance.allDocs('ZTOOLS/')
+        const allData = lmdbInstance.allDocs('MONOTOOLS/')
         return {
           success: true,
           data: allData.map((item: any) => ({
-            id: item._id.substring('ZTOOLS/'.length),
+            id: item._id.substring('MONOTOOLS/'.length),
             data: item.data,
             rev: item._rev,
             updatedAt: item.updatedAt || item._updatedAt

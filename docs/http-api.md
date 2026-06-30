@@ -1,10 +1,10 @@
-# ZTools HTTP API
+# MonoTools HTTP API
 
-ZTools 内置 HTTP 服务，允许第三方应用通过本地 HTTP 接口控制 ZTools。
+MonoTools 内置 HTTP 服务，允许第三方应用通过本地 HTTP 接口控制 MonoTools。
 
 ## 快速开始
 
-1. 打开 ZTools → 设置 → HTTP 服务
+1. 打开 MonoTools → 设置 → HTTP 服务
 2. 开启「启用 HTTP 服务」
 3. 复制 API 访问密钥
 4. 使用任意 HTTP 客户端调用接口
@@ -80,7 +80,7 @@ GET /
 ```json
 {
   "code": 0,
-  "message": "Hello ZTools"
+  "message": "Hello MonoTools"
 }
 ```
 
@@ -94,7 +94,7 @@ curl http://127.0.0.1:36578/
 
 ### POST /api/window/show — 显示主窗口
 
-显示 ZTools 主窗口并激活到前台。可选传入 `text` 参数，自动填充到搜索输入框。
+显示 MonoTools 主窗口并激活到前台。可选传入 `text` 参数，自动填充到搜索输入框。
 
 **请求**
 
@@ -147,7 +147,7 @@ curl -X POST http://127.0.0.1:36578/api/window/show \
 
 ### POST /api/window/hide — 隐藏主窗口
 
-隐藏 ZTools 主窗口。
+隐藏 MonoTools 主窗口。
 
 **请求**
 

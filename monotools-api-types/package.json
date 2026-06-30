@@ -1,0 +1,39 @@
+{
+  "name": "@monotools-center/monotools-api-types",
+  "version": "1.0.0",
+  "description": "MonoTools API 代码提示 （直接Copy uTools的，部分API未完成适配）",
+  "main": "index.d.ts",
+  "types": "index.d.ts",
+  "files": [
+    "index.d.ts",
+    "ztools.api.d.ts",
+    "zbw.d.ts",
+    "electron.d.ts",
+    "resource/",
+    "README.md",
+    "API_STATUS.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "ztools",
+    "utools",
+    "plugin",
+    "typescript",
+    "types",
+    "api"
+  ],
+  "author": "MonoTools Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MonoToolsCenter/MonoTools.git",
+    "directory": "monotools-api-types"
+  },
+  "bugs": {
+    "url": "https://github.com/MonoToolsCenter/MonoTools/issues"
+  },
+  "homepage": "https://github.com/MonoToolsCenter/MonoTools/tree/main/monotools-api-types",
+  "utools-version": "7.2.0",
+  "utools-commit": "22df3aa",
+  "sync-date": "2026-06-30"
+}

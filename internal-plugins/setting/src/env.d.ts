@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
-/// <reference types="@ztools-center/ztools-api-types" />
+/// <reference types="@monotools-center/monotools-api-types" />
 
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
@@ -7,7 +7,7 @@ declare module '*.vue' {
   export default component
 }
 
-// 类型定义文件：定义 ZTools 设置插件可用的 API
+// 类型定义文件：定义 MonoTools 设置插件可用的 API
 
 // Preload services 类型声明（对应 public/preload/services.js）
 interface Services {
@@ -19,7 +19,7 @@ interface Services {
 declare global {
   interface Window {
     services: Services
-    ztools: {
+    monotools: {
       // 获取拖放文件的路径（Electron webUtils）
       getPathForFile: (file: File) => string
 

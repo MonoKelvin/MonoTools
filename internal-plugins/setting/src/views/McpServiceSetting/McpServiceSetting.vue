@@ -86,9 +86,9 @@ async function copyText(text: string, message: string): Promise<void> {
 async function loadConfig(): Promise<void> {
   try {
     const [configResult, statusResult, toolsResult] = await Promise.all([
-      window.ztools.internal.mcpServerGetConfig(),
-      window.ztools.internal.mcpServerStatus(),
-      window.ztools.internal.mcpServerTools()
+      window.monotools.internal.mcpServerGetConfig(),
+      window.monotools.internal.mcpServerStatus(),
+      window.monotools.internal.mcpServerTools()
     ])
 
     if (configResult.success && configResult.config) {
@@ -108,7 +108,7 @@ async function loadConfig(): Promise<void> {
 
 async function saveConfig(): Promise<void> {
   try {
-    const result = await window.ztools.internal.mcpServerSaveConfig({
+    const result = await window.monotools.internal.mcpServerSaveConfig({
       enabled: enabled.value,
       port: MCP_PORT,
       apiKey: apiKey.value
@@ -123,7 +123,7 @@ async function saveConfig(): Promise<void> {
       apiKey.value = result.config.apiKey
     }
 
-    const statusResult = await window.ztools.internal.mcpServerStatus()
+    const statusResult = await window.monotools.internal.mcpServerStatus()
     running.value = statusResult.success ? (statusResult.running ?? false) : false
   } catch (err: unknown) {
     error(`保存失败：${err instanceof Error ? err.message : '未知错误'}`)
@@ -137,7 +137,7 @@ async function handleServiceToggle(): Promise<void> {
 async function togglePlugin(plugin: McpPluginGroup, value: boolean): Promise<void> {
   try {
     savingPluginPath.value = plugin.pluginPath
-    const current = await window.ztools.internal.dbGet(MCP_DISABLED_PLUGINS_KEY)
+    const current = await window.monotools.internal.dbGet(MCP_DISABLED_PLUGINS_KEY)
     const disabled = new Set<string>(
       Array.isArray(current) ? current.filter((item: unknown) => typeof item === 'string') : []
     )
@@ -148,7 +148,7 @@ async function togglePlugin(plugin: McpPluginGroup, value: boolean): Promise<voi
       disabled.add(plugin.pluginPath)
     }
 
-    await window.ztools.internal.dbPut(MCP_DISABLED_PLUGINS_KEY, [...disabled])
+    await window.monotools.internal.dbPut(MCP_DISABLED_PLUGINS_KEY, [...disabled])
     await loadConfig()
   } catch (err: unknown) {
     error(`更新插件状态失败：${err instanceof Error ? err.message : '未知错误'}`)

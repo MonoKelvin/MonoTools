@@ -45,7 +45,7 @@ class ProviderManager {
   private pluginManager: PluginManager | null = null
   /** 已注册的内置 provider 定义（id -> definition） */
   private builtinProviders = new Map<string, BuiltinProviderDefinition>()
-  /** webContents.id => 已通过 ztools.registerProvider 注册的 key 集合 */
+  /** webContents.id => 已通过 monotools.registerProvider 注册的 key 集合 */
   private registeredProviders = new Map<number, Set<string>>()
   /** webContents.id:key => 等待注册完成的回调 */
   private waiters = new Map<string, Array<() => void>>()
@@ -58,7 +58,7 @@ class ProviderManager {
   // ==================== IPC ====================
 
   private setupIPC(): void {
-    // 插件 preload 通过 ztools.registerProvider 注册
+    // 插件 preload 通过 monotools.registerProvider 注册
     // payload 为插件内声明 key（plugin.json providers 字段的 key），不再限制为 type。
     ipcMain.on('plugin:provider-register', (event, key: string) => {
       try {
@@ -236,10 +236,10 @@ class ProviderManager {
 
     const result = await webContents.executeJavaScript(`
       (async () => {
-        if (!window.ztools || typeof window.ztools.__invokeRegisteredProvider !== 'function') {
+        if (!window.monotools || typeof window.monotools.__invokeRegisteredProvider !== 'function') {
           throw new Error('插件运行时缺少 provider 调用入口')
         }
-        return await window.ztools.__invokeRegisteredProvider(
+        return await window.monotools.__invokeRegisteredProvider(
           ${JSON.stringify(entry.key)},
           ${JSON.stringify(input ?? {})}
         )

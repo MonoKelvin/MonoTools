@@ -227,7 +227,7 @@ onMounted(async () => {
 
   // 从数据库加载亚克力透明度设置
   try {
-    const settings = await window.ztools.dbGet('settings-general')
+    const settings = await window.monotools.dbGet('settings-general')
     if (settings) {
       acrylicLightOpacity.value = settings.acrylicLightOpacity ?? 78
       acrylicDarkOpacity.value = settings.acrylicDarkOpacity ?? 50
@@ -248,8 +248,8 @@ onMounted(async () => {
   }
 
   // 初始化时获取当前窗口材质
-  if (window.ztools?.getWindowMaterial) {
-    window.ztools
+  if (window.monotools?.getWindowMaterial) {
+    window.monotools
       .getWindowMaterial()
       .then((material: string) => {
         console.log('标题栏初始化材质:', material)
@@ -263,8 +263,8 @@ onMounted(async () => {
   }
 
   // 监听窗口材质更新
-  if (window.ztools?.onUpdateWindowMaterial) {
-    window.ztools.onUpdateWindowMaterial((material: 'mica' | 'acrylic' | 'none') => {
+  if (window.monotools?.onUpdateWindowMaterial) {
+    window.monotools.onUpdateWindowMaterial((material: 'mica' | 'acrylic' | 'none') => {
       console.log('标题栏收到材质更新:', material)
       document.documentElement.setAttribute('data-material', material)
       // 应用亚克力背景色叠加效果
@@ -273,8 +273,8 @@ onMounted(async () => {
   }
 
   // 监听亚克力透明度更新事件
-  if (window.ztools?.onUpdateAcrylicOpacity) {
-    window.ztools.onUpdateAcrylicOpacity((data: { lightOpacity: number; darkOpacity: number }) => {
+  if (window.monotools?.onUpdateAcrylicOpacity) {
+    window.monotools.onUpdateAcrylicOpacity((data: { lightOpacity: number; darkOpacity: number }) => {
       console.log('标题栏更新亚克力透明度:', data)
       acrylicLightOpacity.value = data.lightOpacity
       acrylicDarkOpacity.value = data.darkOpacity
@@ -284,8 +284,8 @@ onMounted(async () => {
   }
 
   // 监听主题色更新
-  if (window.ztools?.onUpdatePrimaryColor) {
-    window.ztools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
+  if (window.monotools?.onUpdatePrimaryColor) {
+    window.monotools.onUpdatePrimaryColor((data: { primaryColor: string; customColor?: string }) => {
       console.log('标题栏更新主题色:', data)
       primaryColor.value = data.primaryColor
       if (data.customColor) {
@@ -373,8 +373,8 @@ onMounted(async () => {
   })
 
   // 监听 AI 状态变化
-  if (window.ztools?.onAiStatusChanged) {
-    window.ztools.onAiStatusChanged((status: 'idle' | 'sending' | 'receiving') => {
+  if (window.monotools?.onAiStatusChanged) {
+    window.monotools.onAiStatusChanged((status: 'idle' | 'sending' | 'receiving') => {
       aiRequestStatus.value = status
     })
   }
@@ -409,8 +409,8 @@ async function showPluginSettings(): Promise<void> {
     console.log('当前插件名称:', pluginName.value)
 
     // 读取当前插件的配置状态
-    const outKillPluginData = await window.ztools.dbGet('outKillPlugin')
-    const autoDetachPluginData = await window.ztools.dbGet('autoDetachPlugin')
+    const outKillPluginData = await window.monotools.dbGet('outKillPlugin')
+    const autoDetachPluginData = await window.monotools.dbGet('autoDetachPlugin')
 
     console.log('读取到的配置数据:', { outKillPluginData, autoDetachPluginData })
 
@@ -459,7 +459,7 @@ async function showPluginSettings(): Promise<void> {
       const updatedList = outKillPluginList.includes(currentName)
         ? outKillPluginList.filter((n) => n !== currentName)
         : [...outKillPluginList, currentName]
-      await window.ztools.dbPut('outKillPlugin', updatedList)
+      await window.monotools.dbPut('outKillPlugin', updatedList)
       console.log('已更新“退出到后台立即结束运行”配置:', updatedList)
     } else if (result?.id === 'toggle-auto-detach') {
       // 切换“自动分离为独立窗口”
@@ -469,7 +469,7 @@ async function showPluginSettings(): Promise<void> {
       const updatedList = autoDetachPluginList.includes(currentName)
         ? autoDetachPluginList.filter((n) => n !== currentName)
         : [...autoDetachPluginList, currentName]
-      await window.ztools.dbPut('autoDetachPlugin', updatedList)
+      await window.monotools.dbPut('autoDetachPlugin', updatedList)
       console.log('已更新"自动分离为独立窗口"配置:', updatedList)
     }
   } catch (error) {

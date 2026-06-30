@@ -9,12 +9,12 @@ export const BUNDLED_INTERNAL_PLUGIN_NAMES = ['setting', 'system'] as const
 
 /**
  * 内部 API 特权插件名称列表
- * 这些插件允许调用 window.ztools.internal，但不一定是随包内置插件。
+ * 这些插件允许调用 window.monotools.internal，但不一定是随包内置插件。
  */
 export const INTERNAL_API_PLUGIN_NAMES = [
   ...BUNDLED_INTERNAL_PLUGIN_NAMES,
-  'ztools-developer-plugin__dev',
-  'ztools-developer-plugin'
+  'monotools-developer-plugin__dev',
+  'monotools-developer-plugin'
 ] as const
 
 export type BundledInternalPluginName = (typeof BUNDLED_INTERNAL_PLUGIN_NAMES)[number]

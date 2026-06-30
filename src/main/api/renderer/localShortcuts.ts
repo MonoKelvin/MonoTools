@@ -127,17 +127,17 @@ export class LocalShortcutsAPI {
       // 获取文件图标
       let icon: string | undefined
       if (itemType === 'app') {
-        // 应用程序使用 ztools-icon:// 协议（与系统应用扫描器一致）
+        // 应用程序使用 monotools-icon:// 协议（与系统应用扫描器一致）
         if (process.platform === 'darwin') {
           // macOS: 直接使用 .app 路径，由原生层提取图标
-          icon = `ztools-icon://${encodeURIComponent(selectedPath)}`
+          icon = `monotools-icon://${encodeURIComponent(selectedPath)}`
         } else {
           // Windows: 直接使用 .exe 或 .lnk 路径
-          icon = `ztools-icon://${encodeURIComponent(selectedPath)}`
+          icon = `monotools-icon://${encodeURIComponent(selectedPath)}`
         }
       } else if (itemType === 'folder' && process.platform === 'win32') {
-        // Windows 文件夹：使用 ztools-icon:// 协议获取系统文件夹图标
-        icon = `ztools-icon://${encodeURIComponent(selectedPath)}`
+        // Windows 文件夹：使用 monotools-icon:// 协议获取系统文件夹图标
+        icon = `monotools-icon://${encodeURIComponent(selectedPath)}`
       } else {
         // 其他情况（macOS 文件夹、普通文件）使用 app.getFileIcon 获取系统图标
         try {
@@ -231,17 +231,17 @@ export class LocalShortcutsAPI {
       // 获取文件图标
       let icon: string | undefined
       if (itemType === 'app') {
-        // 应用程序使用 ztools-icon:// 协议（与系统应用扫描器一致）
+        // 应用程序使用 monotools-icon:// 协议（与系统应用扫描器一致）
         if (process.platform === 'darwin') {
           // macOS: 直接使用 .app 路径，由原生层提取图标
-          icon = `ztools-icon://${encodeURIComponent(selectedPath)}`
+          icon = `monotools-icon://${encodeURIComponent(selectedPath)}`
         } else {
           // Windows: 直接使用 .exe 或 .lnk 路径
-          icon = `ztools-icon://${encodeURIComponent(selectedPath)}`
+          icon = `monotools-icon://${encodeURIComponent(selectedPath)}`
         }
       } else if (itemType === 'folder' && process.platform === 'win32') {
-        // Windows 文件夹：使用 ztools-icon:// 协议获取系统文件夹图标
-        icon = `ztools-icon://${encodeURIComponent(selectedPath)}`
+        // Windows 文件夹：使用 monotools-icon:// 协议获取系统文件夹图标
+        icon = `monotools-icon://${encodeURIComponent(selectedPath)}`
       } else {
         // 其他情况（macOS 文件夹、普通文件）使用 app.getFileIcon 获取系统图标
         try {

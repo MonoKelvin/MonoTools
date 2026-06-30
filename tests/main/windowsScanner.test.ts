@@ -52,17 +52,17 @@ describe('shouldSkipShortcut（仅按名称过滤）', () => {
 describe('getIconUrl', () => {
   it('应生成正确的图标 URL', () => {
     const result = getIconUrl('C:\\App\\app.exe')
-    expect(result).toBe(`ztools-icon://${encodeURIComponent('C:\\App\\app.exe')}`)
+    expect(result).toBe(`monotools-icon://${encodeURIComponent('C:\\App\\app.exe')}`)
   })
 
   it('应正确编码特殊字符', () => {
     const result = getIconUrl('C:\\Program Files (x86)\\App\\app.exe')
-    expect(result).toContain('ztools-icon://')
+    expect(result).toContain('monotools-icon://')
     expect(result).toContain(encodeURIComponent('C:\\Program Files (x86)\\App\\app.exe'))
   })
 
-  it('应以 ztools-icon:// 协议开头', () => {
-    expect(getIconUrl('test')).toMatch(/^ztools-icon:\/\//)
+  it('应以 monotools-icon:// 协议开头', () => {
+    expect(getIconUrl('test')).toMatch(/^monotools-icon:\/\//)
   })
 })
 

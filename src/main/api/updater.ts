@@ -27,7 +27,7 @@ interface UpdatePaths {
  */
 export class UpdaterAPI {
   private latestYmlUrl =
-    'https://github.com/ZToolsCenter/ZTools/releases/latest/download/latest.yml'
+    'https://github.com/MonoToolsCenter/MonoTools/releases/latest/download/latest.yml'
   private mainWindow: BrowserWindow | null = null
   private checkTimer: NodeJS.Timeout | null = null
   private downloadedUpdateInfo: any = null
@@ -196,7 +196,7 @@ export class UpdaterAPI {
     const arch = process.arch // x64, arm64
 
     const fileName = `update-${platform}-${arch}-${version}.zip`
-    const baseUrl = 'https://github.com/ZToolsCenter/ZTools/releases/latest/download'
+    const baseUrl = 'https://github.com/MonoToolsCenter/MonoTools/releases/latest/download'
 
     return `${baseUrl}/${fileName}`
   }
@@ -212,7 +212,7 @@ export class UpdaterAPI {
       console.log('[Updater] 下载更新包:', downloadUrl)
 
       // 2. 下载更新包
-      const tempDir = path.join(app.getPath('userData'), 'ztools-update-pkg')
+      const tempDir = path.join(app.getPath('userData'), 'monotools-update-pkg')
       await fs.mkdir(tempDir, { recursive: true })
       const tempZipPath = path.join(tempDir, `update-${Date.now()}.zip`)
       const extractPath = path.join(tempDir, `extracted-${Date.now()}`)
@@ -280,29 +280,29 @@ export class UpdaterAPI {
 
       if (!app.isPackaged) {
         const safeArch = process.arch === 'arm64' ? 'arm64' : 'amd64'
-        updaterPath = path.join(app.getAppPath(), `updater/mac-${safeArch}/ztools-updater`)
+        updaterPath = path.join(app.getAppPath(), `updater/mac-${safeArch}/monotools-updater`)
       } else {
-        updaterPath = path.join(path.dirname(appPath), 'ztools-updater')
+        updaterPath = path.join(path.dirname(appPath), 'monotools-updater')
       }
 
       asarDst = path.join(resourcesDir, 'app.asar')
       unpackedDst = path.join(resourcesDir, 'app.asar.unpacked')
     } else if (isWin) {
       const appDir = path.dirname(appPath)
-      const agentPath = path.join(appDir, 'ztools-agent.exe')
-      const oldUpdaterPath = path.join(appDir, 'ztools-updater.exe')
+      const agentPath = path.join(appDir, 'monotools-agent.exe')
+      const oldUpdaterPath = path.join(appDir, 'monotools-updater.exe')
 
-      // 兼容旧版本：如果 ztools-agent.exe 不存在，尝试查找并重命名 ztools-updater.exe
+      // 兼容旧版本：如果 monotools-agent.exe 不存在，尝试查找并重命名 monotools-updater.exe
       try {
         await fs.access(agentPath)
         updaterPath = agentPath
       } catch {
-        // ztools-agent.exe 不存在，尝试查找旧版本
+        // monotools-agent.exe 不存在，尝试查找旧版本
         try {
           await fs.access(oldUpdaterPath)
           // 找到旧版本，重命名为新版本
           await fs.rename(oldUpdaterPath, agentPath)
-          console.log('[Updater] 已将 ztools-updater.exe 重命名为 ztools-agent.exe')
+          console.log('[Updater] 已将 monotools-updater.exe 重命名为 monotools-agent.exe')
           updaterPath = agentPath
         } catch {
           // 两个文件都不存在，使用默认路径（后续会报错）
@@ -389,7 +389,7 @@ export class UpdaterAPI {
       console.log('[Updater] 开始检查更新...')
 
       // 1. 下载 latest.yml 文件
-      const tempDir = path.join(app.getPath('userData'), 'ztools-update-check')
+      const tempDir = path.join(app.getPath('userData'), 'monotools-update-check')
       await fs.mkdir(tempDir, { recursive: true })
       const tempFilePath = path.join(tempDir, `latest-${Date.now()}.yml`)
 

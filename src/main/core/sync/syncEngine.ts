@@ -554,7 +554,7 @@ export class SyncEngine {
    */
   private async getUnsyncedDocs(): Promise<any[]> {
     // 获取所有需要同步的文档前缀（不包括 command-history 和 pinned-commands 以保护隐私）
-    const syncPrefixes = ['ZTOOLS/settings-general', 'PLUGIN/']
+    const syncPrefixes = ['MONOTOOLS/settings-general', 'PLUGIN/']
 
     const unsyncedDocs: any[] = []
     const seenIds = new Set<string>()
@@ -1012,7 +1012,7 @@ export class SyncEngine {
     const pluginJson = JSON.parse(fs.readFileSync(pluginJsonPath, 'utf-8'))
 
     // 更新 LMDB 插件列表
-    const pluginsDoc = await this.db.promises.get('ZTOOLS/plugins')
+    const pluginsDoc = await this.db.promises.get('MONOTOOLS/plugins')
     const plugins: any[] = pluginsDoc?.data ? JSON.parse(JSON.stringify(pluginsDoc.data)) : []
 
     // 检查是否已存在
@@ -1035,7 +1035,7 @@ export class SyncEngine {
     }
 
     await this.db.promises.put({
-      _id: 'ZTOOLS/plugins',
+      _id: 'MONOTOOLS/plugins',
       _rev: pluginsDoc?._rev,
       data: plugins
     })
@@ -1056,11 +1056,11 @@ export class SyncEngine {
     }
 
     // 从 LMDB 插件列表移除
-    const pluginsDoc = await this.db.promises.get('ZTOOLS/plugins')
+    const pluginsDoc = await this.db.promises.get('MONOTOOLS/plugins')
     if (pluginsDoc?.data) {
       const plugins = pluginsDoc.data.filter((p: any) => p.name !== pluginName)
       await this.db.promises.put({
-        _id: 'ZTOOLS/plugins',
+        _id: 'MONOTOOLS/plugins',
         _rev: pluginsDoc._rev,
         data: plugins
       })

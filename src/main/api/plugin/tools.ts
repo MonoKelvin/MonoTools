@@ -41,7 +41,7 @@ const MCP_DISABLED_PLUGINS_DB_KEY = 'settings-mcp-disabled-plugins'
  */
 class PluginToolsAPI {
   private pluginManager: PluginManager | null = null
-  // webContents.id => 已通过 ztools.registerTool 注册的工具集合
+  // webContents.id => 已通过 monotools.registerTool 注册的工具集合
   private registeredTools = new Map<number, Set<string>>()
   // webContents.id:toolName => 等待工具注册完成的回调列表
   private waiters = new Map<string, Array<() => void>>()
@@ -204,15 +204,15 @@ class PluginToolsAPI {
       throw new Error(`工具 "${toolName}" 未在 plugin.json 中声明`)
     }
     if (!this.isToolRegistered(webContents, toolName)) {
-      throw new Error(`工具 "${toolName}" 尚未通过 ztools.registerTool 注册`)
+      throw new Error(`工具 "${toolName}" 尚未通过 monotools.registerTool 注册`)
     }
 
     return await webContents.executeJavaScript(`
       (async () => {
-        if (!window.ztools || typeof window.ztools.__invokeRegisteredTool !== 'function') {
+        if (!window.monotools || typeof window.monotools.__invokeRegisteredTool !== 'function') {
           throw new Error('插件运行时缺少工具调用入口')
         }
-        return await window.ztools.__invokeRegisteredTool(
+        return await window.monotools.__invokeRegisteredTool(
           ${JSON.stringify(toolName)},
           ${JSON.stringify(input ?? {})}
         )

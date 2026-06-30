@@ -5,14 +5,14 @@ import { isBundledInternalPlugin } from './internalPlugins.js'
 const LEGACY_WEB_SEARCH_FEATURE_PREFIX = 'web-search-'
 
 /**
- * 将单个旧版 macOS .icns 图标 URL 迁移为直接使用 .app 路径的 ztools-icon URL
+ * 将单个旧版 macOS .icns 图标 URL 迁移为直接使用 .app 路径的 monotools-icon URL
  */
 function migrateLegacyMacAppIcon(item: { path?: string; icon?: string }): boolean {
   if (process.platform !== 'darwin') return false
   if (!item || typeof item.path !== 'string' || typeof item.icon !== 'string') return false
-  if (!item.path.endsWith('.app') || !item.icon.startsWith('ztools-icon://')) return false
+  if (!item.path.endsWith('.app') || !item.icon.startsWith('monotools-icon://')) return false
 
-  const encodedPath = item.icon.replace('ztools-icon://', '')
+  const encodedPath = item.icon.replace('monotools-icon://', '')
   let decodedPath = ''
   try {
     decodedPath = decodeURIComponent(encodedPath)
@@ -22,7 +22,7 @@ function migrateLegacyMacAppIcon(item: { path?: string; icon?: string }): boolea
 
   if (!decodedPath.endsWith('.icns')) return false
 
-  const nextIcon = `ztools-icon://${encodeURIComponent(item.path)}`
+  const nextIcon = `monotools-icon://${encodeURIComponent(item.path)}`
   if (item.icon === nextIcon) return false
 
   item.icon = nextIcon

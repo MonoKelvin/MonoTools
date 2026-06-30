@@ -176,7 +176,7 @@ export class PluginMarketAPI {
     try {
       // 读取设置，检查是否有自定义插件市场 URL
       const settings = databaseAPI.dbGet('settings-general')
-      const defaultBaseUrl = 'https://ztools.zosen.link'
+      const defaultBaseUrl = 'https://monotools.zosen.link'
       let baseUrl = defaultBaseUrl
 
       if (settings?.pluginMarketCustom && settings?.pluginMarketUrl) {

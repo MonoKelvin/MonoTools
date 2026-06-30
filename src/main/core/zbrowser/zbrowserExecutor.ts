@@ -623,7 +623,7 @@ export class ZBrowserExecutor {
       throw new Error('"goto" method did not executed')
     }
     // 安全校验：仅允许临时目录下的文件（由 client.js _resolveFilePayload 生成）
-    const allowedDir = path.join(app.getPath('temp'), 'ztools-zbrowser')
+    const allowedDir = path.join(app.getPath('temp'), 'monotools-zbrowser')
     for (const filePath of files) {
       const resolved = path.resolve(filePath)
       if (!resolved.startsWith(allowedDir + path.sep) && !resolved.startsWith(allowedDir)) {
@@ -675,7 +675,7 @@ export class ZBrowserExecutor {
         throw new Error('save directory not exist')
       }
     } else {
-      dir = path.join(app.getPath('temp'), 'ztools-zbrowser')
+      dir = path.join(app.getPath('temp'), 'monotools-zbrowser')
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
       }
@@ -783,7 +783,7 @@ export class ZBrowserExecutor {
         throw new Error('save directory not exist')
       }
     } else {
-      dir = path.join(app.getPath('temp'), 'ztools-zbrowser')
+      dir = path.join(app.getPath('temp'), 'monotools-zbrowser')
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
       }
@@ -865,7 +865,7 @@ export class ZBrowserExecutor {
         } else {
           const tempDir = path.join(
             app.getPath('temp'),
-            'ztools-zbrowser',
+            'monotools-zbrowser',
             `download_${Date.now()}`
           )
           try {

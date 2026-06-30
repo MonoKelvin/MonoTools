@@ -135,10 +135,10 @@ function enrichPlugins(
 async function fetchPlugins(): Promise<void> {
   isLoading.value = true
   try {
-    const currentPlatform = window.ztools.internal.getPlatform()
+    const currentPlatform = window.monotools.internal.getPlatform()
     const [marketResult, installedPlugins] = await Promise.all([
-      window.ztools.internal.fetchPluginMarket(),
-      window.ztools.internal.getPlugins()
+      window.monotools.internal.fetchPluginMarket(),
+      window.monotools.internal.getPlugins()
     ])
 
     const typedMarketResult = marketResult as PluginMarketResponse
@@ -270,7 +270,7 @@ async function handleOpenPlugin(plugin: Plugin): Promise<void> {
     return
   }
   try {
-    const result = await window.ztools.internal.launch({
+    const result = await window.monotools.internal.launch({
       path: plugin.path,
       type: 'plugin',
       name: plugin.title || plugin.name,
@@ -372,7 +372,7 @@ function handleDownloadProgress(payload: PluginDownloadState & { pluginName: str
 async function downloadPlugin(plugin: Plugin): Promise<void> {
   const currentState = downloadStates.value[plugin.name]
   if (currentState?.status === 'downloading') {
-    const cancelResult = await window.ztools.internal.cancelPluginMarketDownload(
+    const cancelResult = await window.monotools.internal.cancelPluginMarketDownload(
       currentState.taskId || plugin.name
     )
     if (!cancelResult.success) {
@@ -390,7 +390,7 @@ async function downloadPlugin(plugin: Plugin): Promise<void> {
   })
 
   try {
-    const result = await window.ztools.internal.installPluginFromMarket(
+    const result = await window.monotools.internal.installPluginFromMarket(
       JSON.parse(JSON.stringify(plugin))
     )
     if (result.success) {
@@ -424,7 +424,7 @@ async function handleUninstallPlugin(
   }
 
   try {
-    const deleteResult = await window.ztools.internal.deletePlugin(plugin.path, options)
+    const deleteResult = await window.monotools.internal.deletePlugin(plugin.path, options)
     if (!deleteResult.success) {
       error(`卸载失败: ${deleteResult.error}`)
       return
@@ -446,7 +446,7 @@ async function handleUninstallPlugin(
 
 function handleBannerClick(item: BannerItem): void {
   if (item.url) {
-    window.ztools.shellOpenExternal(item.url)
+    window.monotools.shellOpenExternal(item.url)
   }
 }
 
@@ -496,7 +496,7 @@ useJumpFunction<PluginMarketSettingJumpFunction>((state) => {
 onMounted(() => {
   fetchPlugins()
   stopDownloadProgressListener =
-    window.ztools.internal.onPluginMarketDownloadProgress(handleDownloadProgress)
+    window.monotools.internal.onPluginMarketDownloadProgress(handleDownloadProgress)
   window.addEventListener('keydown', handleKeydown, true)
 })
 

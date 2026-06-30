@@ -1,8 +1,8 @@
 {
-  "$schema": "node_modules/@ztools-center/ztools-api-types/resource/ztools.schema.json",
+  "$schema": "node_modules/@monotools-center/monotools-api-types/resource/monotools.schema.json",
   "name": "system",
   "title": "系统",
-  "description": "ZTools 系统内置插件",
+  "description": "MonoTools 系统内置插件",
   "author": "Zing",
   "version": "1.0.0",
   "logo": "clear.png",

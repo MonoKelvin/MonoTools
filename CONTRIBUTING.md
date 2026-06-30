@@ -1,15 +1,15 @@
 # 贡献指南
 
-感谢你对 ZTools 的关注！我们欢迎所有形式的贡献。
+感谢你对 MonoTools 的关注！我们欢迎所有形式的贡献。
 
 ## 📋 贡献方式
 
 ### 报告 Bug
 
-如果你发现了 Bug，请在 [Issues](https://github.com/ZToolsCenter/ZTools/issues) 中创建一个新的 Issue，并提供以下信息：
+如果你发现了 Bug，请在 [Issues](https://github.com/MonoToolsCenter/MonoTools/issues) 中创建一个新的 Issue，并提供以下信息：
 
 - 操作系统版本（macOS/Windows 版本号）
-- ZTools 版本号
+- MonoTools 版本号
 - 详细的复现步骤
 - 预期行为和实际行为
 - 错误日志（如果有）
@@ -35,11 +35,11 @@
 ```bash
 # Fork 本仓库到你的账号
 # 然后克隆你的 fork
-git clone https://github.com/your-username/ZTools.git
-cd ZTools
+git clone https://github.com/your-username/MonoTools.git
+cd MonoTools
 
 # 添加上游仓库
-git remote add upstream https://github.com/ZToolsCenter/ZTools.git
+git remote add upstream https://github.com/MonoToolsCenter/MonoTools.git
 ```
 
 ### 2. 创建分支
@@ -216,4 +216,4 @@ function search(query: string): SearchResult {
 
 ## 🎉 感谢
 
-感谢你的贡献！每一个 PR、Issue、建议都会让 ZTools 变得更好。
+感谢你的贡献！每一个 PR、Issue、建议都会让 MonoTools 变得更好。

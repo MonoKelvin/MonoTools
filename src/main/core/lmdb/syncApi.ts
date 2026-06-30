@@ -130,7 +130,7 @@ export class SyncApi {
    */
   private shouldSync(docId: string): boolean {
     // 同步白名单（不包括 command-history 和 pinned-commands 以保护隐私）
-    const syncPrefixes = ['ZTOOLS/settings-general', 'PLUGIN/']
+    const syncPrefixes = ['MONOTOOLS/settings-general', 'MONOTOOLS/command-history', 'MONOTOOLS/pinned-commands', 'PLUGIN/']
 
     return syncPrefixes.some((prefix) => docId.startsWith(prefix))
   }

@@ -2,7 +2,7 @@
 
 ## 项目概述
 
-ZTools 是一个跨平台 (macOS/Windows) 应用启动器和插件平台，类似 Alfred/Raycast。
+MonoTools 是一个跨平台 (macOS/Windows) 应用启动器和插件平台，类似 Alfred/Raycast。
 技术栈：Electron 41 + Vue 3 + TypeScript + Pinia + LMDB + WebContentsView。
 
 核心能力：拼音搜索、插件系统（UI/无界面）、剪贴板管理、超级面板、分离窗口、WebDAV 同步、MCP Server、AI 集成、ZBrowser 浏览器自动化、离线翻译、悬浮球、网页快开。
@@ -23,7 +23,7 @@ pnpm build:linux      # 打包 Linux
 pnpm build:unpack     # 打包但不生成安装包（调试用）
 pnpm test             # 运行测试 (vitest)
 pnpm test:watch       # 测试观察模式
-pnpm sync-api-types   # 同步 ztools-api-types 子模块类型
+pnpm sync-api-types   # 同步 monotools-api-types 子模块类型
 ```
 
 ## 项目结构
@@ -100,7 +100,7 @@ src/main/                          # 主进程
     floatingBallManager.ts         # 悬浮球（置顶小圆球，单击/双击触发）
     translationManager.ts          # 离线翻译（Bergamot WASM + Firefox 翻译模型）
     mcpServer.ts                   # MCP JSON-RPC 服务（暴露插件工具）
-    httpServer.ts                  # HTTP API 服务（外部调用 ZTools 功能）
+    httpServer.ts                  # HTTP API 服务（外部调用 MonoTools 功能）
     ffmpeg.ts                      # FFmpeg 下载管理（按平台从 GitHub 下载）
     doubleTapManager.ts            # 双击修饰键检测（uiohook-napi）
     detachedWindowManager.ts       # 分离窗口管理（插件独立为窗口）
@@ -108,7 +108,7 @@ src/main/                          # 主进程
     internalPlugins.ts             # 内置插件定义
     internalPluginLoader.ts        # 内置插件加载器
     internalPluginServer.ts        # 内置插件开发服务器
-    iconProtocol.ts                # ztools-icon:// 协议（图标加载）
+    iconProtocol.ts                # monotools-icon:// 协议（图标加载）
     screenCapture.ts               # 屏幕截图
     logCollector.ts                # 日志收集
     globalStyles.ts                # 全局滚动条样式注入
@@ -128,7 +128,7 @@ src/main/                          # 主进程
     devToolsShortcut.ts            # 开发者工具快捷键
     common.ts                      # 通用工具函数
 
-src/preload/index.ts               # 主程序 preload（contextBridge → window.ztools）
+src/preload/index.ts               # 主程序 preload（contextBridge → window.monotools）
 resources/preload.js               # 插件 preload（不经过 Vite 构建，修改需重启）
 
 src/renderer/                      # 渲染进程
@@ -164,7 +164,7 @@ internal-plugins/                  # 内置插件
   setting/                         # 应用设置插件（独立 Vue 项目，Vite + UnoCSS）
   system/                          # 系统工具插件
 
-ztools-api-types/                  # 插件 API 类型定义子模块（对外发布）
+monotools-api-types/                  # 插件 API 类型定义子模块（对外发布）
 ```
 
 ## 核心概念
@@ -214,7 +214,7 @@ registerPluginApiServices({
 })
 ```
 
-插件端通过 `ztools.callService('myApiName', arg1, arg2)` 调用。旧的 `ipcMain.handle` 方式仍然支持。
+插件端通过 `monotools.callService('myApiName', arg1, arg2)` 调用。旧的 `ipcMain.handle` 方式仍然支持。
 
 ### 数据持久化 (LMDB)
 
@@ -222,7 +222,7 @@ registerPluginApiServices({
 
 命名空间：`ZTOOLS/`（主程序）、`PLUGIN/{name}/`（插件，自动隔离）、`SYNC/`（同步配置）。
 
-`window.ztools.dbGet/dbPut` 自动添加 `ZTOOLS/` 前缀。插件通过 `db.put/get` 自动添加 `PLUGIN/{name}/` 前缀。
+`window.monotools.dbGet/dbPut` 自动添加 `ZTOOLS/` 前缀。插件通过 `db.put/get` 自动添加 `PLUGIN/{name}/` 前缀。
 
 ## 关键代码路径
 
@@ -249,14 +249,14 @@ registerPluginApiServices({
 
 ### IPC 体系概览
 
-项目有**两个独立的 preload 文件**，分别面向不同消费者，暴露的 `window.ztools` 接口完全不同：
+项目有**两个独立的 preload 文件**，分别面向不同消费者，暴露的 `window.monotools` 接口完全不同：
 
 |                  | 主程序渲染进程                    | 插件（第三方 + 内置）            |
 | ---------------- | --------------------------------- | -------------------------------- |
 | **Preload 文件** | `src/preload/index.ts`            | `resources/preload.js`           |
 | **构建方式**     | 经过 Vite 构建                    | **不经过 Vite**，原生 JS         |
-| **注入方式**     | `contextBridge.exposeInMainWorld` | 直接挂载 `window.ztools`         |
-| **类型声明**     | `src/renderer/src/env.d.ts`       | `ztools-api-types/` 子模块       |
+| **注入方式**     | `contextBridge.exposeInMainWorld` | 直接挂载 `window.monotools`         |
+| **类型声明**     | `src/renderer/src/env.d.ts`       | `monotools-api-types/` 子模块       |
 | **消费者**       | `src/renderer/` 下的 Vue 应用     | 第三方插件 + `internal-plugins/` |
 | **修改后生效**   | 热重载                            | 需要**重启应用**                 |
 
@@ -268,7 +268,7 @@ registerPluginApiServices({
 
 1. **主进程 handler**：在 `src/main/api/renderer/xxx.ts` 中 `ipcMain.handle('channel', handler)`
 2. **Preload 暴露**：在 `src/preload/index.ts` 的 `api` 对象中添加方法（如 `myFeature: () => ipcRenderer.invoke('channel')`）
-3. **类型声明**：在 `src/preload/index.ts` 底部的 `declare global { interface Window { ztools: { ... } } }` 中添加类型
+3. **类型声明**：在 `src/preload/index.ts` 底部的 `declare global { interface Window { monotools: { ... } } }` 中添加类型
 4. **同步更新** `src/renderer/src/env.d.ts`（渲染进程 IDE 提示用）
 
 ### 新增插件 API
@@ -282,7 +282,7 @@ registerPluginApiServices({
 **步骤**：
 
 1. **主进程注册**：在 `src/main/api/plugin/xxx.ts` 中调用 `registerPluginApiServices`
-2. **Preload 暴露**：在 `resources/preload.js` 的 `window.ztools` 对象中添加调用入口
+2. **Preload 暴露**：在 `resources/preload.js` 的 `window.monotools` 对象中添加调用入口
 3. **初始化**：在 `src/main/api/index.ts` 的 `APIManager.init()` 中导入并 `init()`
 
 ```typescript
@@ -307,7 +307,7 @@ class MyPluginAPI {
 
 ```javascript
 // resources/preload.js - 插件端入口
-window.ztools = {
+window.monotools = {
   mySync: (param) => ipcSendSync('mySync', param), // 同步
   myAsync: (param) => ipcInvoke('myAsync', param), // 异步（返回 Promise）
   myFire: (param) => ipcSend('myFire', param) // 单向发送（无返回值）
@@ -331,19 +331,19 @@ window.ztools = {
 
 ```javascript
 // resources/preload.js
-window.ztools = {
+window.monotools = {
   myFeature: async (param) => await electron.ipcRenderer.invoke('plugin:my-feature', param)
 }
 ```
 
 ### 新增内置插件 API
 
-面向 `internal-plugins/`（setting、system），通过 `window.ztools.internal` 命名空间访问，提供更高系统权限。
+面向 `internal-plugins/`（setting、system），通过 `window.monotools.internal` 命名空间访问，提供更高系统权限。
 
 **步骤**：
 
 1. **主进程 handler**：在 `src/main/api/plugin/internal.ts` 中 `ipcMain.handle('internal:channel', handler)`
-2. **Preload 暴露**：在 `resources/preload.js` 的 `window.ztools.internal` 对象中添加方法
+2. **Preload 暴露**：在 `resources/preload.js` 的 `window.monotools.internal` 对象中添加方法
 
 通道名约定使用 `internal:` 前缀。内置插件 API 同时可以直接调用普通插件 API（如 `db`、`clipboard` 等）。
 
@@ -374,6 +374,14 @@ export default new NewAPI()
 - 主进程和渲染进程类型检查分开运行
 - 优先使用 `style.css` 中的通用控件类（.btn .input .select .toggle .card），不在组件中重复定义
 - 内置插件 setting 是独立 Vue 项目（`internal-plugins/setting/`），有自己的 vite.config.ts
-- 原生模块：macOS `resources/lib/mac/ztools_native.node`，Windows `resources/lib/win/ztools_native.node`
+- 原生模块：macOS `resources/lib/mac/monotools_native.node`，Windows `resources/lib/win/monotools_native.node`
 - 插件数据自动隔离，删除插件时自动清理历史和固定列表
 - 新的插件 API 优先使用 `registerPluginApiServices` 注册到统一分发器
+
+
+
+
+
+
+
+

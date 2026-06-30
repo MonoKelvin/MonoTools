@@ -300,7 +300,7 @@ class WindowManager {
     // 根据平台设置不同的窗口配置
     const windowConfig: Electron.BrowserWindowConstructorOptions = {
       type: 'panel',
-      title: 'ZTools',
+      title: 'MonoTools',
       width: WINDOW_WIDTH,
       height: WINDOW_INITIAL_HEIGHT,
       alwaysOnTop: true,
@@ -559,7 +559,7 @@ class WindowManager {
     this.tray = new Tray(icon)
 
     // 设置托盘提示文字
-    this.tray.setToolTip('ZTools')
+    this.tray.setToolTip('MonoTools')
 
     // 创建右键菜单
     this.createTrayMenu()

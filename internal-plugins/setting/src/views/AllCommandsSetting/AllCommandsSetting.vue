@@ -264,8 +264,8 @@ async function toggleDirectAppCommandDisabled(cmd: Command): Promise<void> {
 async function saveDisabledCommands(): Promise<void> {
   try {
     const plainArray = [...disabledCommands.value]
-    await window.ztools.internal.dbPut(DISABLED_COMMANDS_KEY, plainArray)
-    await window.ztools.internal.notifyDisabledCommandsChanged()
+    await window.monotools.internal.dbPut(DISABLED_COMMANDS_KEY, plainArray)
+    await window.monotools.internal.notifyDisabledCommandsChanged()
   } catch (error) {
     console.error('保存禁用指令列表失败:', error)
   }
@@ -273,7 +273,7 @@ async function saveDisabledCommands(): Promise<void> {
 
 async function loadDisabledCommands(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet(DISABLED_COMMANDS_KEY)
+    const data = await window.monotools.internal.dbGet(DISABLED_COMMANDS_KEY)
     if (data && Array.isArray(data)) {
       disabledCommands.value = data
     }
@@ -284,7 +284,7 @@ async function loadDisabledCommands(): Promise<void> {
 
 async function loadSuperPanelPinned(): Promise<void> {
   try {
-    superPanelPinned.value = await window.ztools.internal.getSuperPanelPinned()
+    superPanelPinned.value = await window.monotools.internal.getSuperPanelPinned()
   } catch (error) {
     console.error('加载超级面板固定列表失败:', error)
   }
@@ -315,7 +315,7 @@ async function toggleSuperPanelPin(
       (i) => i.name === cmdName && i.featureCode === featureCode && i.pluginName === pluginName
     )
     if (item) {
-      await window.ztools.internal.unpinSuperPanelCommand(item.path, item.featureCode)
+      await window.monotools.internal.unpinSuperPanelCommand(item.path, item.featureCode)
     }
   } else {
     const command = commands.value.find(
@@ -324,7 +324,7 @@ async function toggleSuperPanelPin(
     )
 
     if (command) {
-      await window.ztools.internal.pinToSuperPanel({
+      await window.monotools.internal.pinToSuperPanel({
         name: command.name,
         path: command.path || '',
         icon: command.icon || '',
@@ -344,9 +344,9 @@ async function toggleAppSuperPanelPin(cmd: Command): Promise<void> {
   const isPinned = isAppPinnedToSuperPanel(cmd)
 
   if (isPinned) {
-    await window.ztools.internal.unpinSuperPanelCommand(cmd.path || '', cmd.featureCode)
+    await window.monotools.internal.unpinSuperPanelCommand(cmd.path || '', cmd.featureCode)
   } else {
-    await window.ztools.internal.pinToSuperPanel({
+    await window.monotools.internal.pinToSuperPanel({
       name: cmd.name,
       path: cmd.path || '',
       icon: cmd.icon || '',
@@ -363,7 +363,7 @@ async function toggleAppSuperPanelPin(cmd: Command): Promise<void> {
 
 async function loadSearchPinned(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet(SEARCH_PINNED_KEY)
+    const data = await window.monotools.internal.dbGet(SEARCH_PINNED_KEY)
     if (data && Array.isArray(data)) {
       searchPinned.value = data
     }
@@ -390,7 +390,7 @@ async function toggleSearchPin(
   const pinned = isPinnedToSearch(featureCode)
 
   if (pinned) {
-    await window.ztools.internal.unpinApp(getCurrentSource()?.path || '', featureCode, cmdName)
+    await window.monotools.internal.unpinApp(getCurrentSource()?.path || '', featureCode, cmdName)
   } else {
     const command = commands.value.find(
       (c) =>
@@ -398,7 +398,7 @@ async function toggleSearchPin(
     )
 
     if (command) {
-      await window.ztools.internal.pinApp(JSON.parse(JSON.stringify(command)))
+      await window.monotools.internal.pinApp(JSON.parse(JSON.stringify(command)))
     }
   }
 
@@ -409,9 +409,9 @@ async function toggleAppSearchPin(cmd: Command): Promise<void> {
   const pinned = isAppPinnedToSearch(cmd)
 
   if (pinned) {
-    await window.ztools.internal.unpinApp(cmd.path || '', undefined, cmd.name)
+    await window.monotools.internal.unpinApp(cmd.path || '', undefined, cmd.name)
   } else {
-    await window.ztools.internal.pinApp(JSON.parse(JSON.stringify(cmd)))
+    await window.monotools.internal.pinApp(JSON.parse(JSON.stringify(cmd)))
   }
 
   await loadSearchPinned()
@@ -462,7 +462,7 @@ function getAppMenuItems(cmd: Command): TagDropdownMenuItem[] {
 async function handleAppMenuSelect(key: string, cmd: Command): Promise<void> {
   if (key === 'open') {
     try {
-      await window.ztools.internal.launch({
+      await window.monotools.internal.launch({
         path: cmd.path || '',
         type: cmd.type,
         name: cmd.name,
@@ -632,7 +632,7 @@ async function openCommand(
 
     console.log('打开指令:', command)
 
-    await window.ztools.internal.launch({
+    await window.monotools.internal.launch({
       path: command.path || '',
       type: command.type,
       featureCode: command.featureCode,
@@ -921,7 +921,7 @@ function getPluginCommandCount(plugin: any): number {
 // 加载指令数据（包含 commands、regexCommands、plugins）
 async function loadCommands(): Promise<void> {
   try {
-    const result = await window.ztools.internal.getCommands()
+    const result = await window.monotools.internal.getCommands()
     commands.value = result.commands
     regexCommands.value = result.regexCommands
     // 直接使用 getCommands 返回的 plugins，避免额外 IPC 请求

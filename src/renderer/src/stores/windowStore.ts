@@ -484,7 +484,7 @@ export const useWindowStore = defineStore('window', () => {
   // 检查是否有已下载的更新
   async function checkDownloadedUpdate(): Promise<void> {
     try {
-      const status = await window.ztools.updater.getDownloadStatus()
+      const status = await window.monotools.updater.getDownloadStatus()
       if (status.hasDownloaded) {
         updateDownloadInfo.value = {
           hasDownloaded: true,
@@ -505,7 +505,7 @@ export const useWindowStore = defineStore('window', () => {
   // 从数据库加载设置
   async function loadSettings(): Promise<void> {
     try {
-      const data = await window.ztools.dbGet('settings-general')
+      const data = await window.monotools.dbGet('settings-general')
       if (data) {
         if (data.placeholder) {
           placeholder.value = data.placeholder

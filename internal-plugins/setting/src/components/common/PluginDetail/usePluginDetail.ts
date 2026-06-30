@@ -63,7 +63,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     if (!plugin.value.name) return
 
     try {
-      const killData = await window.ztools.internal.dbGet('outKillPlugin')
+      const killData = await window.monotools.internal.dbGet('outKillPlugin')
       if (Array.isArray(killData) && currentPluginName.value) {
         isAutoKill.value = normalizeConfigList(killData).includes(currentPluginName.value)
       }
@@ -72,7 +72,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     }
 
     try {
-      const detachData = await window.ztools.internal.dbGet('autoDetachPlugin')
+      const detachData = await window.monotools.internal.dbGet('autoDetachPlugin')
       if (Array.isArray(detachData) && currentPluginName.value) {
         isAutoDetach.value = normalizeConfigList(detachData).includes(currentPluginName.value)
       }
@@ -81,7 +81,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     }
 
     try {
-      const startData = await window.ztools.internal.dbGet('autoStartPlugin')
+      const startData = await window.monotools.internal.dbGet('autoStartPlugin')
       if (Array.isArray(startData) && currentPluginName.value) {
         isAutoStart.value = normalizeConfigList(startData).includes(currentPluginName.value)
       }
@@ -90,7 +90,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     }
 
     try {
-      const mainPushData = await window.ztools.internal.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY)
+      const mainPushData = await window.monotools.internal.dbGet(ENABLED_MAIN_PUSH_PLUGINS_KEY)
       if (currentPluginName.value) {
         isMainPushEnabled.value = isMainPushPluginEnabled(
           currentPluginName.value,
@@ -108,14 +108,14 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     let list: string[] = []
     try {
-      const data = await window.ztools.internal.dbGet('outKillPlugin')
+      const data = await window.monotools.internal.dbGet('outKillPlugin')
       list = normalizeConfigList(data)
     } catch {
       // ignore
     }
 
     list = toggleInList(list, currentPluginName.value)
-    await window.ztools.internal.dbPut('outKillPlugin', list)
+    await window.monotools.internal.dbPut('outKillPlugin', list)
     isAutoKill.value = list.includes(currentPluginName.value)
   }
 
@@ -125,14 +125,14 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     let list: string[] = []
     try {
-      const data = await window.ztools.internal.dbGet('autoDetachPlugin')
+      const data = await window.monotools.internal.dbGet('autoDetachPlugin')
       list = normalizeConfigList(data)
     } catch {
       // ignore
     }
 
     list = toggleInList(list, currentPluginName.value)
-    await window.ztools.internal.dbPut('autoDetachPlugin', list)
+    await window.monotools.internal.dbPut('autoDetachPlugin', list)
     isAutoDetach.value = list.includes(currentPluginName.value)
   }
 
@@ -142,14 +142,14 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     let list: string[] = []
     try {
-      const data = await window.ztools.internal.dbGet('autoStartPlugin')
+      const data = await window.monotools.internal.dbGet('autoStartPlugin')
       list = normalizeConfigList(data)
     } catch {
       // ignore
     }
 
     list = toggleInList(list, currentPluginName.value)
-    await window.ztools.internal.dbPut('autoStartPlugin', list)
+    await window.monotools.internal.dbPut('autoStartPlugin', list)
     isAutoStart.value = list.includes(currentPluginName.value)
   }
 
@@ -157,7 +157,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     if (!currentPluginName.value) return
 
     const nextEnabled = !isMainPushEnabled.value
-    const result = await window.ztools.internal.setPluginMainPushEnabled(
+    const result = await window.monotools.internal.setPluginMainPushEnabled(
       currentPluginName.value,
       nextEnabled
     )
@@ -230,7 +230,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     try {
       if (plugin.value.installed && plugin.value.path) {
-        const result = await window.ztools.internal.getPluginReadme(plugin.value.path)
+        const result = await window.monotools.internal.getPluginReadme(plugin.value.path)
         if (result.success && result.content) {
           readmeContent.value = result.content
           return
@@ -238,7 +238,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
         if (plugin.value.name) {
           console.log('本地 README 不存在，尝试从 GitHub 获取:', plugin.value.name)
-          const remoteResult = await window.ztools.internal.getPluginReadme(plugin.value.name)
+          const remoteResult = await window.monotools.internal.getPluginReadme(plugin.value.name)
           if (remoteResult.success && remoteResult.content) {
             readmeContent.value = remoteResult.content
             return
@@ -247,7 +247,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
         readmeError.value = '暂无详情'
       } else if (plugin.value.name) {
-        const result = await window.ztools.internal.getPluginReadme(plugin.value.name)
+        const result = await window.monotools.internal.getPluginReadme(plugin.value.name)
         if (result.success && result.content) {
           readmeContent.value = result.content
         } else {
@@ -275,7 +275,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     dataError.value = ''
 
     try {
-      const result = await window.ztools.internal.getPluginDocKeys(currentPluginName.value)
+      const result = await window.monotools.internal.getPluginDocKeys(currentPluginName.value)
       if (result.success) {
         docKeys.value = result.data || []
       } else {
@@ -305,7 +305,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     isClearing.value = true
     try {
-      const result = await window.ztools.internal.clearPluginData(currentPluginName.value)
+      const result = await window.monotools.internal.clearPluginData(currentPluginName.value)
       if (result.success) {
         success('插件数据已清除')
         expandedDataId.value = ''
@@ -379,7 +379,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
     currentDocType.value = item.type
 
     try {
-      const result = await window.ztools.internal.getPluginDoc(currentPluginName.value, item.key)
+      const result = await window.monotools.internal.getPluginDoc(currentPluginName.value, item.key)
       if (result.success) {
         currentDocContent.value = result.data
         currentDocType.value = result.type || 'document'
@@ -430,7 +430,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
   function openHomepage(): void {
     if (plugin.value.homepage) {
-      window.ztools.shellOpenExternal(plugin.value.homepage)
+      window.monotools.shellOpenExternal(plugin.value.homepage)
     }
   }
 
@@ -448,7 +448,7 @@ export function usePluginDetail(options: UsePluginDetailOptions) {
 
     memoryLoading.value = true
     try {
-      const result = await window.ztools.internal.getPluginMemoryInfo(plugin.value.path)
+      const result = await window.monotools.internal.getPluginMemoryInfo(plugin.value.path)
       if (result.success && result.data) {
         memoryInfo.value = result.data
       } else {

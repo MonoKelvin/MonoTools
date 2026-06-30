@@ -165,7 +165,7 @@ async function getLocalizedDisplayNames(dirPaths: string[]): Promise<Map<string,
 // 生成图标 URL
 export function getIconUrl(appPath: string): string {
   // 将绝对路径编码为 URL
-  return `ztools-icon://${encodeURIComponent(appPath)}`
+  return `monotools-icon://${encodeURIComponent(appPath)}`
 }
 
 // 解析 .url 文件，提取 URL 和 IconFile 字段

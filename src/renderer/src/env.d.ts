@@ -1,4 +1,4 @@
-// Ambient type declarations for renderer, so TS knows window.ztools
+// Ambient type declarations for renderer, so TS knows window.monotools
 
 import type { CommonKeyboardModifier } from '@renderer/utils/convertKeyboardEvent'
 
@@ -41,7 +41,7 @@ declare global {
         on: (channel: string, callback: (...args: any[]) => void) => () => void
       }
     }
-    ztools: {
+    monotools: {
       getApps: () => Promise<Array<{ name: string; path: string; icon?: string }>>
       getSystemSettings: () => Promise<any[]>
       isWindows: () => Promise<boolean>

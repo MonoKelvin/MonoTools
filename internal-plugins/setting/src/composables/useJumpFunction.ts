@@ -8,7 +8,7 @@ import { onBeforeRouteUpdate, useRoute } from 'vue-router'
  */
 export function useJumpFunction<T = any>(handler: (data: Partial<T>) => void): void {
   const route = useRoute()
-  // 处理对应 ztools code 进来的功能
+  // 处理对应 monotools code 进来的功能
   const handleJumpZtoolsCode = (): void => {
     const state = useHistoryState<T>()
     handler(state)

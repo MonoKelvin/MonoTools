@@ -1,5 +1,5 @@
-appId: link.eiot.ztools
-productName: ZTools
+appId: link.eiot.monotools
+productName: MonoTools
 publish: null
 directories:
   buildResources: build
@@ -21,11 +21,11 @@ asarUnpack:
   - '**/node_modules/@img/**/*'
 fileAssociations:
   - ext: zpx
-    name: ZTools Plugin
-    description: ZTools Plugin Package
+    name: MonoTools Plugin
+    description: MonoTools Plugin Package
     role: Viewer
 win:
-  executableName: ZTools
+  executableName: MonoTools
   artifactName: ${name}-${version}-${os}-${arch}.${ext}
   target:
     - target: nsis
@@ -36,8 +36,8 @@ win:
         - x64
 nsis:
   artifactName: ${name}-${version}-${os}-${arch}-setup.${ext}
-  shortcutName: ${productName}
-  uninstallDisplayName: ${productName}
+  shortcutName: MonoTools
+  uninstallDisplayName: MonoTools
   createDesktopShortcut: always
   oneClick: false
   allowToChangeInstallationDirectory: true
@@ -63,8 +63,11 @@ linux:
     - deb
   maintainer: electronjs.org
   category: Utility
+  icon: build/icon.png
 appImage:
   artifactName: ${name}-${version}-${os}-${arch}.${ext}
 npmRebuild: false
 
 afterPack: ./build/afterPack.js
+directories:
+  output: dist

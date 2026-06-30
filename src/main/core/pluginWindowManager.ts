@@ -281,9 +281,9 @@ class PluginWindowManager {
 
       // 在父窗口触发 callback（与 utools executeJavaScript 方式一致）
       senderWebContents.executeJavaScript(
-        `if (window.ztools && window.ztools.__event__ && typeof window.ztools.__event__.createBrowserWindowCallback === 'function') {
-          try { window.ztools.__event__.createBrowserWindowCallback() } catch(e) {}
-          delete window.ztools.__event__.createBrowserWindowCallback
+        `if (window.monotools && window.monotools.__event__ && typeof window.monotools.__event__.createBrowserWindowCallback === 'function') {
+          try { window.monotools.__event__.createBrowserWindowCallback() } catch(e) {}
+          delete window.monotools.__event__.createBrowserWindowCallback
         }`
       )
       console.debug(`[pluginWindow:callback] dom-ready → trigger parent callback, winId=${win.id}`)

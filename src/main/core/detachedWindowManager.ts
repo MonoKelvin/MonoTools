@@ -47,7 +47,7 @@ class DetachedWindowManager {
    */
   private async applyWindowMaterial(win: BrowserWindow): Promise<void> {
     try {
-      const settings = await lmdbInstance.promises.get('ZTOOLS/settings-general')
+      const settings = await lmdbInstance.promises.get('MONOTOOLS/settings-general')
       const material = (settings?.data?.windowMaterial as 'mica' | 'acrylic' | 'none') || 'none'
 
       console.log('[DetachedWindow] 分离窗口应用材质:', material)
@@ -192,7 +192,7 @@ class DetachedWindowManager {
         this.applyWindowMaterial(win)
         // 设置插件窗口ID，避免任务栏窗口合并
         win.setAppDetails({
-          appId: 'ZTools.' + pluginName
+          appId: 'MonoTools.' + pluginName
         })
       }
 

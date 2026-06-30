@@ -50,7 +50,7 @@ const lastSyncTime = computed(() => {
 // 加载配置
 async function loadConfig(): Promise<void> {
   try {
-    const result = await window.ztools.internal.syncGetConfig()
+    const result = await window.monotools.internal.syncGetConfig()
     if (result.success && result.config) {
       syncEnabled.value = result.config.enabled
       syncPluginsEnabled.value = result.config.syncPlugins || false
@@ -74,7 +74,7 @@ async function loadConfig(): Promise<void> {
 // 加载未同步数量
 async function loadUnsyncedCount(): Promise<void> {
   try {
-    const result = await window.ztools.internal.syncGetUnsyncedCount()
+    const result = await window.monotools.internal.syncGetUnsyncedCount()
     if (result.success) {
       unsyncedCount.value = result.count || 0
     }
@@ -88,12 +88,12 @@ async function handleSyncToggle(): Promise<void> {
   try {
     if (!syncEnabled.value) {
       // 关闭同步
-      await window.ztools.internal.syncStopAutoSync()
+      await window.monotools.internal.syncStopAutoSync()
       syncStatus.value = false
     }
 
     // 保存开关状态到数据库
-    const result = await window.ztools.internal.syncSaveConfig({
+    const result = await window.monotools.internal.syncSaveConfig({
       enabled: syncEnabled.value,
       serverUrl: config.value.serverUrl,
       username: config.value.username,
@@ -118,7 +118,7 @@ async function handleSyncToggle(): Promise<void> {
 // 同步插件开关切换
 async function handleSyncPluginsToggle(): Promise<void> {
   try {
-    const result = await window.ztools.internal.syncSaveConfig({
+    const result = await window.monotools.internal.syncSaveConfig({
       enabled: syncEnabled.value,
       serverUrl: config.value.serverUrl,
       username: config.value.username,
@@ -147,7 +147,7 @@ async function testConnection(): Promise<void> {
 
   testing.value = true
   try {
-    const result = await window.ztools.internal.syncTestConnection({
+    const result = await window.monotools.internal.syncTestConnection({
       serverUrl: config.value.serverUrl,
       username: config.value.username,
       password: config.value.password
@@ -174,7 +174,7 @@ async function saveConfig(): Promise<void> {
 
   saving.value = true
   try {
-    const result = await window.ztools.internal.syncSaveConfig({
+    const result = await window.monotools.internal.syncSaveConfig({
       enabled: syncEnabled.value,
       serverUrl: config.value.serverUrl,
       username: config.value.username,
@@ -203,7 +203,7 @@ async function saveConfig(): Promise<void> {
 async function syncNow(): Promise<void> {
   syncing.value = true
   try {
-    const result = await window.ztools.internal.syncPerformSync()
+    const result = await window.monotools.internal.syncPerformSync()
 
     if (result.success && result.result) {
       lastSyncResult.value = result.result
@@ -244,7 +244,7 @@ async function forceDownloadFromCloud(): Promise<void> {
 
   forceSyncing.value = true
   try {
-    const result = await window.ztools.internal.syncForceDownloadFromCloud()
+    const result = await window.monotools.internal.syncForceDownloadFromCloud()
 
     if (result.success && result.result) {
       lastSyncResult.value = result.result

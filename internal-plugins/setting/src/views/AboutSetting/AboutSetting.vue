@@ -16,7 +16,7 @@ onMounted(async () => {
 
 async function getAppVersion(): Promise<void> {
   try {
-    appVersion.value = await window.ztools.internal.getAppVersion()
+    appVersion.value = await window.monotools.internal.getAppVersion()
   } catch (err) {
     console.error('获取版本失败:', err)
     appVersion.value = '未知'
@@ -28,7 +28,7 @@ async function handleCheckUpdate(): Promise<void> {
   isCheckingUpdate.value = true
 
   try {
-    const result = await window.ztools.internal.updaterCheckUpdate()
+    const result = await window.monotools.internal.updaterCheckUpdate()
     if (result.hasUpdate) {
       const shouldUpdate = await confirm({
         title: '发现新版本',
@@ -38,7 +38,7 @@ async function handleCheckUpdate(): Promise<void> {
         cancelText: '稍后'
       })
       if (shouldUpdate) {
-        await window.ztools.internal.updaterStartUpdate(result.updateInfo)
+        await window.monotools.internal.updaterStartUpdate(result.updateInfo)
       }
     } else {
       if (result.error) {
@@ -56,20 +56,20 @@ async function handleCheckUpdate(): Promise<void> {
 }
 
 function openQQGroup(): void {
-  window.ztools.shellOpenExternal('https://qm.qq.com/q/fXCzbh3Txe')
+  window.monotools.shellOpenExternal('https://qm.qq.com/q/fXCzbh3Txe')
 }
 
 function openGithub(): void {
-  window.ztools.shellOpenExternal('https://github.com/ZToolsCenter/ZTools')
+  window.monotools.shellOpenExternal('https://github.com/MonoToolsCenter/MonoTools')
 }
 
 function openSponsor(): void {
-  window.ztools.shellOpenExternal('https://afdian.com/a/ZTools')
+  window.monotools.shellOpenExternal('https://afdian.com/a/MonoTools')
 }
 
 async function loadAutoCheckSetting(): Promise<void> {
   try {
-    const data = await window.ztools.internal.dbGet('settings-general')
+    const data = await window.monotools.internal.dbGet('settings-general')
     if (data) {
       autoCheckUpdate.value = data.autoCheckUpdate ?? true
     }
@@ -81,11 +81,11 @@ async function loadAutoCheckSetting(): Promise<void> {
 async function handleAutoCheckUpdateChange(): Promise<void> {
   try {
     // 更新数据库中的设置
-    const data = (await window.ztools.internal.dbGet('settings-general')) || {}
+    const data = (await window.monotools.internal.dbGet('settings-general')) || {}
     data.autoCheckUpdate = autoCheckUpdate.value
-    await window.ztools.internal.dbPut('settings-general', data)
+    await window.monotools.internal.dbPut('settings-general', data)
     // 通知主进程
-    await window.ztools.internal.updaterSetAutoCheck(autoCheckUpdate.value)
+    await window.monotools.internal.updaterSetAutoCheck(autoCheckUpdate.value)
   } catch (err) {
     console.error('更新自动检查更新设置失败:', err)
   }
@@ -110,11 +110,11 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
     <div class="about-container">
       <!-- Logo -->
       <div class="about-logo">
-        <img src="/logo.png" alt="ZTools" draggable="false" />
+        <img src="/logo.png" alt="MonoTools" draggable="false" />
       </div>
 
       <!-- 应用名称 -->
-      <h1 class="about-title">ZTools</h1>
+      <h1 class="about-title">MonoTools</h1>
 
       <!-- 版本号 -->
       <div class="about-version">v{{ appVersion }}</div>
@@ -327,7 +327,7 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
 
       <!-- 版权信息 -->
       <div class="about-copyright">
-        Copyright &copy; 2025-{{ currentYear }} ZTools. All rights reserved.
+        Copyright &copy; 2025-{{ currentYear }} MonoTools. All rights reserved.
       </div>
     </div>
   </div>

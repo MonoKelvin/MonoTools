@@ -32,8 +32,8 @@ async function load(): Promise<void> {
   loading.value = true
   try {
     const [allRes, setRes] = await Promise.all([
-      window.ztools.internal.providers.getAll('ocr'),
-      window.ztools.internal.providers.getSettings()
+      window.monotools.internal.providers.getAll('ocr'),
+      window.monotools.internal.providers.getSettings()
     ])
     if (allRes.success && allRes.data) providers.value = allRes.data
     if (setRes.success && setRes.data) settings.value = setRes.data
@@ -55,7 +55,7 @@ function isDefault(p: ProviderEntry): boolean {
 
 async function handleToggle(p: ProviderEntry, enabled: boolean): Promise<void> {
   try {
-    const res = await window.ztools.internal.providers.setEnabled(p.id, enabled)
+    const res = await window.monotools.internal.providers.setEnabled(p.id, enabled)
     if (res.success && res.data) {
       settings.value = res.data
       success(enabled ? '已启用' : '已禁用')
@@ -70,7 +70,7 @@ async function handleToggle(p: ProviderEntry, enabled: boolean): Promise<void> {
 
 async function handleSetDefault(p: ProviderEntry): Promise<void> {
   try {
-    const res = await window.ztools.internal.providers.setDefault('ocr', p.id)
+    const res = await window.monotools.internal.providers.setDefault('ocr', p.id)
     if (res.success && res.data) {
       settings.value = res.data
       success(`已设为默认：${p.label}`)

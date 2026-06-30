@@ -1,6 +1,5 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
-import UnoCSS from 'unocss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
@@ -13,15 +12,22 @@ export default defineConfig({
   },
   plugins: [
     vue(),
-    UnoCSS(),
+    // UnoCSS() - 注释掉以避免依赖问题
+    // {
+    //   name: 'uno-css',
+    //   enforce: 'pre',
+    //   transformIndexHtml(html) {
+    //     return html.replace(/<head>([\s\S]*)<\/head>/, '<head><style type="text/css">/* UnoCSS styles will be injected here */</style>$1</head>')
+    //   }
+    // }
     {
       name: 'configure-response-headers',
       configureServer: (server) => {
         server.middlewares.use((_req, res, next) => {
-          // 允许加载自定义协议（ztools-icon://）和本地文件（file://）
+          // 允许加载自定义协议（monotools-icon://）和本地文件（file://）
           res.setHeader(
             'Content-Security-Policy',
-            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: ztools-icon: file:; img-src * data: blob: ztools-icon: file:;"
+            "default-src * 'unsafe-inline' 'unsafe-eval' data: blob: monotools-icon: file:; img-src * data: blob: monotools-icon: file:;"
           )
           next()
         })

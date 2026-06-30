@@ -519,7 +519,7 @@ async function handleAppContextMenu(
   }
 
   // Windows 本地应用显示"以管理员身份运行"
-  if (isLocalApp && window.ztools.getPlatform() === 'win32') {
+  if (isLocalApp && window.monotools.getPlatform() === 'win32') {
     menuItems.push({
       id: `launch-as-admin:${JSON.stringify({ path: app.path, name: app.name })}`,
       label: '以管理员身份运行'
@@ -591,13 +591,13 @@ async function handleAppContextMenu(
     let outKillPlugins: string[] = []
     let autoDetachPlugins: string[] = []
     try {
-      const killData = await window.ztools.dbGet('outKillPlugin')
+      const killData = await window.monotools.dbGet('outKillPlugin')
       if (killData && Array.isArray(killData)) {
         outKillPlugins = killData
           .map((item: any) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
           .filter(Boolean)
       }
-      const detachData = await window.ztools.dbGet('autoDetachPlugin')
+      const detachData = await window.monotools.dbGet('autoDetachPlugin')
       if (detachData && Array.isArray(detachData)) {
         autoDetachPlugins = detachData
           .map((item: any) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
@@ -646,7 +646,7 @@ async function handleAppContextMenu(
     ]
   })
 
-  await window.ztools.showContextMenu(menuItems)
+  await window.monotools.showContextMenu(menuItems)
 }
 
 // 选择应用
@@ -654,7 +654,7 @@ async function handleSelectApp(app: any): Promise<void> {
   try {
     // 如果是"上次匹配"指令，执行恢复逻辑
     if (app.path === 'special:last-match') {
-      const state = await window.ztools.restoreLastMatch()
+      const state = await window.monotools.restoreLastMatch()
       if (state) {
         emit('restore-match', state)
       }
@@ -692,7 +692,7 @@ async function handleSelectApp(app: any): Promise<void> {
     }
 
     // 启动应用或插件
-    await window.ztools.launch({
+    await window.monotools.launch({
       path: app.path,
       type: app.type || 'app',
       featureCode: app.featureCode,
@@ -758,7 +758,7 @@ async function handleMainPushSelectAction(group: MainPushGroup, item: MainPushIt
       const rawItem = JSON.parse(JSON.stringify(toRaw(item)))
       delete rawItem._resolvedIcon
       // 进入插件
-      await window.ztools.launch({
+      await window.monotools.launch({
         path: group.pluginPath,
         type: 'plugin',
         featureCode: group.featureCode,
@@ -780,7 +780,7 @@ async function handleMainPushSelectAction(group: MainPushGroup, item: MainPushIt
 // 点击 mainPush 标题行，直接进入插件应用
 async function handleEnterMainPushApp(group: MainPushGroup): Promise<void> {
   try {
-    await window.ztools.launch({
+    await window.monotools.launch({
       path: group.pluginPath,
       type: 'plugin',
       featureCode: group.featureCode,
@@ -888,7 +888,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     const jsonStr = command.replace('reveal-in-finder:', '')
     try {
       const { path: filePath } = JSON.parse(jsonStr)
-      await window.ztools.revealInFinder(filePath)
+      await window.monotools.revealInFinder(filePath)
       emit('focus-input')
     } catch (error) {
       console.error('打开文件位置失败:', error)
@@ -897,7 +897,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     const jsonStr = command.replace('launch-as-admin:', '')
     try {
       const { path: appPath, name } = JSON.parse(jsonStr)
-      await window.ztools.launchAsAdmin(appPath, name)
+      await window.monotools.launchAsAdmin(appPath, name)
     } catch (error) {
       console.error('管理员启动失败:', error)
     }
@@ -906,7 +906,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     try {
       let outKillPlugins: string[] = []
       try {
-        const data = await window.ztools.dbGet('outKillPlugin')
+        const data = await window.monotools.dbGet('outKillPlugin')
         if (data && Array.isArray(data)) {
           outKillPlugins = data
             .map((item: any) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
@@ -924,7 +924,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
       outKillPlugins = outKillPlugins.includes(pluginName)
         ? outKillPlugins.filter((n) => n !== pluginName)
         : [...outKillPlugins, pluginName]
-      await window.ztools.dbPut('outKillPlugin', outKillPlugins)
+      await window.monotools.dbPut('outKillPlugin', outKillPlugins)
       console.log('已更新 outKillPlugin 配置:', outKillPlugins)
     } catch (error: any) {
       console.error('切换自动结束配置失败:', error)
@@ -940,7 +940,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
           c.featureCode === 'ui.router?router=Plugins'
       )
       if (settingCmd) {
-        await window.ztools.launch({
+        await window.monotools.launch({
           path: settingCmd.path,
           type: 'plugin',
           featureCode: 'ui.router?router=Plugins',
@@ -962,7 +962,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     try {
       let autoDetachPlugins: string[] = []
       try {
-        const data = await window.ztools.dbGet('autoDetachPlugin')
+        const data = await window.monotools.dbGet('autoDetachPlugin')
         if (data && Array.isArray(data)) {
           autoDetachPlugins = data
             .map((item: any) => (typeof item === 'string' ? item : (item?.pluginName ?? '')))
@@ -980,7 +980,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
       autoDetachPlugins = autoDetachPlugins.includes(pluginName)
         ? autoDetachPlugins.filter((n) => n !== pluginName)
         : [...autoDetachPlugins, pluginName]
-      await window.ztools.dbPut('autoDetachPlugin', autoDetachPlugins)
+      await window.monotools.dbPut('autoDetachPlugin', autoDetachPlugins)
       console.log('已更新 autoDetachPlugin 配置:', autoDetachPlugins)
     } catch (error: any) {
       console.error('切换自动分离配置失败:', error)
@@ -989,7 +989,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     const appJson = command.replace('pin-super-panel:', '')
     try {
       const app = JSON.parse(appJson)
-      await window.ztools.pinToSuperPanel(app)
+      await window.monotools.pinToSuperPanel(app)
       await loadSuperPanelPinnedData()
     } catch (error) {
       console.error('固定到超级面板失败:', error)
@@ -998,7 +998,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
     const jsonStr = command.replace('unpin-super-panel:', '')
     try {
       const { path, featureCode } = JSON.parse(jsonStr)
-      await window.ztools.unpinSuperPanelCommand(path, featureCode)
+      await window.monotools.unpinSuperPanelCommand(path, featureCode)
       await loadSuperPanelPinnedData()
     } catch (error) {
       console.error('从超级面板取消固定失败:', error)
@@ -1019,7 +1019,7 @@ async function handleContextMenuCommand(command: string): Promise<void> {
       )
       console.log('targetCommand', targetCommand)
       if (settingCmd) {
-        await window.ztools.launch({
+        await window.monotools.launch({
           path: settingCmd.path,
           type: 'plugin',
           featureCode: 'ui.router?router=Shortcuts',
@@ -1062,7 +1062,7 @@ let cleanupContextMenuListener: (() => void) | null = null
 onMounted(() => {
   // 先清理之前可能残留的监听器
   cleanupContextMenuListener?.()
-  cleanupContextMenuListener = window.ztools.onContextMenuCommand(handleContextMenuCommand)
+  cleanupContextMenuListener = window.monotools.onContextMenuCommand(handleContextMenuCommand)
 })
 
 onUnmounted(() => {

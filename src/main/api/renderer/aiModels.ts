@@ -18,7 +18,7 @@ export interface AiModel {
  * AI 模型管理 API（主程序渲染进程专用）
  */
 class AiModelsAPI {
-  private readonly DB_KEY = 'ai-models' // databaseAPI 会自动添加 ZTOOLS/ 前缀
+  private readonly DB_KEY = 'ai-models' // databaseAPI 会自动添加 MONOTOOLS/ 前缀
 
   /**
    * 初始化 API

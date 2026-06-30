@@ -26,7 +26,7 @@ async function loadProviderTypes(): Promise<void> {
     return
   }
   try {
-    const res = await window.ztools.internal.providers.getAll()
+    const res = await window.monotools.internal.providers.getAll()
     if (res.success && Array.isArray(res.data)) {
       const types = new Set<'translation' | 'ocr'>()
       for (const entry of res.data) {
@@ -70,7 +70,7 @@ function formatSize(bytes?: number): string {
 
 function openHomepage(): void {
   if (props.plugin.homepage) {
-    window.ztools.shellOpenExternal(props.plugin.homepage)
+    window.monotools.shellOpenExternal(props.plugin.homepage)
   }
 }
 </script>

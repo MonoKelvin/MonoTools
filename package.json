@@ -1,16 +1,16 @@
 {
-  "name": "ZTools",
+  "name": "MonoTools",
   "version": "2.6.1",
-  "description": "ZTools",
+  "description": "MonoTools",
   "main": "./out/main/index.js",
   "author": "lzx8589561",
-  "homepage": "https://github.com/ZToolsCenter/ZTools",
+  "homepage": "https://github.com/MonoToolsCenter/MonoTools",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ZToolsCenter/ZTools.git"
+    "url": "https://github.com/MonoToolsCenter/MonoTools.git"
   },
   "bugs": {
-    "url": "https://github.com/ZToolsCenter/ZTools/issues"
+    "url": "https://github.com/MonoToolsCenter/MonoTools/issues"
   },
   "license": "MIT",
   "scripts": {
@@ -41,7 +41,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "sync-api-types": "node scripts/sync-api-types.js",
-    "check-api-types": "node -p \"require('./ztools-api-types/package.json')['utools-version']\"",
+    "check-api-types": "node -p \"require('./monotools-api-types/package.json')['utools-version']\"",
     "hooks:install": "git config core.hooksPath .githooks",
     "postinstall": "pnpm run hooks:install || true"
   },
@@ -103,5 +103,21 @@
       "msgpackr-extract",
       "uiohook-napi"
     ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MonoToolsCenter/MonoTools.git"
+  },
+  "keywords": [
+    "launcher",
+    "app-launcher",
+    "plugin-platform",
+    "electron",
+    "monotools",
+    "monotools-fork"
+  ],
+  "engines": {
+    "node": ">=18",
+    "pnpm": ">=9"
   }
 }

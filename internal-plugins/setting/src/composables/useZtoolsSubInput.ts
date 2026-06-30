@@ -51,7 +51,7 @@ export function useZtoolsSubInput(
   isFocus?: boolean,
   bindFindShortcut: boolean = true
 ): UseSubInputResult {
-  const ztoolsWithSubInput = ztools as typeof ztools & {
+  const monotoolsWithSubInput = monotools as typeof monotools & {
     subInputFocus?: () => boolean
     subInputSelect?: () => boolean
   }
@@ -97,8 +97,8 @@ export function useZtoolsSubInput(
     let retryCount = 0
     const timer = window.setInterval(() => {
       const handled = select
-        ? ztoolsWithSubInput.subInputSelect?.()
-        : ztoolsWithSubInput.subInputFocus?.()
+        ? monotoolsWithSubInput.subInputSelect?.()
+        : monotoolsWithSubInput.subInputFocus?.()
 
       retryCount++
       if (handled || retryCount >= 10) {
@@ -113,10 +113,10 @@ export function useZtoolsSubInput(
     }
     registering = true
     // 先移除之前的
-    ztools.removeSubInput()
+    monotools.removeSubInput()
     // 注册新的
     const interval = setInterval(() => {
-      const res = ztools.setSubInput(
+      const res = monotools.setSubInput(
         ({ text }) => {
           if (subInput.value !== text) {
             subInput.value = text
@@ -133,10 +133,10 @@ export function useZtoolsSubInput(
       if (res) {
         // 设置初始值
         if (subInput.value) {
-          ztools.setSubInputValue(subInput.value)
+          monotools.setSubInputValue(subInput.value)
           onChangedHook.trigger(subInput.value)
         } else if (initialValue) {
-          ztools.setSubInputValue(initialValue)
+          monotools.setSubInputValue(initialValue)
         }
         // 清除定时器
         clearInterval(interval)
@@ -152,13 +152,13 @@ export function useZtoolsSubInput(
   })
 
   onUnmounted(() => {
-    ztools.removeSubInput()
+    monotools.removeSubInput()
     window.removeEventListener('keydown', handleKeyDown)
   })
 
   function setSubInput(val: string): void {
     subInput.value = val
-    ztools.setSubInputValue(subInput.value)
+    monotools.setSubInputValue(subInput.value)
   }
 
   useEventListener(window, 'all', () => {

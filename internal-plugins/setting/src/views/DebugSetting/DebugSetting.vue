@@ -73,17 +73,17 @@ function handleLogEntries(entries: LogEntry[]): void {
 /** 用户切换开关 */
 async function handleToggle(): Promise<void> {
   if (enabled.value) {
-    await window.ztools.internal.logEnable()
-    const buffer = await window.ztools.internal.logGetBuffer()
+    await window.monotools.internal.logEnable()
+    const buffer = await window.monotools.internal.logGetBuffer()
     allLogs.value = buffer
-    window.ztools.internal.onLogEntries(handleLogEntries)
+    window.monotools.internal.onLogEntries(handleLogEntries)
     nextTick(() => {
       const el = logContainer.value
       if (el) el.scrollTop = el.scrollHeight
     })
   } else {
-    window.ztools.internal.offLogEntries(handleLogEntries)
-    await window.ztools.internal.logDisable()
+    window.monotools.internal.offLogEntries(handleLogEntries)
+    await window.monotools.internal.logDisable()
     allLogs.value = []
   }
 }
@@ -132,14 +132,14 @@ function formatTime(ts: number): string {
 
 // 组件挂载时：查询后端状态，恢复 UI
 onMounted(async () => {
-  const isEnabled = await window.ztools.internal.logIsEnabled()
+  const isEnabled = await window.monotools.internal.logIsEnabled()
   if (isEnabled) {
     enabled.value = true
     // 重新订阅推送（WebContents 可能是同一个，但 preload 回调列表已重置或保留）
-    await window.ztools.internal.logSubscribe()
-    const buffer = await window.ztools.internal.logGetBuffer()
+    await window.monotools.internal.logSubscribe()
+    const buffer = await window.monotools.internal.logGetBuffer()
     allLogs.value = buffer
-    window.ztools.internal.onLogEntries(handleLogEntries)
+    window.monotools.internal.onLogEntries(handleLogEntries)
     nextTick(() => {
       const el = logContainer.value
       if (el) el.scrollTop = el.scrollHeight
@@ -149,7 +149,7 @@ onMounted(async () => {
 
 // 组件卸载时：解绑前端回调，但不关闭后端日志收集
 onUnmounted(() => {
-  window.ztools.internal.offLogEntries(handleLogEntries)
+  window.monotools.internal.offLogEntries(handleLogEntries)
 })
 </script>
 

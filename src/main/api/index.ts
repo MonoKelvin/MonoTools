@@ -567,7 +567,7 @@ class APIManager {
           const msg = `[API] 未找到插件: ${pluginDescription}`
           console.error(msg)
           if (Notification.isSupported()) {
-            new Notification({ title: 'ZTools', body: msg }).show()
+            new Notification({ title: 'MonoTools', body: msg }).show()
           }
           return
         }
@@ -577,7 +577,7 @@ class APIManager {
           const msg = `[API] 未找到命令: ${pluginDescription}/${cmdName}`
           console.error(msg)
           if (Notification.isSupported()) {
-            new Notification({ title: 'ZTools', body: msg }).show()
+            new Notification({ title: 'MonoTools', body: msg }).show()
           }
           return
         }
@@ -615,7 +615,7 @@ class APIManager {
           const msg = `[API] 未找到命令: ${cmdName}`
           console.error(msg)
           if (Notification.isSupported()) {
-            new Notification({ title: 'ZTools', body: msg }).show()
+            new Notification({ title: 'MonoTools', body: msg }).show()
           }
           return
         }
@@ -628,7 +628,7 @@ class APIManager {
           const msg = `[API] 多个指令匹配「${cmdName}」: ${matchNames.join('、')}，请使用「插件名称/${cmdName}」格式精确指定`
           console.warn(msg)
           if (Notification.isSupported()) {
-            new Notification({ title: 'ZTools', body: msg }).show()
+            new Notification({ title: 'MonoTools', body: msg }).show()
           }
           return
         }

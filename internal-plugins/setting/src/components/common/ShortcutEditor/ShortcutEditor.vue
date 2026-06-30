@@ -15,7 +15,7 @@
       <div class="editor-content">
         <!-- 快捷键类型说明 -->
         <div v-if="isAppShortcut" class="form-notice">
-          应用快捷键仅在 ZTools 窗口激活时生效，不会与其他应用冲突
+          应用快捷键仅在 MonoTools 窗口激活时生效，不会与其他应用冲突
         </div>
 
         <!-- 快捷键录制 -->
@@ -103,7 +103,7 @@ function handleSave(): void {
 
 // 初始化平台信息
 onMounted(() => {
-  const pf = window.ztools.internal.getPlatform()
+  const pf = window.monotools.internal.getPlatform()
   if (pf === 'darwin' || pf === 'win32' || pf === 'linux') {
     platform.value = pf
   }

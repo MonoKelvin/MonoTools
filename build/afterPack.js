@@ -165,8 +165,8 @@ module.exports = async function (context) {
 
       const appName = context.packager.appInfo.productFilename
       const appPath = path.join(context.appOutDir, `${appName}.app`)
-      const dest = path.join(appPath, 'Contents', 'MacOS', 'ztools-updater')
-      const src = path.join(updaterDir, `mac-${safeArch}`, 'ztools-updater')
+      const dest = path.join(appPath, 'Contents', 'MacOS', 'monotools-updater')
+      const src = path.join(updaterDir, `mac-${safeArch}`, 'monotools-updater')
 
       if (await pathExists(src)) {
         await copy(src, dest)
@@ -176,8 +176,8 @@ module.exports = async function (context) {
         console.error(`未找到 updater 文件: ${src}`)
       }
     } else if (context.electronPlatformName === 'win32') {
-      const src = path.join(updaterDir, 'win-amd64', 'ztools-agent.exe')
-      const dest = path.join(context.appOutDir, 'ztools-agent.exe')
+      const src = path.join(updaterDir, 'win-amd64', 'monotools-agent.exe')
+      const dest = path.join(context.appOutDir, 'monotools-agent.exe')
 
       if (await pathExists(src)) {
         await copy(src, dest)

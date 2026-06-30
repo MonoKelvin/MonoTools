@@ -80,7 +80,7 @@ class TranslationManager {
   init(): void {
     // 使用无空格路径，避免 Bergamot WASM 脚本的 URL 编码问题
     // macOS 的 Application Support 含空格，会导致 %20 路径错误
-    this.translationDir = path.join(app.getPath('home'), '.ztools', TRANSLATION_DIR)
+    this.translationDir = path.join(app.getPath('home'), '.monotools', TRANSLATION_DIR)
     this.setupIPC()
     this.loadConfig()
   }

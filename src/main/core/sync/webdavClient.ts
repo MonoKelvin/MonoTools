@@ -3,7 +3,7 @@ import { SyncConfig, RemoteFileMeta, RemotePluginManifest } from './types'
 
 /**
  * 将 docId 编码为 WebDAV 路径（保留目录结构）
- * ZTOOLS/settings-general → ZTOOLS/settings-general
+ * MONOTOOLS/settings-general → MONOTOOLS/settings-general
  * 每段单独编码，/ 保留为路径分隔符
  */
 function encodeDocPath(docId: string): string {
@@ -72,7 +72,7 @@ export class WebDAVSyncClient {
   private async ensureRemoteDirectory(): Promise<void> {
     if (!this.client) return
 
-    const dirs = ['/ztools-sync', '/ztools-sync/attachments', '/ztools-sync/plugins']
+    const dirs = ['/monotools-sync', '/monotools-sync/attachments', '/monotools-sync/plugins']
     for (const dir of dirs) {
       if (!this.dirExistsCache.has(dir)) {
         const exists = await this.client.exists(dir)
@@ -90,7 +90,7 @@ export class WebDAVSyncClient {
   private async ensureParentDir(filePath: string): Promise<void> {
     if (!this.client) return
     const dir = filePath.substring(0, filePath.lastIndexOf('/'))
-    if (!dir || dir === '/ztools-sync' || this.dirExistsCache.has(dir)) return
+    if (!dir || dir === '/monotools-sync' || this.dirExistsCache.has(dir)) return
 
     // 先递归确保上级目录存在
     await this.ensureParentDir(dir)
@@ -117,7 +117,7 @@ export class WebDAVSyncClient {
 
     // 保留 docId 中的 / 作为目录结构，每段单独编码
     const safeDocId = encodeDocPath(doc._id)
-    const remotePath = `/ztools-sync/${safeDocId}.json`
+    const remotePath = `/monotools-sync/${safeDocId}.json`
     const content = JSON.stringify(doc, null, 2)
 
     try {
@@ -141,7 +141,7 @@ export class WebDAVSyncClient {
 
     // 保留目录结构，每段单独编码
     const safeDocId = encodeDocPath(docId)
-    const remotePath = `/ztools-sync/${safeDocId}.json`
+    const remotePath = `/monotools-sync/${safeDocId}.json`
     const exists = await this.client.exists(remotePath)
     if (!exists) return null
 
@@ -160,7 +160,7 @@ export class WebDAVSyncClient {
     }
 
     const results: RemoteFileMeta[] = []
-    const basePath = '/ztools-sync'
+    const basePath = '/monotools-sync'
     // 排除附件和插件目录
     const excludeDirs = new Set([`${basePath}/attachments`, `${basePath}/plugins`])
 
@@ -205,7 +205,7 @@ export class WebDAVSyncClient {
 
     // 保留目录结构，每段单独编码
     const safeDocId = encodeDocPath(docId)
-    const remotePath = `/ztools-sync/${safeDocId}.json`
+    const remotePath = `/monotools-sync/${safeDocId}.json`
     await this.client.deleteFile(remotePath)
   }
 
@@ -221,7 +221,7 @@ export class WebDAVSyncClient {
     const safeDocId = encodeDocPath(docId)
 
     // 上传二进制数据
-    const dataPath = `/ztools-sync/attachments/${safeDocId}.bin`
+    const dataPath = `/monotools-sync/attachments/${safeDocId}.bin`
     await this.ensureParentDir(dataPath)
     await this.client.putFileContents(dataPath, data, {
       overwrite: true
@@ -229,7 +229,7 @@ export class WebDAVSyncClient {
 
     // 上传元数据（如果提供）
     if (metadata) {
-      const metaPath = `/ztools-sync/attachments/${safeDocId}.meta.json`
+      const metaPath = `/monotools-sync/attachments/${safeDocId}.meta.json`
       await this.client.putFileContents(metaPath, JSON.stringify(metadata, null, 2), {
         overwrite: true
       })
@@ -246,8 +246,8 @@ export class WebDAVSyncClient {
 
     // 保留目录结构，每段单独编码
     const safeDocId = encodeDocPath(docId)
-    const dataPath = `/ztools-sync/attachments/${safeDocId}.bin`
-    const metaPath = `/ztools-sync/attachments/${safeDocId}.meta.json`
+    const dataPath = `/monotools-sync/attachments/${safeDocId}.bin`
+    const metaPath = `/monotools-sync/attachments/${safeDocId}.meta.json`
 
     // 检查二进制数据是否存在
     const dataExists = await this.client.exists(dataPath)
@@ -285,7 +285,7 @@ export class WebDAVSyncClient {
 
     // 保留目录结构，每段单独编码
     const safeDocId = encodeDocPath(docId)
-    const remotePath = `/ztools-sync/attachments/${safeDocId}.bin`
+    const remotePath = `/monotools-sync/attachments/${safeDocId}.bin`
     const exists = await this.client.exists(remotePath)
     if (exists) {
       await this.client.deleteFile(remotePath)
@@ -301,7 +301,7 @@ export class WebDAVSyncClient {
     }
 
     const results: string[] = []
-    const basePath = '/ztools-sync/attachments'
+    const basePath = '/monotools-sync/attachments'
 
     const walk = async (dirPath: string): Promise<void> => {
       const response = await this.client!.getDirectoryContents(dirPath, {
@@ -337,7 +337,7 @@ export class WebDAVSyncClient {
     }
 
     const encoded = encodeURIComponent(pluginName)
-    const remotePath = `/ztools-sync/plugins/${encoded}.zip`
+    const remotePath = `/monotools-sync/plugins/${encoded}.zip`
 
     try {
       await this.client.putFileContents(remotePath, zipBuffer, {
@@ -358,7 +358,7 @@ export class WebDAVSyncClient {
     }
 
     const encoded = encodeURIComponent(pluginName)
-    const remotePath = `/ztools-sync/plugins/${encoded}.zip`
+    const remotePath = `/monotools-sync/plugins/${encoded}.zip`
     const exists = await this.client.exists(remotePath)
     if (!exists) return null
 
@@ -378,7 +378,7 @@ export class WebDAVSyncClient {
     }
 
     const encoded = encodeURIComponent(pluginName)
-    const remotePath = `/ztools-sync/plugins/${encoded}.zip`
+    const remotePath = `/monotools-sync/plugins/${encoded}.zip`
     const exists = await this.client.exists(remotePath)
     if (exists) {
       await this.client.deleteFile(remotePath)
@@ -393,7 +393,7 @@ export class WebDAVSyncClient {
       throw new Error('WebDAV 客户端未初始化')
     }
 
-    const remotePath = '/ztools-sync/plugins/manifest.json'
+    const remotePath = '/monotools-sync/plugins/manifest.json'
     const content = JSON.stringify(manifest, null, 2)
 
     await this.client.putFileContents(remotePath, content, {
@@ -409,7 +409,7 @@ export class WebDAVSyncClient {
       throw new Error('WebDAV 客户端未初始化')
     }
 
-    const remotePath = '/ztools-sync/plugins/manifest.json'
+    const remotePath = '/monotools-sync/plugins/manifest.json'
     const exists = await this.client.exists(remotePath)
     if (!exists) return {}
 

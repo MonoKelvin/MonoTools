@@ -5,7 +5,7 @@
   "version": "1.0.0",
   "main": "index.html",
   "preload": "preload.js",
-  "author": "ZTools",
+  "author": "MonoTools",
   "logo": "logo.png",
   "features": [
     {

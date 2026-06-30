@@ -292,7 +292,7 @@ class FloatingBallManager {
 
     const menu = Menu.buildFromTemplate([
       {
-        label: '显示/隐藏 ZTools',
+        label: '显示/隐藏 MonoTools',
         click: () => {
           this.handleBallClick()
         }
