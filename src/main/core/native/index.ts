@@ -1,6 +1,7 @@
 import os from 'os'
 import { execSync, spawnSync } from 'child_process'
-import { clipboard } from 'electron'
+import path from 'path'
+import { app, clipboard } from 'electron'
 
 // 根据平台加载对应的原生模块
 // 注意：使用动态导入避免 Vite 构建期解析 macOS 文件
@@ -8,14 +9,20 @@ const platform = os.platform()
 
 let addon: any = null
 
+const nativeBasePath = app.isPackaged ? process.resourcesPath : process.cwd()
+
 // Windows 平台加载
 if (platform === 'win32') {
   try {
     // 动态导入 Windows 原生模块
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    addon = require('../../../../resources/lib/win/monotools_native.node')
+    addon = require(path.join(nativeBasePath, 'resources', 'lib', 'win', 'monotools_native.node'))
   } catch (e) {
-    console.error('Failed to load Windows native module:', e)
+    console.warn(
+      `Failed to load Windows native module, falling back to Electron APIs: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    )
   }
 }
 
@@ -24,9 +31,13 @@ if (platform === 'darwin') {
   try {
     // 动态导入 macOS 原生模块
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    addon = require('../../../../resources/lib/mac/monotools_native.node')
+    addon = require(path.join(nativeBasePath, 'resources', 'lib', 'mac', 'ztools_native.node'))
   } catch (e) {
-    console.error('Failed to load macOS native module:', e)
+    console.warn(
+      `Failed to load macOS native module, falling back to Electron APIs: ${
+        e instanceof Error ? e.message : String(e)
+      }`
+    )
   }
 }
 
@@ -193,7 +204,22 @@ export class ClipboardMonitor {
         }
       }, 500)
     } else {
-      ;(addon as NativeAddon).startMonitor(() => {
+      const nativeAddon = addon as NativeAddon | null
+      if (!nativeAddon?.startMonitor) {
+        console.warn('[Native] Clipboard monitor unavailable, falling back to polling')
+        let lastText = clipboard.readText()
+        this._pollTimer = setInterval(() => {
+          const current = clipboard.readText()
+          if (current !== lastText) {
+            lastText = current
+            if (this._callback) {
+              this._callback()
+            }
+          }
+        }, 500)
+        return
+      }
+      nativeAddon.startMonitor(() => {
         if (this._callback) {
           this._callback()
         }
@@ -215,7 +241,8 @@ export class ClipboardMonitor {
         this._pollTimer = null
       }
     } else {
-      ;(addon as NativeAddon).stopMonitor()
+      const nativeAddon = addon as NativeAddon | null
+      nativeAddon?.stopMonitor?.()
     }
     this._isMonitoring = false
     this._callback = null
@@ -234,7 +261,7 @@ export class ClipboardMonitor {
    * @param durationMs - 持续时间（毫秒）
    */
   static setClipboardPollingBoost(intervalMs: number, durationMs: number): void {
-    const boostFn = (addon as NativeAddon).setClipboardPollingBoost
+    const boostFn = (addon as NativeAddon | null)?.setClipboardPollingBoost
     if (platform === 'darwin' && typeof boostFn === 'function') {
       boostFn(intervalMs, durationMs)
     }
@@ -249,7 +276,7 @@ export class ClipboardMonitor {
    */
   static getClipboardFiles(): ClipboardFile[] {
     if (platform === 'win32') {
-      return (addon as NativeAddon).getClipboardFiles()
+      return (addon as NativeAddon | null)?.getClipboardFiles?.() ?? []
     } else if (platform === 'darwin') {
       // macOS 暂不支持
       throw new Error('getClipboardFiles is not yet supported on macOS')
@@ -316,7 +343,12 @@ export class WindowMonitor {
       // Linux 降级：暂不支持窗口焦点监控，静默忽略
       console.warn('[WindowMonitor] Linux 平台暂不支持原生窗口监控，功能已降级')
     } else {
-      ;(addon as NativeAddon).startWindowMonitor((windowInfo) => {
+      const nativeAddon = addon as NativeAddon | null
+      if (!nativeAddon?.startWindowMonitor) {
+        console.warn('[WindowMonitor] Native window monitor unavailable, skipping window tracking')
+        return
+      }
+      nativeAddon.startWindowMonitor((windowInfo) => {
         if (this._callback) {
           this._callback(windowInfo)
         }
@@ -333,7 +365,8 @@ export class WindowMonitor {
     }
 
     if (platform !== 'linux') {
-      ;(addon as NativeAddon).stopWindowMonitor()
+      const nativeAddon = addon as NativeAddon | null
+      nativeAddon?.stopWindowMonitor?.()
     }
     this._isMonitoring = false
     this._callback = null
@@ -362,7 +395,7 @@ export class WindowManager {
       return null
     }
 
-    const result = (addon as NativeAddon).getActiveWindow()
+    const result = (addon as NativeAddon | null)?.getActiveWindow?.()
     if (!result || result.error) {
       return null
     }
@@ -418,7 +451,7 @@ export class WindowManager {
         throw new TypeError('On Windows, identifier must be a processId (number)')
       }
     }
-    return (addon as NativeAddon).activateWindow(identifier)
+    return (addon as NativeAddon | null)?.activateWindow?.(identifier) ?? false
   }
 
   /**
@@ -814,7 +847,14 @@ export class ScreenCapture {
       throw new TypeError('Callback must be a function')
     }
 
-    ;(addon as NativeAddon).startRegionCapture((result) => {
+    const nativeAddon = addon as NativeAddon | null
+    if (!nativeAddon?.startRegionCapture) {
+      console.warn('[Native] Region capture unavailable')
+      callback({ success: false })
+      return
+    }
+
+    nativeAddon.startRegionCapture((result) => {
       callback(result)
     })
   }
@@ -836,7 +876,7 @@ export class UwpManager {
     if (platform !== 'win32') {
       throw new Error('getUwpApps is only supported on Windows')
     }
-    return (addon as NativeAddon).getUwpApps()
+    return (addon as NativeAddon | null)?.getUwpApps?.() ?? []
   }
 
   /**
@@ -851,7 +891,7 @@ export class UwpManager {
     if (typeof appId !== 'string' || !appId) {
       throw new TypeError('appId must be a non-empty string')
     }
-    return (addon as NativeAddon).launchUwpApp(appId)
+    return (addon as NativeAddon | null)?.launchUwpApp?.(appId) ?? false
   }
 }
 
@@ -872,14 +912,29 @@ export class IconExtractor {
    * const icon = await IconExtractor.getFileIcon('C:\\Windows\\notepad.exe');
    * if (icon) fs.writeFileSync('icon.png', icon);
    */
-  static getFileIcon(filePath: string): Promise<Buffer> {
+  static async getFileIcon(filePath: string): Promise<Buffer> {
     if (platform !== 'win32' && platform !== 'darwin') {
       throw new Error('getFileIcon is only supported on Windows and macOS')
     }
     if (typeof filePath !== 'string' || !filePath) {
       throw new TypeError('filePath must be a non-empty string')
     }
-    return (addon as NativeAddon).getFileIcon(filePath)
+    const nativeAddon = addon as NativeAddon | null
+    if (nativeAddon?.getFileIcon) {
+      try {
+        return nativeAddon.getFileIcon(filePath)
+      } catch (error) {
+        console.warn('[Native] Native icon extraction failed, falling back to Electron app.getFileIcon:', error)
+      }
+    }
+
+    console.warn('[Native] Native icon module is unavailable, falling back to Electron app.getFileIcon:', filePath)
+    const icon = await app.getFileIcon(filePath, { size: 'normal' })
+    const buffer = icon.toPNG()
+    if (!buffer || buffer.length === 0) {
+      throw new Error(`Failed to extract icon for ${filePath}`)
+    }
+    return buffer
   }
 }
 
@@ -899,7 +954,7 @@ export class MuiResolver {
     if (!Array.isArray(refs)) {
       throw new TypeError('refs must be an array of strings')
     }
-    const result = (addon as NativeAddon).resolveMuiStrings(refs)
+    const result = (addon as NativeAddon | null)?.resolveMuiStrings?.(refs) ?? {}
     return new Map(Object.entries(result))
   }
 }

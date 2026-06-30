@@ -65,6 +65,11 @@ export class UpdaterAPI {
    */
   private startAutoCheck(): void {
     try {
+      if (!app.isPackaged) {
+        console.log('[Updater] 开发环境跳过自动检查更新')
+        return
+      }
+
       // 获取设置
       const settings = databaseAPI.dbGet('settings-general')
       const autoCheck = settings?.autoCheckUpdate ?? true // 默认开启

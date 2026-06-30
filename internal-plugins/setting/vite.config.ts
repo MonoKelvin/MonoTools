@@ -1,5 +1,6 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
+import UnoCSS from 'unocss/vite'
 import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
@@ -11,6 +12,7 @@ export default defineConfig({
     open: false
   },
   plugins: [
+    UnoCSS(),
     vue(),
     // UnoCSS() - 注释掉以避免依赖问题
     // {

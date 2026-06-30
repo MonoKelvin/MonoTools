@@ -104,10 +104,6 @@
       "uiohook-napi"
     ]
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/MonoToolsCenter/MonoTools.git"
-  },
   "keywords": [
     "launcher",
     "app-launcher",

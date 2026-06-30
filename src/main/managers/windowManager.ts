@@ -823,7 +823,13 @@ class WindowManager {
     this.mainWindow.show()
     this.mainWindow.moveTop()
     // Electron 的 isFocused 有时已经为 true，但 Windows 前台键盘目标仍未切到本应用；这里用原生激活补齐。
-    NativeWindowManager.activateWindow(process.pid)
+    // 任务栏/系统恢复窗口的瞬间，原生层偶尔会拿到空的 activeWindow 状态。
+    // 激活失败不应阻断后续聚焦流程。
+    try {
+      NativeWindowManager.activateWindow(process.pid)
+    } catch (error) {
+      console.warn('[Window] 原生激活窗口失败，继续使用 Electron 聚焦:', error)
+    }
     this.mainWindow.focus()
     if (pluginManager.getCurrentPluginPath() !== null && this.lastFocusTarget !== 'mainWindow') {
       pluginManager.focusPluginView()
