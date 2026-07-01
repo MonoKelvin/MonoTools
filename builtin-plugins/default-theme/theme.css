@@ -1,0 +1,62 @@
+/* ============================================
+   MonoTools Default Theme
+   Linear Design System - Dark Theme
+   ============================================ */
+
+:root {
+  /* ---- Brand & Accent ---- */
+  --mt-primary: #5e6ad2;
+  --mt-primary-hover: #828fff;
+  --mt-primary-focus: #5e69d1;
+  --mt-on-primary: #ffffff;
+  --mt-brand-secure: #7a7fad;
+
+  /* ---- Ink (Text) ---- */
+  --mt-ink: #f7f8f8;
+  --mt-ink-muted: #d0d6e0;
+  --mt-ink-subtle: #8a8f98;
+  --mt-ink-tertiary: #62666d;
+
+  /* ---- Surfaces ---- */
+  --mt-canvas: #010102;
+  --mt-surface-1: #0f1011;
+  --mt-surface-2: #141516;
+  --mt-surface-3: #18191a;
+  --mt-surface-4: #191a1b;
+
+  /* ---- Borders (Hairlines) ---- */
+  --mt-hairline: #23252a;
+  --mt-hairline-strong: #34343a;
+  --mt-hairline-tertiary: #3e3e44;
+
+  /* ---- Semantic ---- */
+  --mt-success: #27a644;
+  --mt-overlay: rgba(0, 0, 0, 0.6);
+
+  /* ---- Typography ---- */
+  --mt-font-display: 'Inter', 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mt-font-body: 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --mt-font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', ui-monospace, monospace;
+
+  /* ---- Spacing ---- */
+  --mt-space-xxs: 4px;
+  --mt-space-xs: 8px;
+  --mt-space-sm: 12px;
+  --mt-space-md: 16px;
+  --mt-space-lg: 24px;
+  --mt-space-xl: 32px;
+  --mt-space-2xl: 48px;
+
+  /* ---- Radius ---- */
+  --mt-radius-xs: 4px;
+  --mt-radius-sm: 6px;
+  --mt-radius-md: 8px;
+  --mt-radius-lg: 12px;
+  --mt-radius-xl: 16px;
+  --mt-radius-2xl: 24px;
+  --mt-radius-pill: 9999px;
+
+  /* ---- Shadows ---- */
+  --mt-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --mt-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

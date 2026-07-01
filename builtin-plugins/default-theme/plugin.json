@@ -1,0 +1,39 @@
+{
+  "$schema": "https://monotools.dev/schema/plugin.json",
+  "id": "builtin:default-theme",
+  "name": "Default Theme",
+  "version": "1.0.0",
+  "description": "Linear-inspired dark theme for MonoTools",
+  "author": "MonoKelvin",
+  "license": "MIT",
+  "type": "theme",
+  "isBuiltin": true,
+
+  "entry": {
+    "frontend": "frontend/index.ts"
+  },
+
+  "permissions": [
+    "core:theme.engine"
+  ],
+
+  "hooks": {
+    "activate": "onActivate"
+  },
+
+  "config": {
+    "schema": {
+      "mode": {
+        "type": "string",
+        "enum": ["dark", "light", "system"],
+        "default": "dark",
+        "description": "Theme mode"
+      },
+      "accentColor": {
+        "type": "string",
+        "default": "#5e6ad2",
+        "description": "Primary accent color"
+      }
+    }
+  }
+}
