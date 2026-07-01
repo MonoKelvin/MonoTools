@@ -7,7 +7,7 @@ export interface PluginEnterEvent {
   option: any
 }
 
-export class ZtoolsCodeEvent<T = Record<string, any>> extends CustomEvent<any> {
+export class MonoToolsCodeEvent<T = Record<string, any>> extends CustomEvent<any> {
   public pluginEnterParams: PluginEnterEvent
   public router: Router
   public params: T = {} as T
@@ -15,7 +15,7 @@ export class ZtoolsCodeEvent<T = Record<string, any>> extends CustomEvent<any> {
   private static PARAMS_SPLIT = '?'
 
   constructor(pluginEnterParams: PluginEnterEvent, router: Router) {
-    super(pluginEnterParams.code.split(ZtoolsCodeEvent.PARAMS_SPLIT)[0])
+    super(pluginEnterParams.code.split(MonoToolsCodeEvent.PARAMS_SPLIT)[0])
     this.pluginEnterParams = pluginEnterParams
     this.router = router
     this.handleEventCode(pluginEnterParams)
@@ -30,15 +30,15 @@ export class ZtoolsCodeEvent<T = Record<string, any>> extends CustomEvent<any> {
   }
 
   private payloadParams(code: string): void {
-    const codes = code.split(ZtoolsCodeEvent.PARAMS_SPLIT)
+    const codes = code.split(MonoToolsCodeEvent.PARAMS_SPLIT)
 
     if (codes.length > 2) {
-      throw Error(`code 错误 ${ZtoolsCodeEvent.PARAMS_SPLIT} 仅可出现 1 或 0 次`)
+      throw Error(`code 错误 ${MonoToolsCodeEvent.PARAMS_SPLIT} 仅可出现 1 或 0 次`)
     }
 
     if (codes.length > 1) {
       if (codes.includes('.')) {
-        throw Error(`code 错误 ${ZtoolsCodeEvent.PARAMS_SPLIT} 仅可以出现在.后面`)
+        throw Error(`code 错误 ${MonoToolsCodeEvent.PARAMS_SPLIT} 仅可以出现在.后面`)
       }
     }
 
@@ -68,8 +68,8 @@ export class ZtoolsCodeEvent<T = Record<string, any>> extends CustomEvent<any> {
  * 事件类型判断辅助函数
  * @param obj
  */
-function isZtoolsCodeEventDetail(obj: Event): obj is ZtoolsCodeEvent {
-  return obj instanceof ZtoolsCodeEvent
+function isMonoToolsCodeEventDetail(obj: Event): obj is MonoToolsCodeEvent {
+  return obj instanceof MonoToolsCodeEvent
 }
 
 /**
@@ -77,23 +77,23 @@ function isZtoolsCodeEventDetail(obj: Event): obj is ZtoolsCodeEvent {
  * @param data 数据
  * @param router 路由
  */
-export function dispatchZtoolsCodeEvent(data: PluginEnterEvent, router: Router): void {
-  const event = new ZtoolsCodeEvent(data, router)
-  console.log('[code-event] dispatchZtoolsCodeEvent', event)
+export function dispatchMonoToolsCodeEvent(data: PluginEnterEvent, router: Router): void {
+  const event = new MonoToolsCodeEvent(data, router)
+  console.log('[code-event] dispatchMonoToolsCodeEvent', event)
   window.dispatchEvent(event)
 }
 
 /**
- * 添加监听 Ztools code 事件
+ * 添加监听 MonoTools code 事件
  * @param type 事件类型
  * @param event 事件
  */
-export function addZtoolsCodeEventListener(
+export function addMonoToolsCodeEventListener(
   type: string,
-  event: (e: ZtoolsCodeEvent) => void
+  event: (e: MonoToolsCodeEvent) => void
 ): void {
   window.addEventListener(type, (e) => {
-    if (isZtoolsCodeEventDetail(e)) {
+    if (isMonoToolsCodeEventDetail(e)) {
       event(e)
     }
   })
@@ -103,14 +103,14 @@ export interface InitBaseEventHandlerOptions {
   pluginHeight?: (() => number) | number
 }
 
-export function initZtoolsBaseEventHandler(options: InitBaseEventHandlerOptions = {}): void {
+export function initMonoToolsBaseEventHandler(options: InitBaseEventHandlerOptions = {}): void {
   const height =
     typeof options.pluginHeight === 'function' ? options.pluginHeight() : options.pluginHeight
   if (height) {
     monotools?.setExpendHeight(height)
   }
 
-  addZtoolsCodeEventListener('ui.router', (e) => {
+  addMonoToolsCodeEventListener('ui.router', (e) => {
     console.log('[code-event] ui.router 收到消息', e)
     e.router
       .replace({

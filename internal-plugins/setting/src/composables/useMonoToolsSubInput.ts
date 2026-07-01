@@ -45,7 +45,7 @@ export interface UseSubInputResult {
  * 绑定后可通过 macOS 的 Command + F 或 Windows 的 Ctrl + F
  * 重新聚焦并选中当前子输入框内容
  */
-export function useZtoolsSubInput(
+export function useMonoToolsSubInput(
   initialValue: string = '',
   placeholder?: string,
   isFocus?: boolean,
