@@ -6,7 +6,8 @@
 ![Version](https://img.shields.io/badge/版本-1.0.0-green)
 ![License](https://img.shields.io/badge/许可证-MIT-orange)
 ![Phase 1](https://img.shields.io/badge/Phase_1-100%25-brightgreen)
-![Phase 2](https://img.shields.io/badge/Phase_2-70%25-yellow)
+![Phase 2](https://img.shields.io/badge/Phase_2-100%25-brightgreen)
+![Phase 3](https://img.shields.io/badge/Phase_3-0%25-lightgrey)
 
 ---
 
