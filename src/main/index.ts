@@ -24,11 +24,13 @@ if (process.platform === 'win32') {
 
 // 单例锁
 const gotTheLock = app.requestSingleInstanceLock()
+console.log('[Main] Single instance lock acquired:', gotTheLock)
 
 // 待打开的 .zpx 文件路径（在 app.ready 之前收到的文件打开事件）
 let pendingZpxFile: string | null = null
 
 if (!gotTheLock) {
+  console.log('[Main] Another instance is running, quitting...')
   app.quit()
 } else {
   app.on('second-instance', (_event, argv) => {
@@ -318,12 +320,15 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  console.log('[Main] window-all-closed event fired')
   if (!platform.isMacOS) {
+    console.log('[Main] Calling app.quit() from window-all-closed')
     app.quit()
   }
 })
 
-app.on('will-quit', () => {
+app.on('will-quit', (event) => {
+  console.log('[Main] will-quit event fired')
   windowManager.unregisterAllShortcuts()
   // 停止应用目录监听
   appWatcher.stop()
@@ -333,6 +338,9 @@ app.on('will-quit', () => {
   httpServer.stop()
   // 关闭 MCP 服务器
   mcpServer.stop()
+  // 关闭 LMDB 数据库
+  console.log('[Main] Calling closeLmdb from will-quit')
+  closeLmdb()
 })
 
 app.on('before-quit', (event) => {

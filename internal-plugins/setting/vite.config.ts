@@ -8,7 +8,7 @@ export default defineConfig({
   base: './',
   server: {
     port: 5177, // 设置插件开发服务器端口（避免与主程序 5173 冲突）
-    strictPort: true,
+    strictPort: false, // 如果端口被占用，自动使用下一个可用端口
     open: false
   },
   plugins: [
