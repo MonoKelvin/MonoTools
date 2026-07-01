@@ -11,7 +11,15 @@ mod utils;
 
 use anyhow::Result;
 use commands::bus::CommandBus;
+use commands::search::SearchCommandHandler;
+use commands::workspace::WorkspaceCommandHandler;
+use commands::plugin::PluginCommandHandler;
+use commands::theme::ThemeCommandHandler;
+use commands::config::ConfigCommandHandler;
+use commands::system::SystemCommandHandler;
 use config::store::ConfigStore;
+use plugins::manager::PluginManager;
+use services::file_indexer::index_store::IndexStore;
 use services::file_indexer::UsnIndexer;
 use std::sync::Arc;
 use tauri::Manager;
@@ -24,6 +32,8 @@ use tracing_subscriber::EnvFilter;
 struct AppState {
     command_bus: Arc<CommandBus>,
     config: Arc<RwLock<ConfigStore>>,
+    index_store: Arc<RwLock<IndexStore>>,
+    plugin_manager: Arc<RwLock<PluginManager>>,
 }
 
 #[tauri::command]
@@ -77,6 +87,14 @@ pub fn run() {
         ConfigStore::new().expect("Failed to initialize config store")
     ));
 
+    // 初始化索引存储
+    let index_store = Arc::new(RwLock::new(
+        IndexStore::new().expect("Failed to initialize index store")
+    ));
+
+    // 初始化插件管理器
+    let plugin_manager = Arc::new(RwLock::new(PluginManager::new()));
+
     // 初始化命令总线
     let command_bus = Arc::new(CommandBus::new());
 
@@ -105,6 +123,13 @@ pub fn run() {
             // 设置系统托盘
             services::tray::setup_tray(app)?;
 
+            // 初始化索引表
+            {
+                let store = index_store.blocking_read();
+                tauri::async_runtime::block_on(store.init_tables())
+                    .expect("Failed to initialize index tables");
+            }
+
             // 启动文件索引器（后台任务）
             if cfg.get("fileSearch.indexOnStartup").unwrap_or(true) {
                 let indexer = UsnIndexer::new();
@@ -115,11 +140,63 @@ pub fn run() {
                 });
             }
 
+            // 注册命令处理器
+            {
+                let bus = command_bus.clone();
+                let index_store = index_store.clone();
+                let plugin_manager = plugin_manager.clone();
+                let config = config.clone();
+
+                // 搜索命令
+                bus.register("search", "files", Box::new(SearchCommandHandler::new(index_store.clone())))
+                    .await;
+                bus.register("search", "apps", Box::new(SearchCommandHandler::new(index_store.clone())))
+                    .await;
+                bus.register("search", "all", Box::new(SearchCommandHandler::new(index_store)))
+                    .await;
+
+                // 工作区命令
+                bus.register("workspace", "save", Box::new(WorkspaceCommandHandler::new()))
+                    .await;
+                bus.register("workspace", "restore", Box::new(WorkspaceCommandHandler::new()))
+                    .await;
+                bus.register("workspace", "list", Box::new(WorkspaceCommandHandler::new()))
+                    .await;
+
+                // 插件命令
+                bus.register("plugin", "list", Box::new(PluginCommandHandler::new(plugin_manager.clone())))
+                    .await;
+
+                // 主题命令
+                bus.register("theme", "set", Box::new(ThemeCommandHandler::new()))
+                    .await;
+                bus.register("theme", "list", Box::new(ThemeCommandHandler::new()))
+                    .await;
+
+                // 配置命令
+                bus.register("config", "get", Box::new(ConfigCommandHandler::new(config.clone())))
+                    .await;
+                bus.register("config", "set", Box::new(ConfigCommandHandler::new(config.clone())))
+                    .await;
+                bus.register("config", "path", Box::new(ConfigCommandHandler::new(config)))
+                    .await;
+
+                // 系统命令
+                bus.register("system", "shutdown", Box::new(SystemCommandHandler::new()))
+                    .await;
+                bus.register("system", "lock", Box::new(SystemCommandHandler::new()))
+                    .await;
+                bus.register("system", "open", Box::new(SystemCommandHandler::new()))
+                    .await;
+            }
+
             // 注册 Tauri 命令
             app.manage(tauri::async_runtime::block_on(async {
                 AppState {
                     command_bus: command_bus.clone(),
                     config: config.clone(),
+                    index_store: index_store.clone(),
+                    plugin_manager: plugin_manager.clone(),
                 }
             }));
 

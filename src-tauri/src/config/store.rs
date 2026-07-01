@@ -247,6 +247,11 @@ impl ConfigStore {
         &self.data
     }
 
+    /// 获取配置文件路径
+    pub fn path(&self) -> &PathBuf {
+        &self.config_path
+    }
+
     /// 获取可变引用
     pub fn get_mut(&mut self) -> &mut ConfigData {
         &mut self.data
