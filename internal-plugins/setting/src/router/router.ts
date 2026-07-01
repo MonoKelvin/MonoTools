@@ -69,28 +69,6 @@ const homeRoutes: MenuRouterItemType[] = [
     }
   },
   {
-    path: '/providers',
-    name: 'Providers',
-    component: () => import('@/views/ProvidersSetting/ProvidersSetting.vue'),
-    meta: {
-      menu: {
-        label: '提供商',
-        icon: 'i-z-brain'
-      }
-    }
-  },
-  {
-    path: '/mcpService',
-    name: 'McpService',
-    component: () => import('@/views/McpServiceSetting/McpServiceSetting.vue'),
-    meta: {
-      menu: {
-        label: 'MCP 服务',
-        icon: 'i-z-mcp'
-      }
-    }
-  },
-  {
     path: '/data',
     name: 'Data',
     component: () => import('@/views/DataSetting/DataSetting.vue'),
@@ -120,39 +98,6 @@ const homeRoutes: MenuRouterItemType[] = [
       menu: {
         label: '本地启动',
         icon: 'i-z-folder'
-      }
-    }
-  },
-  {
-    path: '/sync',
-    name: 'Sync',
-    component: () => import('@/views/SyncSetting/SyncSetting.vue'),
-    meta: {
-      menu: {
-        label: 'WebDAV 同步',
-        icon: 'i-z-cloud'
-      }
-    }
-  },
-  {
-    path: '/debug',
-    name: 'Debug',
-    component: () => import('@/views/DebugSetting/DebugSetting.vue'),
-    meta: {
-      menu: {
-        label: '调试日志',
-        icon: 'i-z-terminal'
-      }
-    }
-  },
-  {
-    path: '/httpService',
-    name: 'HttpService',
-    component: () => import('@/views/HttpServiceSetting/HttpServiceSetting.vue'),
-    meta: {
-      menu: {
-        label: 'HTTP 服务',
-        icon: 'i-z-monitor'
       }
     }
   },
