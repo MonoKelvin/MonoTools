@@ -1,0 +1,99 @@
+/* ============================================
+   MonoTools Animations
+   ============================================ */
+
+/* 搜索框唤出动画 */
+@keyframes search-enter {
+  0% {
+    opacity: 0;
+    transform: scale(0.92) translateY(-16px);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.01) translateY(2px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.search-box-enter {
+  animation: search-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* 搜索框隐藏动画 */
+@keyframes search-exit {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.96) translateY(-8px);
+  }
+}
+
+.search-box-exit {
+  animation: search-exit 0.15s ease-in forwards;
+}
+
+/* 结果项进入动画 */
+@keyframes result-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.result-item {
+  opacity: 0;
+  animation: result-enter 0.2s ease-out forwards;
+}
+
+/* 交错动画延迟通过 style 绑定实现 */
+
+/* 淡入淡出 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+/* 滑入 */
+.slide-enter-active,
+.slide-leave-active {
+  transition: all 0.2s ease;
+}
+
+.slide-enter-from {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.slide-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+/* 缩放 */
+.scale-enter-active,
+.scale-leave-active {
+  transition: transform 0.2s ease;
+}
+
+.scale-enter-from {
+  transform: scale(0.95);
+}
+
+.scale-leave-to {
+  transform: scale(1.05);
+}

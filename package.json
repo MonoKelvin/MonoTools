@@ -1,0 +1,47 @@
+{
+  "name": "monotools",
+  "version": "1.0.0",
+  "description": "MonoTools - High-performance desktop launcher and productivity tool for Windows",
+  "author": "MonoKelvin <monokelvin@example.com>",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "lint": "eslint . --ext .vue,.ts --fix",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest",
+    "test:rust": "cd src-tauri && cargo test"
+  },
+  "dependencies": {
+    "vue": "^3.5.13",
+    "pinia": "^2.2.6",
+    "primevue": "^4.2.5",
+    "@primeuix/themes": "^1.0.0",
+    "lucide-vue-next": "^0.453.0",
+    "@tauri-apps/api": "^2.1.0",
+    "@tauri-apps/plugin-autostart": "^2.0.0",
+    "@tauri-apps/plugin-single-instance": "^2.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/tsconfig": "^0.7.0",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.0",
+    "vue-tsc": "^2.1.8",
+    "vitest": "^2.1.6",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^25.0.1",
+    "eslint": "^9.17.0",
+    "@eslint/js": "^9.17.0",
+    "typescript-eslint": "^8.18.1",
+    "prettier": "^3.4.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

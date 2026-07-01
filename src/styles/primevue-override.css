@@ -1,0 +1,175 @@
+/* ============================================
+   PrimeVue Theme Override
+   MonoTools Custom Styles
+   ============================================ */
+
+/* 全局覆盖 */
+body {
+  background: transparent !important;
+  color: var(--mt-ink) !important;
+}
+
+/* 输入框样式覆盖 */
+.p-inputtext {
+  background: var(--mt-surface-1) !important;
+  border-color: var(--mt-hairline) !important;
+  color: var(--mt-ink) !important;
+  font-family: var(--mt-font-body) !important;
+  border-radius: var(--mt-radius-md) !important;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.p-inputtext:hover {
+  border-color: var(--mt-hairline-strong) !important;
+}
+
+.p-inputtext:focus {
+  border-color: var(--mt-primary-focus) !important;
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.25) !important;
+}
+
+.p-inputtext::placeholder {
+  color: var(--mt-ink-subtle) !important;
+}
+
+/* 按钮样式覆盖 */
+.p-button {
+  font-family: var(--mt-font-body) !important;
+  border-radius: var(--mt-radius-md) !important;
+  transition: all 0.15s ease !important;
+}
+
+.p-button.p-button-primary {
+  background: var(--mt-primary) !important;
+  border-color: var(--mt-primary) !important;
+}
+
+.p-button.p-button-primary:hover {
+  background: var(--mt-primary-hover) !important;
+  border-color: var(--mt-primary-hover) !important;
+}
+
+.p-button.p-button-secondary {
+  background: var(--mt-surface-1) !important;
+  border-color: var(--mt-hairline) !important;
+  color: var(--mt-ink) !important;
+}
+
+.p-button.p-button-secondary:hover {
+  background: var(--mt-surface-2) !important;
+  border-color: var(--mt-hairline-strong) !important;
+}
+
+/* 卡片样式覆盖 */
+.p-card {
+  background: var(--mt-surface-1) !important;
+  border-color: var(--mt-hairline) !important;
+  border-radius: var(--mt-radius-lg) !important;
+}
+
+.p-card .p-card-body {
+  padding: 24px !important;
+}
+
+.p-card .p-card-title {
+  font-size: 22px !important;
+  font-weight: 500 !important;
+  color: var(--mt-ink) !important;
+  letter-spacing: -0.4px !important;
+}
+
+.p-card .p-card-subtitle {
+  font-size: 14px !important;
+  color: var(--mt-ink-subtle) !important;
+}
+
+/* 对话框样式覆盖 */
+.p-dialog {
+  border-radius: var(--mt-radius-xl) !important;
+  background: var(--mt-surface-1) !important;
+  border-color: var(--mt-hairline) !important;
+}
+
+.p-dialog .p-dialog-header {
+  border-bottom-color: var(--mt-hairline) !important;
+}
+
+/* 列表框样式覆盖 */
+.p-listbox {
+  background: var(--mt-surface-1) !important;
+  border-color: var(--mt-hairline) !important;
+  border-radius: var(--mt-radius-md) !important;
+}
+
+.p-listbox .p-listbox-item {
+  border-radius: var(--mt-radius-sm) !important;
+  color: var(--mt-ink) !important;
+}
+
+.p-listbox .p-listbox-item.p-highlight {
+  background: rgba(94, 106, 210, 0.15) !important;
+}
+
+.p-listbox .p-listbox-item:not(.p-highlight):hover {
+  background: var(--mt-surface-2) !important;
+}
+
+/* 开关样式覆盖 */
+.p-toggleswitch {
+  .p-toggleswitch-slider {
+    background: var(--mt-surface-3) !important;
+  }
+
+  &.p-highlight .p-toggleswitch-slider {
+    background: var(--mt-primary) !important;
+  }
+}
+
+/* Toast 通知样式覆盖 */
+.p-toast {
+  background: var(--mt-surface-2) !important;
+  border-color: var(--mt-hairline) !important;
+  border-radius: var(--mt-radius-md) !important;
+}
+
+/* 下拉菜单样式覆盖 */
+.p-dropdown {
+  background: var(--mt-surface-1) !important;
+  border-color: var(--mt-hairline) !important;
+}
+
+.p-dropdown-panel {
+  background: var(--mt-surface-2) !important;
+  border-color: var(--mt-hairline) !important;
+}
+
+/* 滚动条样式 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mt-surface-3);
+  border-radius: var(--mt-radius-pill);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mt-surface-4);
+}
+
+/* 焦点可见性 */
+:focus-visible {
+  outline: 2px solid var(--mt-primary-focus);
+  outline-offset: 2px;
+}
+
+/* 选择文本 */
+::selection {
+  background: rgba(94, 106, 210, 0.3);
+  color: var(--mt-ink);
+}
