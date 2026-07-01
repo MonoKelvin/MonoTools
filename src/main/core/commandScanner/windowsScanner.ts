@@ -284,8 +284,16 @@ async function processShortcutEntry(
 
   // 始终使用 .lnk 快捷方式路径作为启动路径
   // Windows Shell API (shell.openPath) 能正确处理 .lnk 文件的启动（包括参数、工作目录等）
-  // 图标使用 .lnk 路径即可，SHGetFileInfoW 能正确解析快捷方式的图标（包括自定义图标）
-  const icon = getIconUrl(fullPath)
+  // 图标优先使用快捷方式的自定义图标（icon + iconIndex），其次是目标程序的图标
+  let iconPath = fullPath // 默认使用 .lnk 文件本身
+  if (shortcutDetails?.icon) {
+    // 快捷方式指定了自定义图标
+    iconPath = shortcutDetails.icon
+  } else if (targetPath) {
+    // 使用目标程序的图标（大多数系统快捷方式的正确图标）
+    iconPath = targetPath
+  }
+  const icon = getIconUrl(iconPath)
 
   // 创建应用对象
   // _dedupeTarget 用于去重：同名且指向同一目标的快捷方式只保留一个
