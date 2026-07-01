@@ -520,6 +520,9 @@ onMounted(async () => {
     commandDataStore.initializeData() // 初始化应用历史记录和固定列表
   ])
 
+  // 初始化主题（必须在其他样式依赖之前完成）
+  await windowStore.initTheme()
+
   // 初始调整窗口高度
   updateWindowHeight()
 

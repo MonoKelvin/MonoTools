@@ -1,0 +1,386 @@
+/**
+ * Vercel Light 主题样式
+ *
+ * 极简主义的白纸设计系统
+ * 参考：https://vercel.com
+ */
+
+:root {
+  /* ========== Vercel Geist 设计系统 - 颜色 ========== */
+  --color-primary: #171717;
+  --color-on-primary: #ffffff;
+  --color-link: #0070f3;
+  --color-link-deep: #0761d1;
+  --color-link-soft: #d3e5ff;
+  --color-violet: #7928ca;
+  --color-cyan: #50e3c2;
+  --color-pink: #ff0080;
+  --color-magenta: #eb367f;
+  --color-canvas: #fafafa;
+  --color-canvas-elevated: #ffffff;
+  --color-hairline-soft: #f2f2f2;
+  --color-hairline: #ebebeb;
+  --color-ink: #171717;
+  --color-body: #4d4d4d;
+  --color-mute: #8f8f8f;
+  --color-faint: #a1a1a1;
+  --color-error: #ee0000;
+  --color-error-deep: #c50000;
+  --color-success: #10b981;
+  --color-warning: #f5a623;
+  --color-warning-soft: #fef3c7;
+  --color-warning-deep: #d97706;
+  --color-gradient-develop-start: #007cf0;
+  --color-gradient-develop-end: #00dfd8;
+  --color-gradient-preview-start: #7928ca;
+  --color-gradient-preview-end: #ff0080;
+  --color-gradient-ship-start: #ff4d4d;
+  --color-gradient-ship-end: #f9cb28;
+
+  /* ========== Vercel Geist 设计系统 - 字体 ========== */
+  --font-display: 'Geist Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
+  --font-body: 'Geist Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo;
+
+  /* ========== 全局背景和文字颜色（向后兼容） ========== */
+  --bg-color: #fafafa;
+  --text-color: #171717;
+  --text-secondary: #4d4d4d;
+  --border-color: #ebebeb;
+  --divider-color: rgba(0, 0, 0, 0.1);
+  --control-bg: rgba(0, 0, 0, 0.015);
+  --hover-bg: #f2f2f2;
+  --active-bg: #e5e5e5;
+  --primary-color: #171717;
+  --input-bg: #ffffff;
+  --input-border: #ebebeb;
+  --input-focus-bg: #e5e5e5;
+  --placeholder-color: #a1a1a1;
+  --card-bg: #ffffff;
+  --panel-bg: #f4f4f4;
+  --panel-bg-dark: #303133;
+}
+
+/* ========== 全局字体应用 ========== */
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-color, var(--color-canvas));
+  color: var(--text-color, var(--color-ink));
+}
+
+/* ========== 应用容器 ========== */
+#app[data-theme='active'] {
+  background-color: var(--bg-color, var(--color-canvas));
+}
+
+/* ========== 按钮样式增强 ========== */
+#app[data-theme='active'] .btn {
+  font-family: var(--font-body);
+  border-radius: var(--rounded-sm, 6px);
+  background-color: var(--color-canvas-elevated, #ffffff);
+  border: 1px solid var(--color-hairline, #ebebeb);
+  color: var(--color-ink, #171717);
+  font-weight: 500;
+}
+
+#app[data-theme='active'] .btn:hover:not(:disabled) {
+  background-color: var(--color-hairline-soft, #f2f2f2);
+  border-color: var(--color-hairline, #ebebeb);
+}
+
+#app[data-theme='active'] .btn:active:not(:disabled) {
+  background-color: var(--color-hairline-soft, #f2f2f2);
+}
+
+#app[data-theme='active'] .btn-primary {
+  background-color: var(--color-ink, #171717);
+  color: var(--color-on-primary, #ffffff);
+  border-radius: var(--rounded-pill, 100px);
+  padding: 0px 14px;
+  font-weight: 500;
+  border: none;
+}
+
+#app[data-theme='active'] .btn-primary:hover:not(:disabled) {
+  background-color: #333333;
+  color: var(--color-on-primary, #ffffff);
+}
+
+#app[data-theme='active'] .btn-primary:active:not(:disabled) {
+  background-color: #000000;
+}
+
+/* ========== 输入框样式增强 ========== */
+#app[data-theme='active'] .input {
+  font-family: var(--font-body);
+  border-radius: var(--rounded-sm, 6px);
+  background-color: var(--color-canvas-elevated, #ffffff);
+  border: 1px solid var(--color-hairline, #ebebeb);
+  color: var(--color-ink, #171717);
+}
+
+#app[data-theme='active'] .input:hover {
+  border-color: var(--color-link, #0070f3);
+}
+
+#app[data-theme='active'] .input:focus {
+  background-color: var(--color-canvas-elevated, #ffffff);
+  border-color: var(--color-link, #0070f3);
+  box-shadow: 0 0 0 2px var(--color-link-soft, #d3e5ff);
+  outline: none;
+}
+
+#app[data-theme='active'] .input::placeholder {
+  color: var(--color-mute, #8f8f8f);
+}
+
+/* ========== 选择框样式 ========== */
+#app[data-theme='active'] .select {
+  font-family: var(--font-body);
+  border-radius: var(--rounded-sm, 6px);
+  background-color: var(--color-canvas-elevated, #ffffff);
+  border: 1px solid var(--color-hairline, #ebebeb);
+  color: var(--color-ink, #171717);
+}
+
+#app[data-theme='active'] .select:hover {
+  border-color: var(--color-link, #0070f3);
+}
+
+#app[data-theme='active'] .select:focus {
+  border-color: var(--color-link, #0070f3);
+  box-shadow: 0 0 0 2px var(--color-link-soft, #d3e5ff);
+  outline: none;
+}
+
+#app[data-theme='active'] .select option {
+  background-color: var(--color-canvas-elevated, #ffffff);
+  color: var(--color-ink, #171717);
+}
+
+/* ========== 卡片样式 ========== */
+#app[data-theme='active'] .card {
+  border-radius: var(--rounded-md, 12px);
+  background-color: var(--color-canvas-elevated, #ffffff);
+  border: 1px solid var(--color-hairline, #ebebeb);
+  color: var(--color-ink, #171717);
+}
+
+#app[data-theme='active'] .card:hover {
+  background-color: var(--color-hairline-soft, #f2f2f2);
+  border-color: var(--color-hairline, #ebebeb);
+}
+
+/* ========== 开关样式 ========== */
+#app[data-theme='active'] .toggle {
+  --toggle-bg: var(--color-hairline-soft, #f2f2f2);
+  --toggle-border: var(--color-hairline, #ebebeb);
+}
+
+#app[data-theme='active'] .toggle-slider {
+  background-color: var(--toggle-bg);
+  border: 2px solid var(--toggle-border);
+}
+
+#app[data-theme='active'] .toggle-slider:hover {
+  background-color: #e5e5e5;
+}
+
+#app[data-theme='active'] .toggle-slider::before {
+  background-color: var(--color-mute, #8f8f8f);
+}
+
+#app[data-theme='active'] .toggle input:checked + .toggle-slider {
+  background-color: var(--color-link, #0070f3);
+  border-color: var(--color-link, #0070f3);
+}
+
+#app[data-theme='active'] .toggle input:checked + .toggle-slider:hover {
+  background-color: var(--color-link-deep, #0761d1);
+  border-color: var(--color-link-deep, #0761d1);
+}
+
+#app[data-theme='active'] .toggle input:checked + .toggle-slider::before {
+  background-color: var(--color-on-primary, #ffffff);
+}
+
+#app[data-theme='active'] .toggle input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px var(--color-link-soft, #d3e5ff);
+}
+
+/* ========== 滚动条样式（适配浅色主题） ========== */
+#app[data-theme='active'] ::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.08) !important;
+}
+
+#app[data-theme='active'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.15) !important;
+}
+
+#app[data-theme='active'] ::-webkit-scrollbar-thumb:active {
+  background: rgba(0, 0, 0, 0.25) !important;
+}
+
+/* ========== 文本选择样式 ========== */
+#app[data-theme='active'] ::selection {
+  background: color-mix(in srgb, var(--color-link, #0070f3) 35%, white);
+  color: var(--color-ink, #171717);
+}
+
+#app[data-theme='active'] ::-moz-selection {
+  background: color-mix(in srgb, var(--color-link, #0070f3) 35%, white);
+  color: var(--color-ink, #171717);
+}
+
+/* ========== 标题排版（Geist Sans 字体） ========== */
+#app[data-theme='active'] h1,
+#app[data-theme='active'] h2,
+#app[data-theme='active'] h3,
+#app[data-theme='active'] h4,
+#app[data-theme='active'] h5,
+#app[data-theme='active'] h6 {
+  font-family: var(
+    --font-display,
+    'Geist Sans',
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto
+  );
+  color: var(--color-ink, #171717);
+  font-weight: 600;
+  letter-spacing: -0.4px;
+}
+
+#app[data-theme='active'] h1 {
+  font-size: var(--display-xl-size, 48px);
+  font-weight: var(--display-xl-weight, 600);
+  line-height: var(--display-xl-line-height, 48px);
+  letter-spacing: var(--display-xl-letter-spacing, -2.4px);
+}
+
+#app[data-theme='active'] h2 {
+  font-size: var(--display-lg-size, 32px);
+  font-weight: var(--display-lg-weight, 600);
+  line-height: var(--display-lg-line-height, 40px);
+  letter-spacing: var(--display-lg-letter-spacing, -1.28px);
+}
+
+#app[data-theme='active'] h3 {
+  font-size: var(--display-md-size, 20px);
+  font-weight: var(--display-md-weight, 600);
+  line-height: var(--display-md-line-height, 28px);
+  letter-spacing: var(--display-md-letter-spacing, -0.4px);
+}
+
+/* ========== 段落排版 ========== */
+#app[data-theme='active'] p {
+  font-family: var(
+    --font-body,
+    'Geist Sans',
+    'Inter',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto
+  );
+  font-size: var(--body-md-size, 14px);
+  font-weight: var(--body-md-weight, 400);
+  line-height: var(--body-md-line-height, 20px);
+  letter-spacing: var(--body-md-letter-spacing, 0);
+  color: var(--color-body, #4d4d4d);
+}
+
+/* ========== 代码样式（Geist Mono 字体） ========== */
+#app[data-theme='active'] code,
+#app[data-theme='active'] pre {
+  font-family: var(--font-mono, 'Geist Mono', 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo);
+  font-size: var(--mono-size, 13px);
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+}
+
+/* ========== 链接样式 ========== */
+#app[data-theme='active'] a {
+  color: var(--color-link, #0070f3);
+  text-decoration: none;
+}
+
+#app[data-theme='active'] a:hover {
+  color: var(--color-link-deep, #0761d1);
+  text-decoration: underline;
+}
+
+/* ========== 按钮通用样式 ========== */
+#app[data-theme='active'] button {
+  font-family: var(--font-body);
+  font-weight: 500;
+}
+
+/* ========== 输入框通用样式 ========== */
+#app[data-theme='active'] input,
+#app[data-theme='active'] textarea,
+#app[data-theme='active'] select {
+  font-family: var(--font-body);
+  font-size: var(--body-md-size, 14px);
+  font-weight: 400;
+  line-height: var(--body-md-line-height, 20px);
+  color: var(--color-ink, #171717);
+}
+
+/* ========== 徽标样式 ========== */
+#app[data-theme='active'] .badge,
+#app[data-theme='active'] .tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--rounded-pill, 100px);
+  font-size: var(--body-sm-size, 12px);
+  font-weight: 500;
+  line-height: 1.4;
+  background-color: var(--color-canvas-elevated, #ffffff);
+  color: var(--color-ink, #171717);
+  border: 1px solid var(--color-hairline, #ebebeb);
+}
+
+/* ========== 分隔线 ========== */
+#app[data-theme='active'] hr {
+  border: none;
+  border-top: 1px solid var(--color-hairline, #ebebeb);
+  margin: var(--spacing-lg, 24px) 0;
+}
+
+/* ========== 表格样式 ========== */
+#app[data-theme='active'] table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: var(--body-md-size, 14px);
+}
+
+#app[data-theme='active'] th,
+#app[data-theme='active'] td {
+  padding: var(--spacing-sm, 12px) var(--spacing-md, 16px);
+  text-align: left;
+  border-bottom: 1px solid var(--color-hairline, #ebebeb);
+  color: var(--color-ink, #171717);
+}
+
+#app[data-theme='active'] th {
+  font-weight: 600;
+  color: var(--color-ink, #171717);
+}
+
+/* ========== 列表样式 ========== */
+#app[data-theme='active'] ul,
+#app[data-theme='active'] ol {
+  padding-left: var(--spacing-lg, 24px);
+  font-family: var(--font-body);
+  font-size: var(--body-md-size, 14px);
+  color: var(--color-ink, #171717);
+}
+
+#app[data-theme='active'] li {
+  margin-bottom: var(--spacing-xs, 8px);
+}

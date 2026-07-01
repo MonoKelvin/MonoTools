@@ -307,7 +307,7 @@ defineExpose({
   justify-content: center;
   border: 1px solid var(--bg-color);
   border-radius: 999px;
-  background: #389e0d;
+  background: var(--color-success, #389e0d);
   color: var(--text-on-primary);
   font-size: 8px;
   font-weight: 700;

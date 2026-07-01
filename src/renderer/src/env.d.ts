@@ -42,6 +42,29 @@ declare global {
       }
     }
     monotools: {
+      // ==================== 主题管理 ====================
+      loadThemes: () => Promise<{ success: boolean; themes?: any[]; error?: string }>
+      applyTheme: (themeId: string, options?: any) => Promise<{ success: boolean; error?: string }>
+      disableTheme: () => Promise<{ success: boolean; error?: string }>
+      getCurrentTheme: () => Promise<{ success: boolean; theme?: any }>
+      getAvailableThemes: () => Promise<{ success: boolean; themes?: any[]; error?: string }>
+      getThemeById: (themeId: string) => Promise<{ success: boolean; theme?: any }>
+      importTheme: (
+        sourcePath: string
+      ) => Promise<{ success: boolean; theme?: any; error?: string }>
+      exportTheme: (
+        themeId: string,
+        targetPath: string
+      ) => Promise<{ success: boolean; error?: string }>
+      deleteTheme: (themeId: string) => Promise<{ success: boolean; error?: string }>
+      validateTheme: (configPath: string) => Promise<{ valid: boolean; error?: string }>
+      getThemeDir: () => Promise<{
+        success: boolean
+        themeDir?: string
+        userThemeDir?: string
+        error?: string
+      }>
+
       getApps: () => Promise<Array<{ name: string; path: string; icon?: string }>>
       getSystemSettings: () => Promise<any[]>
       isWindows: () => Promise<boolean>

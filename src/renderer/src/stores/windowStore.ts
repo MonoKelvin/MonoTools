@@ -248,6 +248,18 @@ export const useWindowStore = defineStore('window', () => {
     theme.value = value
   }
 
+  // 初始化主题
+  async function initTheme(): Promise<void> {
+    try {
+      // 动态导入 themeStore 并调用 initTheme
+      const { useThemeStore } = await import('./themeStore')
+      const themeStore = useThemeStore()
+      await themeStore.initTheme()
+    } catch (error) {
+      console.error('[WindowStore] 初始化主题失败:', error)
+    }
+  }
+
   function updatePrimaryColor(value: string): void {
     primaryColor.value = value
     // 应用主题色类名到 body
@@ -652,6 +664,7 @@ export const useWindowStore = defineStore('window', () => {
     shouldClearSearch,
     setUpdateDownloadInfo,
     checkDownloadedUpdate,
-    loadSettings
+    loadSettings,
+    initTheme
   }
 })

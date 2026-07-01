@@ -36,6 +36,17 @@ const homeRoutes: MenuRouterItemType[] = [
     }
   },
   {
+    path: '/theme',
+    name: 'Theme',
+    component: () => import('@/views/ThemeSetting/ThemeSetting.vue'),
+    meta: {
+      menu: {
+        label: '主题',
+        icon: 'i-z-palette'
+      }
+    }
+  },
+  {
     path: '/shortcuts',
     name: 'Shortcuts',
     component: () => import('@/views/ShortcutsSetting/ShortcutsSetting.vue'),

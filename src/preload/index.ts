@@ -12,6 +12,22 @@ export interface Command {
 }
 
 const api = {
+  // ==================== 主题管理 ====================
+  // 主题相关 API
+  loadThemes: () => ipcRenderer.invoke('theme:load'),
+  applyTheme: (themeId: string, options?: any) =>
+    ipcRenderer.invoke('theme:apply', themeId, options),
+  disableTheme: () => ipcRenderer.invoke('theme:disable'),
+  getCurrentTheme: () => ipcRenderer.invoke('theme:getCurrent'),
+  getAvailableThemes: () => ipcRenderer.invoke('theme:getAvailable'),
+  getThemeById: (themeId: string) => ipcRenderer.invoke('theme:getById', themeId),
+  importTheme: (sourcePath: string) => ipcRenderer.invoke('theme:import', sourcePath),
+  exportTheme: (themeId: string, targetPath: string) =>
+    ipcRenderer.invoke('theme:export', themeId, targetPath),
+  deleteTheme: (themeId: string) => ipcRenderer.invoke('theme:delete', themeId),
+  validateTheme: (configPath: string) => ipcRenderer.invoke('theme:validate', configPath),
+  getThemeDir: () => ipcRenderer.invoke('theme:getThemeDir'),
+
   getApps: () => ipcRenderer.invoke('get-apps'),
   getSystemSettings: () => ipcRenderer.invoke('get-system-settings'),
   isWindows: () => ipcRenderer.invoke('is-windows'),
@@ -487,6 +503,28 @@ declare global {
       }
     }
     monotools: {
+      // ==================== 主题管理 ====================
+      loadThemes: () => Promise<{ success: boolean; themes?: any[]; error?: string }>
+      applyTheme: (themeId: string, options?: any) => Promise<{ success: boolean; error?: string }>
+      getCurrentTheme: () => Promise<{ success: boolean; theme?: any }>
+      getAvailableThemes: () => Promise<{ success: boolean; themes?: any[]; error?: string }>
+      getThemeById: (themeId: string) => Promise<{ success: boolean; theme?: any }>
+      importTheme: (
+        sourcePath: string
+      ) => Promise<{ success: boolean; theme?: any; error?: string }>
+      exportTheme: (
+        themeId: string,
+        targetPath: string
+      ) => Promise<{ success: boolean; error?: string }>
+      deleteTheme: (themeId: string) => Promise<{ success: boolean; error?: string }>
+      validateTheme: (configPath: string) => Promise<{ valid: boolean; error?: string }>
+      getThemeDir: () => Promise<{
+        success: boolean
+        themeDir?: string
+        userThemeDir?: string
+        error?: string
+      }>
+
       getApps: () => Promise<Command[]>
       getSystemSettings: () => Promise<any[]>
       isWindows: () => Promise<boolean>

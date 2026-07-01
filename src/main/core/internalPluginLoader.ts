@@ -3,34 +3,34 @@ import fsSync from 'fs'
 import path from 'path'
 import { pathToFileURL } from 'url'
 import api from '../api/index'
-import { BUNDLED_INTERNAL_PLUGIN_NAMES, getInternalPluginPath } from './internalPlugins'
+import {
+  BUNDLED_INTERNAL_PLUGIN_NAMES,
+  BUNDLED_THEME_NAMES,
+  getInternalPluginPath
+} from './internalPlugins'
 import { getInternalPluginUrl, getInternalPluginServerPort } from './internalPluginServer'
 
 /**
- * 加载所有内置插件
+ * 加载所有内置插件和主题
  * 在应用启动时调用，自动将内置插件添加到数据库
  */
 export function loadInternalPlugins(): void {
-  console.log('[InternalPlugin] 开始加载内置插件...')
+  console.log('[InternalPlugin] 开始加载内置插件和主题...')
 
   const isDev = !app.isPackaged
   const existingPlugins = api.dbGet('plugins') || []
 
   // 移除旧的内置插件记录（基于名称判断）
   const filteredPlugins = existingPlugins.filter(
-    (p: any) => !BUNDLED_INTERNAL_PLUGIN_NAMES.includes(p.name)
+    (p: any) =>
+      !BUNDLED_INTERNAL_PLUGIN_NAMES.includes(p.name) && !BUNDLED_THEME_NAMES.includes(p.name)
   )
 
   // 重新加载所有内置插件
   for (const pluginName of BUNDLED_INTERNAL_PLUGIN_NAMES) {
     try {
       const pluginPath = getInternalPluginPath(pluginName)
-
-      // 开发模式：插件路径直接指向 public 目录
-      // 生产模式：插件路径指向插件根目录（打包时已将 dist 构建产物复制到此目录）
       const effectivePluginPath = isDev ? path.join(pluginPath, 'public') : pluginPath
-
-      // 读取 plugin.json
       const pluginJsonPath = path.join(effectivePluginPath, 'plugin.json')
 
       if (!fsSync.existsSync(pluginJsonPath)) {
@@ -42,11 +42,8 @@ export function loadInternalPlugins(): void {
       }
 
       const pluginConfig = JSON.parse(fsSync.readFileSync(pluginJsonPath, 'utf-8'))
-
-      // 构建插件信息
       const logoPath = pluginConfig.logo ? path.join(effectivePluginPath, pluginConfig.logo) : ''
 
-      // 生产环境且 server 已启动时，使用 HTTP URL 加载插件（避免 file:// 下的 CSP 限制）
       const serverPort = getInternalPluginServerPort()
       const mainPath = pluginConfig.main
         ? serverPort > 0
@@ -60,12 +57,11 @@ export function loadInternalPlugins(): void {
         version: pluginConfig.version,
         description: pluginConfig.description || '',
         logo: logoPath ? pathToFileURL(logoPath).href : '',
-        path: effectivePluginPath, // 保存有效路径（开发模式下是 public 目录）
+        path: effectivePluginPath,
         features: pluginConfig.features || [],
         isDevelopment: isDev,
         main: mainPath
       }
-      console.log('[InternalPlugin] 加载插件', pluginInfo)
 
       filteredPlugins.push(pluginInfo)
       console.log(`[InternalPlugin] 已加载内置插件: ${pluginName}`)
@@ -74,7 +70,48 @@ export function loadInternalPlugins(): void {
     }
   }
 
+  // 加载所有内置主题插件
+  for (const themeName of BUNDLED_THEME_NAMES) {
+    try {
+      const themePath = getInternalPluginPath(themeName, true)
+      const effectiveThemePath = isDev ? path.join(themePath, 'public') : themePath
+      const pluginJsonPath = path.join(effectiveThemePath, 'plugin.json')
+
+      if (!fsSync.existsSync(pluginJsonPath)) {
+        console.error(
+          `[InternalPlugin] 内置主题 ${themeName} 的 plugin.json 不存在:`,
+          pluginJsonPath
+        )
+        continue
+      }
+
+      const themeConfig = JSON.parse(fsSync.readFileSync(pluginJsonPath, 'utf-8'))
+
+      // 主题插件不需要 logo 和 main 字段，但为了兼容插件数据库，保留这些字段
+      const logoPath = themeConfig.icon ? path.join(effectiveThemePath, themeConfig.icon) : ''
+
+      const themeInfo = {
+        name: themeConfig.name,
+        title: themeConfig.title || themeConfig.name,
+        version: themeConfig.version,
+        description: themeConfig.description || '',
+        logo: logoPath ? pathToFileURL(logoPath).href : '',
+        path: effectiveThemePath,
+        features: [], // 主题插件不需要 features
+        isDevelopment: isDev,
+        main: undefined, // 主题插件没有 WebContentsView
+        isTheme: true, // 标记为主题插件
+        themeType: themeConfig.themeType || 'system'
+      }
+
+      filteredPlugins.push(themeInfo)
+      console.log(`[InternalPlugin] 已加载内置主题: ${themeName}`)
+    } catch (error) {
+      console.error(`[InternalPlugin] 加载内置主题 ${themeName} 失败:`, error)
+    }
+  }
+
   // 保存到数据库
   api.dbPut('plugins', filteredPlugins)
-  console.log('[InternalPlugin] 内置插件加载完成')
+  console.log('[InternalPlugin] 内置插件和主题加载完成')
 }

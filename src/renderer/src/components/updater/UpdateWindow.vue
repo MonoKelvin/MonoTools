@@ -175,7 +175,7 @@ body {
   .update-window {
     background: var(--bg-color);
     border: 1px solid rgba(255, 255, 255, 0.1);
-    color: #e5e5e5;
+    color: var(--text-primary, #e5e5e5);
   }
 }
 
@@ -221,12 +221,12 @@ body {
 
 .subtitle {
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary, #666);
 }
 
 @media (prefers-color-scheme: dark) {
   .subtitle {
-    color: #999;
+    color: var(--text-secondary, #999);
   }
 }
 
@@ -251,14 +251,14 @@ body {
   margin-top: 1.5em;
   margin-bottom: 0.5em;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary, #333);
 }
 
 @media (prefers-color-scheme: dark) {
   :deep(h1),
   :deep(h2),
   :deep(h3) {
-    color: #e5e5e5;
+    color: var(--text-primary, #e5e5e5);
   }
 }
 
@@ -275,12 +275,12 @@ body {
 
 :deep(li) {
   margin-bottom: 4px;
-  color: #444;
+  color: var(--text-primary, #444);
 }
 
 @media (prefers-color-scheme: dark) {
   :deep(li) {
-    color: #ccc;
+    color: var(--text-primary, #ccc);
   }
 }
 
@@ -328,36 +328,36 @@ body {
 
 .cancel {
   background: transparent;
-  color: #666;
+  color: var(--text-secondary, #666);
   border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .cancel:hover {
   background: rgba(0, 0, 0, 0.05);
-  color: #333;
+  color: var(--text-primary, #333);
 }
 
 @media (prefers-color-scheme: dark) {
   .cancel {
-    color: #999;
+    color: var(--text-secondary, #999);
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
   .cancel:hover {
     background: rgba(255, 255, 255, 0.05);
-    color: #fff;
+    color: var(--color-on-primary, #fff);
   }
 }
 
 .confirm {
-  background: #3b82f6;
-  color: white;
+  background: var(--color-primary, #3b82f6);
+  color: var(--color-on-primary, white);
 }
 
 .confirm:hover {
-  background: #2563eb;
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 85%, black);
 }
 
 .confirm:active {
-  background: #1d4ed8;
+  background: color-mix(in srgb, var(--color-primary, #3b82f6) 70%, black);
 }
 </style>

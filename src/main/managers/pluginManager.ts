@@ -21,6 +21,7 @@ import { registerIconProtocolForSession } from '../core/iconProtocol'
 import lmdbInstance from '../core/lmdb/lmdbInstance'
 import databaseAPI from '../api/shared/database'
 import proxyManager from './proxyManager'
+import { getThemeLifecycle } from './themeLifecycle'
 import {
   EnterPayload,
   PluginAssemblyCoordinator,
@@ -322,6 +323,8 @@ export class PluginManager {
   private pluginDefaultHeight: number = WINDOW_DEFAULT_HEIGHT - WINDOW_INITIAL_HEIGHT
   // 跟踪每个插件上次进入的状态（用于单例重入判断）
   private pluginLastEnterState: Map<string, PluginLastEnterState> = new Map()
+  // 主题生命周期管理器
+  private themeLifecycle = getThemeLifecycle()
 
   /**
    * 获取插件默认高度
@@ -452,6 +455,18 @@ export class PluginManager {
     })
 
     const pluginInfoFromDB = this.fetchPluginInfoFromDB(pluginPath)
+
+    // 主题插件特殊处理：不创建 WebContentsView，只注入 CSS
+    if (pluginInfoFromDB?.isTheme) {
+      console.log('[Plugin] 检测到主题插件，使用主题生命周期管理:', pluginPath)
+      await this.themeLifecycle.onThemePluginEnabled(pluginInfoFromDB)
+      this.assemblyCoordinator.trace('theme-plugin-enabled', {
+        assemblyId: assembly.id,
+        pluginPath,
+        featureCode
+      })
+      return
+    }
 
     // 如果当前插件就是这个插件，直接返回
     if (this.currentPluginPath === pluginPath) {

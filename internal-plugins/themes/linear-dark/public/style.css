@@ -1,0 +1,388 @@
+/**
+ * Linear Dark 主题样式
+ *
+ * 设计理念：深邃的黑色表面和 lavender-blue 强调色
+ * 参考：https://linear.app
+ */
+
+:root {
+  /* ========== Linear 设计系统 - 颜色 ========== */
+  --color-primary: #5e6ad2;
+  --color-on-primary: #ffffff;
+  --color-primary-hover: #828fff;
+  --color-primary-focus: #5e69d1;
+  --color-ink: #f7f8f8;
+  --color-ink-muted: #d0d6e0;
+  --color-ink-subtle: #8a8f98;
+  --color-ink-tertiary: #62666d;
+  --color-canvas: #010102;
+  --color-surface1: #0f1011;
+  --color-surface2: #141516;
+  --color-surface3: #18191a;
+  --color-surface4: #191a1b;
+  --color-hairline: #23252a;
+  --color-hairline-strong: #34343a;
+  --color-hairline-tertiary: #3e3e44;
+  --color-inverse-canvas: #ffffff;
+  --color-inverse-surface1: #f5f6f6;
+  --color-inverse-surface2: #f6f7f7;
+  --color-inverse-ink: #000000;
+  --color-brand-secure: #7a7fad;
+  --color-semantic-success: #27a644;
+  --color-semantic-overlay: #000000;
+  --color-success: #27a644;
+  --color-error: #ee0000;
+
+  /* ========== Linear 设计系统 - 字体 ========== */
+  --font-display: 'Linear Display', 'SF Pro Display', -apple-system, system-ui, 'Segoe UI', Roboto;
+  --font-body: 'Linear Text', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto;
+  --font-mono: 'Linear Mono', 'SF Mono', ui-monospace, Menlo;
+
+  /* ========== 全局背景和文字颜色（向后兼容） ========== */
+  --bg-color: #010102;
+  --text-color: #f7f8f8;
+  --text-secondary: #d0d6e0;
+  --border-color: #23252a;
+  --divider-color: #23252a;
+  --control-bg: #0f1011;
+  --hover-bg: #141516;
+  --active-bg: #18191a;
+  --primary-color: #5e6ad2;
+  --input-bg: #0f1011;
+  --input-border: #23252a;
+  --input-focus-bg: #18191a;
+  --placeholder-color: #8a8f98;
+  --card-bg: #0f1011;
+  --panel-bg: #f4f4f4;
+  --panel-bg-dark: #303133;
+}
+
+/* ========== 全局字体应用 ========== */
+body {
+  font-family: var(--font-body);
+  background-color: var(--bg-color, var(--color-canvas));
+  color: var(--text-color, var(--color-ink));
+}
+
+/* ========== 应用容器 ========== */
+#app[data-theme='active'] {
+  background-color: var(--bg-color, var(--color-canvas));
+}
+
+/* ========== 按钮样式增强 ========== */
+#app[data-theme='active'] .btn {
+  font-family: var(--font-body);
+  font-weight: var(--button-weight, 500);
+  font-size: var(--button-size, 14px);
+  line-height: var(--button-line-height, 1.2);
+  letter-spacing: var(--button-letter-spacing, 0);
+  border-radius: var(--rounded-md, 8px);
+  border: 1px solid var(--color-hairline, #23252a);
+  background-color: var(--color-surface1, #0f1011);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] .btn:hover:not(:disabled) {
+  background-color: var(--color-surface2, #141516);
+  border-color: var(--color-primary, #5e6ad2);
+  color: var(--color-primary, #5e6ad2);
+}
+
+#app[data-theme='active'] .btn:active:not(:disabled) {
+  background-color: var(--color-surface3, #18191a);
+}
+
+#app[data-theme='active'] .btn-primary {
+  background-color: var(--color-primary, #5e6ad2);
+  color: var(--color-on-primary, #ffffff);
+  border: none;
+}
+
+#app[data-theme='active'] .btn-primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover, #828fff);
+  color: var(--color-on-primary, #ffffff);
+}
+
+#app[data-theme='active'] .btn-primary:active:not(:disabled) {
+  background-color: var(--color-primary-focus, #5e69d1);
+}
+
+/* ========== 输入框样式增强 ========== */
+#app[data-theme='active'] .input {
+  font-family: var(--font-body);
+  border-radius: var(--rounded-md, 8px);
+  background-color: var(--color-surface1, #0f1011);
+  border: 1px solid var(--color-hairline, #23252a);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] .input:hover {
+  border-color: var(--color-primary, #5e6ad2);
+}
+
+#app[data-theme='active'] .input:focus {
+  background-color: var(--color-surface1, #0f1011);
+  border-color: var(--color-primary-focus, #5e69d1);
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.5);
+  outline: none;
+}
+
+#app[data-theme='active'] .input::placeholder {
+  color: var(--color-ink-subtle, #8a8f98);
+}
+
+/* ========== 选择框样式 ========== */
+#app[data-theme='active'] .select {
+  font-family: var(--font-body);
+  border-radius: var(--rounded-md, 8px);
+  background-color: var(--color-surface1, #0f1011);
+  border: 1px solid var(--color-hairline, #23252a);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] .select:hover {
+  border-color: var(--color-primary, #5e6ad2);
+}
+
+#app[data-theme='active'] .select:focus {
+  border-color: var(--color-primary-focus, #5e69d1);
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.5);
+  outline: none;
+}
+
+#app[data-theme='active'] .select option {
+  background-color: var(--color-surface1, #0f1011);
+  color: var(--color-ink, #f7f8f8);
+}
+
+/* ========== 卡片样式 ========== */
+#app[data-theme='active'] .card {
+  border-radius: var(--rounded-lg, 12px);
+  background-color: var(--color-surface1, #0f1011);
+  border: 1px solid var(--color-hairline, #23252a);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] .card:hover {
+  background-color: var(--color-surface2, #141516);
+  border-color: var(--color-hairline-strong, #34343a);
+}
+
+/* ========== 开关样式 ========== */
+#app[data-theme='active'] .toggle {
+  --toggle-bg: var(--color-surface1, #0f1011);
+  --toggle-border: var(--color-hairline, #23252a);
+}
+
+#app[data-theme='active'] .toggle-slider {
+  background-color: var(--toggle-bg);
+  border: 2px solid var(--toggle-border);
+}
+
+#app[data-theme='active'] .toggle-slider:hover {
+  background-color: var(--color-surface2, #141516);
+}
+
+#app[data-theme='active'] .toggle-slider::before {
+  background-color: var(--color-ink-subtle, #8a8f98);
+}
+
+#app[data-theme='active'] .toggle input:checked + .toggle-slider {
+  background-color: var(--color-primary, #5e6ad2);
+  border-color: var(--color-primary, #5e6ad2);
+}
+
+#app[data-theme='active'] .toggle input:checked + .toggle-slider:hover {
+  background-color: var(--color-primary-hover, #828fff);
+  border-color: var(--color-primary-hover, #828fff);
+}
+
+#app[data-theme='active'] .toggle input:checked + .toggle-slider::before {
+  background-color: var(--color-on-primary, #ffffff);
+}
+
+#app[data-theme='active'] .toggle input:focus + .toggle-slider {
+  box-shadow: 0 0 0 2px rgba(94, 106, 210, 0.5);
+}
+
+/* ========== 滚动条样式（适配深色主题） ========== */
+#app[data-theme='active'] ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1) !important;
+}
+
+#app[data-theme='active'] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+#app[data-theme='active'] ::-webkit-scrollbar-thumb:active {
+  background: rgba(255, 255, 255, 0.35) !important;
+}
+
+/* ========== 文本选择样式 ========== */
+#app[data-theme='active'] ::selection {
+  background: color-mix(in srgb, var(--color-primary, #5e6ad2) 40%, #010102);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] ::-moz-selection {
+  background: color-mix(in srgb, var(--color-primary, #5e6ad2) 40%, #010102);
+  color: var(--color-ink, #f7f8f8);
+}
+
+/* ========== 标题排版（Linear Display 字体） ========== */
+#app[data-theme='active'] h1,
+#app[data-theme='active'] h2,
+#app[data-theme='active'] h3,
+#app[data-theme='active'] h4,
+#app[data-theme='active'] h5,
+#app[data-theme='active'] h6 {
+  font-family: var(
+    --font-display,
+    'Linear Display',
+    'SF Pro Display',
+    -apple-system,
+    system-ui,
+    'Segoe UI',
+    Roboto
+  );
+  color: var(--color-ink, #f7f8f8);
+  font-weight: 600;
+  letter-spacing: -0.6px;
+}
+
+#app[data-theme='active'] h1 {
+  font-size: var(--display-xl-size, 80px);
+  font-weight: var(--display-xl-weight, 600);
+  line-height: var(--display-xl-line-height, 1.05);
+  letter-spacing: var(--display-xl-letter-spacing, -3px);
+}
+
+#app[data-theme='active'] h2 {
+  font-size: var(--display-lg-size, 56px);
+  font-weight: var(--display-lg-weight, 600);
+  line-height: var(--display-lg-line-height, 1.1);
+  letter-spacing: var(--display-lg-letter-spacing, -1.8px);
+}
+
+#app[data-theme='active'] h3 {
+  font-size: var(--display-md-size, 40px);
+  font-weight: var(--display-md-weight, 600);
+  line-height: var(--display-md-line-height, 1.15);
+  letter-spacing: var(--display-md-letter-spacing, -1px);
+}
+
+/* ========== 段落排版 ========== */
+#app[data-theme='active'] p {
+  font-family: var(
+    --font-body,
+    'Linear Text',
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto
+  );
+  font-size: var(--body-size, 16px);
+  font-weight: var(--body-weight, 400);
+  line-height: var(--body-line-height, 1.5);
+  letter-spacing: var(--body-letter-spacing, -0.05px);
+  color: var(--color-ink, #f7f8f8);
+}
+
+/* ========== 代码样式（Linear Mono 字体） ========== */
+#app[data-theme='active'] code,
+#app[data-theme='active'] pre {
+  font-family: var(--font-mono, 'Linear Mono', 'SF Mono', ui-monospace, Menlo);
+  font-size: var(--mono-size, 13px);
+  font-weight: var(--mono-weight, 400);
+  line-height: var(--mono-line-height, 1.5);
+  letter-spacing: var(--mono-letter-spacing, 0);
+}
+
+/* ========== 链接样式 ========== */
+#app[data-theme='active'] a {
+  color: var(--color-primary, #5e6ad2);
+  text-decoration: none;
+}
+
+#app[data-theme='active'] a:hover {
+  color: var(--color-primary-hover, #828fff);
+  text-decoration: underline;
+}
+
+/* ========== 按钮通用样式 ========== */
+#app[data-theme='active'] button {
+  font-family: var(--font-body);
+  font-size: var(--button-size, 14px);
+  font-weight: var(--button-weight, 500);
+  line-height: var(--button-line-height, 1.2);
+  letter-spacing: var(--button-letter-spacing, 0);
+  border-radius: var(--rounded-md, 8px);
+}
+
+/* ========== 输入框通用样式 ========== */
+#app[data-theme='active'] input,
+#app[data-theme='active'] textarea,
+#app[data-theme='active'] select {
+  font-family: var(--font-body);
+  font-size: var(--body-size, 16px);
+  font-weight: var(--body-weight, 400);
+  line-height: var(--body-line-height, 1.5);
+  letter-spacing: var(--body-letter-spacing, -0.05px);
+  color: var(--color-ink, #f7f8f8);
+}
+
+/* ========== 徽标样式 ========== */
+#app[data-theme='active'] .badge,
+#app[data-theme='active'] .tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--rounded-pill, 9999px);
+  font-size: var(--caption-size, 12px);
+  font-weight: var(--caption-weight, 400);
+  line-height: var(--caption-line-height, 1.4);
+  letter-spacing: var(--caption-letter-spacing, 0);
+  background-color: var(--color-surface2, #141516);
+  color: var(--color-ink-muted, #d0d6e0);
+  border: 1px solid var(--color-hairline, #23252a);
+}
+
+/* ========== 分隔线 ========== */
+#app[data-theme='active'] hr {
+  border: none;
+  border-top: 1px solid var(--color-hairline, #23252a);
+  margin: var(--spacing-lg, 24px) 0;
+}
+
+/* ========== 表格样式 ========== */
+#app[data-theme='active'] table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-body);
+  font-size: var(--body-size, 16px);
+}
+
+#app[data-theme='active'] th,
+#app[data-theme='active'] td {
+  padding: var(--spacing-sm, 12px) var(--spacing-md, 16px);
+  text-align: left;
+  border-bottom: 1px solid var(--color-hairline, #23252a);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] th {
+  font-weight: 600;
+  color: var(--color-ink-muted, #d0d6e0);
+}
+
+/* ========== 列表样式 ========== */
+#app[data-theme='active'] ul,
+#app[data-theme='active'] ol {
+  padding-left: var(--spacing-lg, 24px);
+  font-family: var(--font-body);
+  font-size: var(--body-size, 16px);
+  color: var(--color-ink, #f7f8f8);
+}
+
+#app[data-theme='active'] li {
+  margin-bottom: var(--spacing-xs, 8px);
+}

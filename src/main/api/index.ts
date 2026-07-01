@@ -46,6 +46,9 @@ import {
 } from '@shared/commandContextShared'
 import pluginFFmpegAPI from './plugin/ffmpeg'
 
+// 主题管理
+import { getThemeIPC } from './theme'
+import { getThemeManager } from '../core/themeManager'
 import { runStartupDataMigrations } from '../core/startupDataMigrations'
 import superPanelManager from '../core/superPanelManager'
 
@@ -135,6 +138,9 @@ class APIManager {
     // 初始化软件更新API
     updaterAPI.init(mainWindow)
 
+    // 初始化主题管理
+    this.initTheme(mainWindow)
+
     // 初始化超级面板管理器
     superPanelManager.init(mainWindow)
 
@@ -145,6 +151,20 @@ class APIManager {
     settingsAPI.setGlobalShortcutHandler((target, context) =>
       this.handleGlobalShortcut(target, context)
     )
+  }
+
+  /**
+   * 初始化主题管理
+   * @param mainWindow 主窗口
+   */
+  private initTheme(mainWindow: BrowserWindow): void {
+    // 注册主题 IPC
+    const themeIPC = getThemeIPC()
+    themeIPC.register()
+
+    // 初始化主题管理器
+    const themeManager = getThemeManager()
+    themeManager.setMainWindow(mainWindow)
   }
 
   /**

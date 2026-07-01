@@ -8,6 +8,7 @@ import { isBundledInternalPlugin } from '../../core/internalPlugins'
 import { MONOTOOLS_NAMESPACE } from '../../common/constants'
 import lmdbInstance from '../../core/lmdb/lmdbInstance'
 import windowManager from '../../managers/windowManager'
+import { getThemeLifecycle } from '../../managers/themeLifecycle'
 import { httpGet } from '../../utils/httpRequest.js'
 import { pluginFeatureAPI } from '../plugin/feature'
 import databaseAPI from '../shared/database'
@@ -286,7 +287,16 @@ export class PluginsAPI {
       this.disabledPluginPathSet = disabledPlugins
       databaseAPI.dbPut(DISABLED_PLUGINS_KEY, [...disabledPlugins])
 
-      if (disabled && this.pluginManager) {
+      // 主题插件特殊处理：禁用时移除 CSS，启用时注入 CSS
+      if (plugin.isTheme) {
+        const themeLifecycle = getThemeLifecycle()
+        if (disabled) {
+          await themeLifecycle.onThemePluginDisabled(plugin)
+        } else {
+          await themeLifecycle.onThemePluginEnabled(plugin)
+        }
+      } else if (disabled && this.pluginManager) {
+        // 普通插件：禁用时停止运行
         this.pluginManager.killPlugin(pluginPath)
       }
 

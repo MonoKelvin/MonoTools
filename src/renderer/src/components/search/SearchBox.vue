@@ -1104,7 +1104,7 @@ defineExpose({
 .placeholder-text {
   position: absolute;
   left: 0;
-  color: #7a7a7a;
+  color: var(--text-secondary, var(--color-ink-subtle, #7a7a7a));
   font-size: 25px;
   font-weight: 300;
   line-height: 1.3;
@@ -1113,14 +1113,22 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(
+    --font-body,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif
+  );
 }
 
 /* 暗色模式下的 placeholder 颜色 */
 @media (prefers-color-scheme: dark) {
   .placeholder-text {
-    color: #aaaaaa;
+    color: var(--text-secondary, var(--color-ink-subtle, #aaaaaa));
   }
 }
 
@@ -1465,7 +1473,7 @@ defineExpose({
 
 .update-text {
   font-size: 13px;
-  color: #10b981;
+  color: var(--color-success, #10b981);
   font-weight: 500;
   white-space: nowrap;
 }

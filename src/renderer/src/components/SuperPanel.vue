@@ -1928,7 +1928,7 @@ onUnmounted(() => {
 .window-match-panel {
   position: relative;
   z-index: 1;
-  background: #f4f4f4;
+  background: var(--panel-bg, #f4f4f4);
   border-top: 1px solid var(--divider-color);
   border-radius: 12px 12px 0 0;
   max-height: 75%;
@@ -1939,7 +1939,7 @@ onUnmounted(() => {
 
 @media (prefers-color-scheme: dark) {
   .window-match-panel {
-    background: #303133;
+    background: var(--panel-bg-dark, #303133);
   }
 }
 
@@ -2073,7 +2073,7 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--color-on-primary, #ffffff);
   font-size: 7px;
   font-weight: bold;
 }
@@ -2105,7 +2105,7 @@ onUnmounted(() => {
 .folder-popup-panel {
   position: relative;
   z-index: 1;
-  background: #f4f4f4;
+  background: var(--panel-bg, #f4f4f4);
   border-top: 1px solid var(--divider-color);
   border-radius: 12px 12px 0 0;
   max-height: 75%;
@@ -2116,7 +2116,7 @@ onUnmounted(() => {
 
 @media (prefers-color-scheme: dark) {
   .folder-popup-panel {
-    background: #303133;
+    background: var(--panel-bg-dark, #303133);
   }
 }
 

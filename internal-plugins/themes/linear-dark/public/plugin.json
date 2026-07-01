@@ -1,0 +1,15 @@
+{
+  "id": "linear-dark",
+  "name": "Linear Dark",
+  "version": "1.0.0",
+  "description": "Linear 风格深色主题 - 深邃的黑色表面和 lavender-blue 强调色",
+  "author": "MonoTools",
+  "homepage": "https://linear.app",
+  "license": "MIT",
+  "type": "theme",
+  "themeType": "dark",
+  "tags": ["dark", "minimal", "productivity"],
+  "icon": "icon.png",
+  "screenshots": ["preview.png"],
+  "minAppVersion": "1.0.0"
+}

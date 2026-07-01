@@ -819,7 +819,7 @@ body {
 
 .toolbar-btn.active {
   background: var(--hover-bg);
-  color: #0284c7; /* 固定使用默认蓝色 */
+  color: var(--color-primary, #0284c7);
 }
 
 /* Windows 窗口控制按钮 */
@@ -850,7 +850,7 @@ body {
 }
 
 .window-btn.close-btn:hover {
-  background: #ef4444;
-  color: #ffffff;
+  background: var(--color-error, #ef4444);
+  color: var(--color-on-primary, #ffffff);
 }
 </style>

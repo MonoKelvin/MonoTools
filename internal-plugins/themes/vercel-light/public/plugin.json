@@ -1,0 +1,15 @@
+{
+  "id": "vercel-light",
+  "name": "Vercel Light",
+  "version": "1.0.0",
+  "description": "Vercel Geist 风格浅色主题 - 极简主义的白纸设计",
+  "author": "MonoTools",
+  "homepage": "https://vercel.com",
+  "license": "MIT",
+  "type": "theme",
+  "themeType": "light",
+  "tags": ["light", "minimal", "clean"],
+  "icon": "icon.png",
+  "screenshots": ["preview.png"],
+  "minAppVersion": "1.0.0"
+}

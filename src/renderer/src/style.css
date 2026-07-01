@@ -1,3 +1,9 @@
+/* ========================================
+   MonoTools 基础样式
+   注意：颜色、字体、间距、圆角等设计规范由主题系统动态注入
+   此处仅定义基础重置、布局和通用控件类
+   ======================================== */
+
 /* 全局禁用滚动条（只针对 html 和 body，不影响内部组件） */
 html,
 body {
@@ -18,165 +24,7 @@ body::-webkit-scrollbar {
   height: 0 !important;
 }
 
-:root {
-  --bg-color: #f4f4f4;
-  --text-color: #333333;
-  --text-secondary: #616161;
-  --border-color: #e5e7eb;
-  --divider-color: rgba(0, 0, 0, 0.1);
-  --control-bg: rgba(0, 0, 0, 0.035);
-  --hover-bg: #f9fafb;
-  --active-bg: #f0f9ff;
-  --primary-color: #0284c7;
-  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --text-on-primary: #ffffff;
-  --highlight-color: #ea580c;
-}
-
-/* macOS 下使用透明背景 */
-.os-mac:root {
-  --bg-color: #f4f4f4ab;
-}
-
-/* Windows 下默认使用普通背景色 */
-.os-windows:root {
-  --bg-color: #f4f4f4;
-}
-
-/* Windows 下根据 data-material 属性应用不同材质样式 */
-.os-windows[data-material='mica'] {
-  --bg-color: transparent;
-  --card-bg: rgba(255, 255, 255, 0.5); /* 增加白度 */
-  --control-bg: rgba(255, 255, 255, 0.6);
-  --hover-bg: rgba(0, 0, 0, 0.04);
-  --active-bg: rgba(0, 0, 0, 0.06);
-  --divider-color: rgba(0, 0, 0, 0.06);
-  --highlight-color: rgba(234, 88, 12, 0.9);
-}
-
-.os-windows[data-material='acrylic'] {
-  --bg-color: transparent;
-  --card-bg: rgba(255, 255, 255, 0.3);
-  --control-bg: rgba(255, 255, 255, 0.25);
-  --hover-bg: rgba(0, 0, 0, 0.05);
-  --active-bg: rgba(0, 0, 0, 0.08);
-  --divider-color: rgba(0, 0, 0, 0.06);
-  --control-border: rgba(0, 0, 0, 0.15);
-  --highlight-color: rgba(234, 88, 12, 0.9);
-}
-
-.os-windows[data-material='none'] {
-  --bg-color: #f4f4f4;
-  --card-bg: white;
-  --control-bg: white;
-}
-
-/* 主题色定义 - 亮色模式 */
-:root,
-.theme-blue {
-  --primary-color: #0284c7;
-}
-
-.theme-purple {
-  --primary-color: #7c3aed;
-}
-
-.theme-green {
-  --primary-color: #059669;
-}
-
-.theme-orange {
-  --primary-color: #ea580c;
-}
-
-.theme-red {
-  --primary-color: #dc2626;
-}
-
-.theme-pink {
-  --primary-color: #db2777;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg-color: #303133;
-    --text-color: #f3f4f6;
-    --text-secondary: #bfc0c3;
-    --border-color: #374151;
-    --divider-color: rgba(255, 255, 255, 0.1);
-    --control-bg: rgba(255, 255, 255, 0.04);
-    --hover-bg: #374151;
-    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --text-on-primary: #ffffff;
-    --highlight-color: #fb923c;
-  }
-
-  /* macOS 暗色模式下使用透明背景 */
-  .os-mac:root {
-    --bg-color: #303133ab;
-  }
-
-  /* Windows 暗色模式下默认使用普通背景色 */
-  .os-windows:root {
-    --bg-color: #303133;
-  }
-
-  /* Windows 暗色模式下根据 data-material 属性应用不同材质样式 */
-  .os-windows[data-material='mica']:root {
-    --bg-color: transparent;
-    --card-bg: rgba(255, 255, 255, 0.04);
-    --control-bg: rgba(255, 255, 255, 0.06);
-    --hover-bg: rgba(255, 255, 255, 0.05);
-    --active-bg: rgba(255, 255, 255, 0.08);
-    --divider-color: rgba(255, 255, 255, 0.08);
-    --highlight-color: rgba(251, 146, 60, 0.85);
-  }
-
-  .os-windows[data-material='acrylic'] {
-    --bg-color: transparent;
-    --card-bg: rgba(255, 255, 255, 0.02);
-    --control-bg: rgba(255, 255, 255, 0.04);
-    --hover-bg: rgba(255, 255, 255, 0.05);
-    --active-bg: rgba(255, 255, 255, 0.08);
-    --divider-color: rgba(255, 255, 255, 0.06);
-    --control-border: rgba(255, 255, 255, 0.15);
-    --highlight-color: rgba(251, 146, 60, 0.85);
-  }
-
-  .os-windows[data-material='none'] {
-    --bg-color: #303133;
-    --card-bg: #3a3a3c;
-    --control-bg: #48484a;
-  }
-
-  /* 主题色定义 - 暗色模式 */
-  /* 主题色定义 - 暗色模式 */
-  :root,
-  .theme-blue {
-    --primary-color: #38bdf8;
-  }
-
-  .theme-purple {
-    --primary-color: #a78bfa;
-  }
-
-  .theme-green {
-    --primary-color: #34d399;
-  }
-
-  .theme-orange {
-    --primary-color: #fb923c;
-  }
-
-  .theme-red {
-    --primary-color: #f87171;
-  }
-
-  .theme-pink {
-    --primary-color: #f472b6;
-  }
-}
-
+/* ========== 基础重置 ========== */
 * {
   margin: 0;
   padding: 0;
@@ -186,83 +34,50 @@ body::-webkit-scrollbar {
 /* 注意：html 和 body 的 overflow 设置已在文件开头全局定义 */
 
 body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(
+    --font-body,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif
+  );
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg-color);
-  color: var(--text-color);
 
-  /* 使用 color-mix 计算 hover 和 light-bg */
-  /* 必须定义在 body 上，以便在 theme-xxx 类改变 --primary-color 时重新计算 */
-  --primary-hover: color-mix(in srgb, var(--primary-color), black 10%);
-  --primary-light-bg: color-mix(in srgb, var(--primary-color), white 80%);
+  /* 兼容现有主题色切换（向后兼容） */
+  color: var(--text-color, var(--color-ink, #333333));
+  background-color: var(--bg-color, var(--color-canvas, #f4f4f4));
+
+  /* 兼容现有主题的 hover 和 light-bg 计算 */
+  --primary-hover: var(--hover-bg, color-mix(in srgb, var(--color-primary, #0284c7) 12%, white));
+  --primary-light-bg: var(
+    --primary-light-bg,
+    color-mix(in srgb, var(--color-primary, #0284c7), white 80%)
+  );
+  --text-on-primary: var(--color-on-primary, #ffffff);
 }
 
-/* 默认的 active-bg 和 hover-bg（非 Windows 材质模式） */
+/* 默认的 active-bg 和 hover-bg（向后兼容，可被主题覆盖） */
 html:not(.os-windows[data-material='mica']):not(.os-windows[data-material='acrylic']) body {
-  --active-bg: color-mix(in srgb, var(--primary-color) 20%, white);
-  --hover-bg: color-mix(in srgb, var(--primary-color) 12%, white);
+  --active-bg: color-mix(in srgb, var(--color-primary, #0284c7) 20%, white);
+  --hover-bg: color-mix(in srgb, var(--color-primary, #0284c7) 12%, white);
 }
 
 /* 文本选择样式 - 使用主题色 */
 ::selection {
-  background: color-mix(in srgb, var(--primary-color) 35%, white);
-  color: var(--text-color);
+  background: color-mix(in srgb, var(--color-primary, #0284c7) 35%, white);
+  color: var(--text-color, var(--color-ink, #333333));
 }
 
 ::-moz-selection {
-  background: color-mix(in srgb, var(--primary-color) 35%, white);
-  color: var(--text-color);
+  background: color-mix(in srgb, var(--color-primary, #0284c7) 35%, white);
+  color: var(--text-color, var(--color-ink, #333333));
 }
 
-#app {
-  overflow: hidden !important; /* 完全隐藏滚动条 */
-  max-width: 100%; /* 限制最大宽度 */
-  height: 100%;
-}
-
-/* Windows 11 圆角支持（无边框窗口） */
-.os-windows #app {
-  border-radius: 8px; /* Windows 11 默认圆角 */
-  overflow: hidden;
-}
-
-.os-windows body {
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    /* 暗色模式下的计算逻辑 */
-    --primary-hover: color-mix(in srgb, var(--primary-color), white 10%);
-    --primary-light-bg: color-mix(in srgb, var(--primary-color), transparent 92%);
-  }
-
-  /* 暗色模式下默认的 active-bg 和 hover-bg（非 Windows 材质模式） */
-  html:not(.os-windows[data-material='mica']):not(.os-windows[data-material='acrylic']) body {
-    --active-bg: color-mix(in srgb, var(--primary-color) 12%, #303133);
-    --hover-bg: color-mix(in srgb, var(--primary-color) 5%, #303133);
-  }
-
-  /* 暗色模式下的文本选择样式 */
-  ::selection {
-    background: color-mix(in srgb, var(--primary-color) 40%, #303133);
-    color: var(--text-color);
-  }
-
-  ::-moz-selection {
-    background: color-mix(in srgb, var(--primary-color) 40%, #303133);
-    color: var(--text-color);
-  }
-}
-
-/*
- * 全局滚动条样式优化
- * 注意：插件 WebContentsView 的滚动条样式在 src/main/core/globalStyles.ts 中定义
- * 两者应保持一致
- */
+/* 全局滚动条样式优化 - 主题可覆盖 */
 ::-webkit-scrollbar {
   width: 6px !important;
   height: 6px !important;
@@ -304,5 +119,445 @@ html:not(.os-windows[data-material='mica']):not(.os-windows[data-material='acryl
 
   ::-webkit-scrollbar-thumb:active {
     background: rgba(255, 255, 255, 0.35) !important;
+  }
+}
+
+/* ========== 应用容器 ========== */
+#app {
+  overflow: hidden !important; /* 完全隐藏滚动条 */
+  max-width: 100%; /* 限制最大宽度 */
+  height: 100%;
+}
+
+/* Windows 11 圆角支持（无边框窗口） */
+.os-windows #app {
+  border-radius: 8px; /* Windows 11 默认圆角 */
+  overflow: hidden;
+}
+
+.os-windows body {
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* ========== 通用控件样式规范 ========== */
+
+/* 按钮基础类 */
+.btn {
+  padding: 6px 16px;
+  border: 2px solid var(--control-border, var(--color-hairline, #e5e7eb));
+  border-radius: var(--rounded-md, 8px);
+  background: var(--control-bg, var(--color-surface1, rgba(0, 0, 0, 0.035)));
+  color: var(--text-color, var(--color-ink, #333333));
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  outline: none;
+  user-select: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 按钮尺寸变体 */
+.btn-sm {
+  padding: 4px 12px;
+  font-size: 12px;
+}
+
+.btn-md {
+  padding: 6px 14px;
+  font-size: 13px;
+}
+
+.btn-lg {
+  padding: 10px 20px;
+  font-size: 15px;
+}
+
+.btn-icon {
+  padding: 6px;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 小图标按钮（无边框，透明背景）- 用于已安装插件页面和插件市场 */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 按钮类型变体 - 默认悬浮时显示主题色 */
+.btn:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+  color: var(--color-primary, #0284c7);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--active-bg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+  color: var(--color-primary, #0284c7);
+}
+
+.btn-primary:active:not(:disabled) {
+  background: var(--active-bg);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: var(--danger-light-bg, #fee2e2);
+  border-color: color-mix(in srgb, var(--danger-color, #ef4444), black 15%);
+  color: var(--danger-color, #ef4444);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--warning-light-bg, #fef3c7);
+  border-color: color-mix(in srgb, var(--warning-color, #f59e0b), black 15%);
+  color: var(--warning-color, #f59e0b);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: var(--success-light-bg, #ecfdf5);
+  border-color: color-mix(in srgb, var(--success-color, #10b981), black 15%);
+  color: var(--success-color, #10b981);
+}
+
+.btn-purple:hover:not(:disabled) {
+  background: var(--purple-light-bg, #f3e8ff);
+  border-color: color-mix(in srgb, var(--purple-color, #8b5cf6), black 15%);
+  color: var(--purple-color, #8b5cf6);
+}
+
+/* 实心按钮变体 - 默认使用实心主题色 */
+.btn-solid {
+  background: var(--color-primary, #0284c7);
+  border: 2px solid var(--color-primary, #0284c7);
+  border-radius: var(--rounded-md, 8px);
+  padding: 6px 16px;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+.btn-solid:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary, #0284c7), black 10%);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 10%);
+  color: #ffffff;
+}
+
+.btn-solid:active:not(:disabled) {
+  background: color-mix(in srgb, var(--color-primary, #0284c7), black 20%);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 20%);
+}
+
+/* Acrylic 材质模式下使用透明风格（仅 Windows） */
+.os-windows[data-material='acrylic'] .btn-solid {
+  background: var(--control-bg);
+  border-color: var(--color-primary, #0284c7);
+  color: var(--color-primary, #0284c7);
+  font-weight: 600;
+}
+
+.os-windows[data-material='acrylic'] .btn-solid:hover:not(:disabled) {
+  background: var(--hover-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+  color: var(--color-primary, #0284c7);
+}
+
+.os-windows[data-material='acrylic'] .btn-solid:active:not(:disabled) {
+  background: var(--active-bg);
+}
+
+/* ========== 输入框 ========== */
+.input {
+  width: 100%;
+  padding: 6px 16px;
+  border: 2px solid var(--control-border, var(--color-hairline, #e5e7eb));
+  border-radius: var(--rounded-md, 8px);
+  font-size: 14px;
+  transition: all 0.2s;
+  outline: none;
+  background: var(--control-bg, var(--color-surface1, rgba(0, 0, 0, 0.035)));
+  color: var(--text-color, var(--color-ink, #333333));
+}
+
+.input::placeholder {
+  color: var(--placeholder-color, #616161);
+}
+
+.input:hover {
+  background: var(--hover-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+}
+
+.input:focus {
+  background: var(--active-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+  box-shadow: 0 0 0 3px var(--primary-light-bg);
+}
+
+/* ========== 下拉框 ========== */
+.select {
+  width: 100%;
+  padding: 6px 16px;
+  border: 2px solid var(--control-border, var(--color-hairline, #e5e7eb));
+  border-radius: var(--rounded-md, 8px);
+  font-size: 14px;
+  transition: all 0.2s;
+  outline: none;
+  background: var(--control-bg, var(--color-surface1, rgba(0, 0, 0, 0.035)));
+  color: var(--text-color, var(--color-ink, #333333));
+  cursor: pointer;
+  color-scheme: light dark;
+}
+
+.select:hover {
+  background: var(--hover-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+}
+
+.select:focus {
+  background: var(--active-bg);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+  box-shadow: 0 0 0 3px var(--primary-light-bg);
+}
+
+.select option {
+  background-color: var(--bg-color, var(--color-canvas, #f4f4f4));
+  color: var(--text-color, var(--color-ink, #333333));
+}
+
+/* ========== 开关 ========== */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: var(--control-bg, rgba(0, 0, 0, 0.035));
+  border: 2px solid var(--control-border, var(--color-hairline, #e5e7eb));
+  transition: all 0.3s;
+  border-radius: 24px;
+  box-sizing: border-box;
+}
+
+.toggle-slider:hover {
+  background-color: var(--hover-bg);
+}
+
+.toggle-slider:hover::before {
+  transform: scale(1.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle-slider::before {
+  position: absolute;
+  content: '';
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: var(--text-color, var(--color-ink, #333333));
+  transition: all 0.3s;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle input:checked + .toggle-slider {
+  background-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 15%);
+}
+
+.toggle input:checked + .toggle-slider:hover {
+  background-color: color-mix(in srgb, var(--color-primary, #0284c7), black 25%);
+  border-color: color-mix(in srgb, var(--color-primary, #0284c7), black 25%);
+}
+
+.toggle input:checked + .toggle-slider:hover::before {
+  transform: translateX(20px) scale(1.15);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle input:checked + .toggle-slider::before {
+  transform: translateX(20px);
+  background-color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.toggle input:focus + .toggle-slider {
+  box-shadow: 0 0 0 3px var(--primary-light-bg);
+}
+
+/* ========== 卡片 ========== */
+.card {
+  border-radius: var(--rounded-md, 8px);
+  padding: 12px;
+  background: var(--card-bg, var(--color-surface1, rgba(0, 0, 0, 0.015)));
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.card:hover {
+  background: var(--hover-bg);
+}
+
+.card.clickable {
+  cursor: pointer;
+}
+
+/* macOS 风格毛玻璃效果 - 仅 Acrylic 模式（仅 Windows） */
+.os-windows[data-material='acrylic'] .card,
+.os-windows[data-material='acrylic'] .btn,
+.os-windows[data-material='acrylic'] .input,
+.os-windows[data-material='acrylic'] .select {
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+}
+
+/* ========== 全局自适应图标样式 ========== */
+.adaptive-icon {
+  -webkit-mask-image: var(--icon-url);
+  mask-image: var(--icon-url);
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+/* 亮色模式：从主题色到极浅主题色的渐变 */
+@media (prefers-color-scheme: light) {
+  .adaptive-icon {
+    background: linear-gradient(
+      135deg,
+      var(--color-primary, #0284c7) 0%,
+      color-mix(in srgb, var(--color-primary, #0284c7) 10%, white) 100%
+    );
+    opacity: 0.88;
+  }
+}
+
+/* 暗色模式：从主题色到极浅主题色的渐变 */
+@media (prefers-color-scheme: dark) {
+  .adaptive-icon {
+    background: linear-gradient(
+      135deg,
+      var(--color-primary, #0284c7) 0%,
+      color-mix(in srgb, var(--color-primary, #0284c7) 15%, white) 100%
+    );
+    opacity: 0.92;
+  }
+}
+
+/* ========== 暗色模式支持（向后兼容） ========== */
+@media (prefers-color-scheme: dark) {
+  body {
+    --bg-color: #303133;
+    --text-color: #f3f4f6;
+    --text-secondary: #bfc0c3;
+    --border-color: #374151;
+    --divider-color: rgba(255, 255, 255, 0.1);
+    --control-bg: rgba(255, 255, 255, 0.04);
+    --hover-bg: #374151;
+    --input-bg: #374151;
+    --input-border: #374151;
+    --input-focus-bg: #4b5563;
+    --placeholder-color: #b8b8b8;
+    --shadow-color: rgba(0, 0, 0, 0.3);
+    --primary-light-bg: color-mix(in srgb, var(--color-primary), transparent 92%);
+    --active-bg: color-mix(in srgb, var(--color-primary) 12%, #303133);
+    --hover-bg: color-mix(in srgb, var(--color-primary) 5%, #303133);
+  }
+
+  /* macOS 暗色模式下使用透明背景 */
+  .os-mac:root {
+    --bg-color: transparent;
+  }
+
+  /* Windows 暗色模式下默认使用普通背景色 */
+  .os-windows:root {
+    --bg-color: #303133;
+  }
+
+  /* Windows 暗色模式下根据 data-material 属性应用不同材质样式 */
+  .os-windows[data-material='mica'] {
+    --bg-color: transparent;
+    --card-bg: rgba(255, 255, 255, 0.04);
+    --control-bg: rgba(255, 255, 255, 0.06);
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --active-bg: rgba(255, 255, 255, 0.08);
+    --divider-color: rgba(255, 255, 255, 0.08);
+  }
+
+  .os-windows[data-material='acrylic'] {
+    --bg-color: transparent;
+    --card-bg: rgba(255, 255, 255, 0.02);
+    --control-bg: rgba(255, 255, 255, 0.04);
+    --hover-bg: rgba(255, 255, 255, 0.05);
+    --active-bg: rgba(255, 255, 255, 0.08);
+    --divider-color: rgba(255, 255, 255, 0.06);
+    --control-border: rgba(255, 255, 255, 0.15);
+  }
+
+  .os-windows[data-material='none'] {
+    --bg-color: #303133;
+    --card-bg: #3a3a3c;
+    --control-bg: #48484a;
+  }
+
+  /* 暗色模式下的文本选择样式 */
+  ::selection {
+    background: color-mix(in srgb, var(--color-primary) 40%, #303133);
+    color: var(--text-color);
+  }
+
+  ::-moz-selection {
+    background: color-mix(in srgb, var(--color-primary) 40%, #303133);
+    color: var(--text-color);
   }
 }
