@@ -1,26 +1,27 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 
 const isVisible = ref(false)
-const currentWindow = ref<Awaited<ReturnType<typeof getCurrentWindow>> | null>(null)
 
 export function useWindow() {
-  onMounted(async () => {
-    currentWindow.value = await getCurrentWindow()
-  })
-
   async function showWindow() {
-    if (currentWindow.value) {
-      await currentWindow.value.show()
-      await currentWindow.value.setFocus()
+    try {
+      const currentWindow = await getCurrentWindow()
+      await currentWindow.show()
+      await currentWindow.setFocus()
       isVisible.value = true
+    } catch (error) {
+      console.error('Failed to show window:', error)
     }
   }
 
   async function hideWindow() {
-    if (currentWindow.value) {
-      await currentWindow.value.hide()
+    try {
+      const currentWindow = await getCurrentWindow()
+      await currentWindow.hide()
       isVisible.value = false
+    } catch (error) {
+      console.error('Failed to hide window:', error)
     }
   }
 
@@ -33,8 +34,11 @@ export function useWindow() {
   }
 
   async function centerWindow() {
-    if (currentWindow.value) {
-      await currentWindow.value.center()
+    try {
+      const currentWindow = await getCurrentWindow()
+      await currentWindow.center()
+    } catch (error) {
+      console.error('Failed to center window:', error)
     }
   }
 

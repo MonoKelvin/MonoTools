@@ -1,45 +1,20 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
-import { useTauri } from '@tauri-apps/api/tauri'
-import { useHotkey } from './composables/useHotkey'
-import { useWindow } from './composables/useWindow'
-import SearchBox from './components/search/SearchBox.vue'
-
-const { listen } = useTauri()
-const { showWindow, hideWindow } = useWindow()
-const { registerHotkey, unregisterHotkey } = useHotkey()
+import { onMounted } from 'vue'
+import { listen } from '@tauri-apps/api/event'
 
 onMounted(async () => {
-  // 注册全局快捷键 Alt+Space
-  await registerHotkey('Alt+Space', (event) => {
-    event.preventDefault()
-    showWindow()
-  })
-
-  // 监听窗口失焦事件
-  await listen('tauri://focus', (event) => {
-    if (!event.windowState?.focused) {
-      hideWindow()
-    }
-  })
-
   // 监听主题切换事件
   await listen('theme:changed', (event) => {
-    const { cssVariables } = event.payload as { cssVariables: Record<string, string> }
-    applyThemeVariables(cssVariables)
+    const payload = event.payload as Record<string, unknown>
+    if (payload.cssVariables) {
+      const vars = payload.cssVariables as Record<string, string>
+      const root = document.documentElement
+      Object.entries(vars).forEach(([key, value]) => {
+        root.style.setProperty(key, value)
+      })
+    }
   })
 })
-
-onUnmounted(() => {
-  unregisterHotkey('Alt+Space')
-})
-
-function applyThemeVariables(variables: Record<string, string>) {
-  const root = document.documentElement
-  Object.entries(variables).forEach(([key, value]) => {
-    root.style.setProperty(key, value)
-  })
-}
 </script>
 
 <template>

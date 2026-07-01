@@ -1,28 +1,28 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { Search, X } from 'lucide-vue-next'
-import type { SearchResult } from '../types/search'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   placeholder?: string
   maxResults?: number
-}>()
+}>(), {
+  placeholder: '搜索应用、文件、工作区...',
+  maxResults: 50
+})
 
 const emit = defineEmits<{
-  select: [item: SearchResult]
-  action: [item: SearchResult, action: string]
+  select: [item: any]
+  action: [item: any, action: string]
 }>()
 
 const query = ref('')
-const results = ref<SearchResult[]>([])
+const results = ref<any[]>([])
 const isLoading = ref(false)
 const selectedIndex = ref(0)
 const isFocused = ref(false)
 const inputRef = ref<HTMLInputElement>()
 
-const placeholderText = computed(() => props.placeholder || '搜索应用、文件、工作区...')
 const resultCount = computed(() => results.value.length)
 const modeBadge = computed(() => {
   if (query.value.startsWith('>')) return '命令'
@@ -42,8 +42,8 @@ async function performSearch(queryText: string) {
 
   isLoading.value = true
   try {
-    const response = await invoke<SearchResult[]>('execute_command', {
-      input: `search:all query="${queryText}" limit=${props.maxResults || 50}`
+    const response: any = await invoke('execute_command', {
+      input: `search:all query="${queryText}" limit=${props.maxResults}`
     })
 
     if (response.success) {
@@ -105,25 +105,14 @@ function onKeydown(event: KeyboardEvent) {
         clearQuery()
       } else {
         // 第二次按 Escape：隐藏窗口
-        window.__TAURI__?.hideWindow()
-      }
-      break
-
-    case 'Tab':
-      if (results.value.length > 0) {
-        event.preventDefault()
-        // TODO: 切换动作（如果有多个动作）
+        window.dispatchEvent(new CustomEvent('hide-search-window'))
       }
       break
   }
 }
 
-function onSelectItem(item: SearchResult) {
+function onSelectItem(item: any) {
   emit('select', item)
-  // 执行默认动作
-  if (item.actions && item.actions.length > 0) {
-    emit('action', item, item.actions[0].id)
-  }
   clearQuery()
 }
 
@@ -147,11 +136,6 @@ watch(results, (newResults) => {
 
 onMounted(() => {
   focusInput()
-
-  // 监听来自后端的搜索建议
-  listen('search:suggestion', (event) => {
-    // TODO: 处理实时搜索建议
-  })
 })
 
 onUnmounted(() => {
@@ -175,7 +159,7 @@ onUnmounted(() => {
         ref="inputRef"
         v-model="query"
         class="search-input"
-        :placeholder="placeholderText"
+        :placeholder="placeholder"
         @input="onInput"
         @keydown="onKeydown"
         @focus="isFocused = true"
@@ -201,7 +185,7 @@ onUnmounted(() => {
     <div v-if="results.length > 0" class="search-results">
       <div
         v-for="(item, index) in results"
-        :key="item.id"
+        :key="index"
         class="result-item"
         :class="{ 'is-selected': index === selectedIndex }"
         :style="{ animationDelay: `${index * 30}ms` }"
@@ -220,7 +204,7 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div class="result-meta">
+        <div v-if="item.source" class="result-meta">
           <span class="result-source">{{ item.source }}</span>
         </div>
       </div>
