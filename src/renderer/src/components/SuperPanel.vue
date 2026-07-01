@@ -414,7 +414,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import Draggable from 'vuedraggable'
-import defaultAvatar from '../assets/image/default.png'
+import logo from '../assets/logo.png'
 
 interface CommandItem {
   name: string
@@ -507,7 +507,7 @@ const currentClipboardContent = ref<ClipboardContent | null>(null)
 const translationText = ref('')
 const pendingTranslation = ref<{ text: string; sourceText?: string } | null>(null)
 // 头像（默认使用内置头像）
-const avatar = ref(defaultAvatar)
+const avatar = ref(logo)
 const acrylicLightOpacity = ref(78)
 const acrylicDarkOpacity = ref(50)
 const primaryColor = ref('blue')

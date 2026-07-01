@@ -55,16 +55,12 @@ async function handleCheckUpdate(): Promise<void> {
   }
 }
 
-function openQQGroup(): void {
-  window.monotools.shellOpenExternal('https://qm.qq.com/q/fXCzbh3Txe')
-}
-
 function openGithub(): void {
-  window.monotools.shellOpenExternal('https://github.com/MonoToolsCenter/MonoTools')
+  window.monotools.shellOpenExternal('https://github.com/lzx8589561/ZTools')
 }
 
-function openSponsor(): void {
-  window.monotools.shellOpenExternal('https://afdian.com/a/MonoTools')
+function openMonoTools(): void {
+  window.monotools.shellOpenExternal('https://github.com/MonoKelvin/MonoTools')
 }
 
 async function loadAutoCheckSetting(): Promise<void> {
@@ -143,50 +139,10 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
             </svg>
           </div>
           <div class="card-label">作者</div>
-          <div class="card-value">Zing</div>
+          <div class="card-value">MonoKelvin</div>
         </div>
 
-        <div class="about-card clickable" @click="openQQGroup">
-          <div class="card-icon card-icon-qq">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M21 11.5C21.0034 12.8199 20.6951 14.1219 20.1 15.3C19.3944 16.7118 18.3098 17.8992 16.9674 18.7293C15.6251 19.5594 14.0782 19.9994 12.5 20C11.1801 20.0034 9.87812 19.6951 8.7 19.1L3 21L4.9 15.3C4.30493 14.1219 3.99656 12.8199 4 11.5C4.00061 9.92179 4.44061 8.37488 5.27072 7.03258C6.10083 5.69028 7.28825 4.6056 8.7 3.90003C9.87812 3.30496 11.1801 2.99659 12.5 3.00003H13C15.0843 3.11502 17.053 3.99479 18.5291 5.47089C20.0052 6.94699 20.885 8.91568 21 11V11.5Z"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </div>
-          <div class="card-label">QQ 交流群</div>
-          <div class="card-value">
-            1076942619
-            <svg class="external-icon" width="12" height="12" viewBox="0 0 24 24" fill="none">
-              <path
-                d="M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M15 3H21V9"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-              <path
-                d="M10 14L21 3"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
-          </div>
-        </div>
-
+        <!-- ZTools 原项目 -->
         <div class="about-card clickable" @click="openGithub">
           <div class="card-icon card-icon-github">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -199,9 +155,9 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
               />
             </svg>
           </div>
-          <div class="card-label">开源地址</div>
+          <div class="card-label">ZTools 原项目</div>
           <div class="card-value">
-            查看代码
+            lzx8589561
             <svg class="external-icon" width="12" height="12" viewBox="0 0 24 24" fill="none">
               <path
                 d="M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
@@ -228,11 +184,12 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
           </div>
         </div>
 
-        <div class="about-card clickable" @click="openSponsor">
-          <div class="card-icon card-icon-sponsor">
+        <!-- 本项目 -->
+        <div class="about-card clickable" @click="openMonoTools">
+          <div class="card-icon card-icon-github">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
               <path
-                d="M20.84 4.61C20.3292 4.099 19.7228 3.69364 19.0554 3.41708C18.3879 3.14052 17.6725 2.99817 16.95 2.99817C16.2275 2.99817 15.5121 3.14052 14.8446 3.41708C14.1772 3.69364 13.5708 4.099 13.06 4.61L12 5.67L10.94 4.61C9.9083 3.57831 8.50903 2.99871 7.05 2.99871C5.59096 2.99871 4.19169 3.57831 3.16 4.61C2.1283 5.6417 1.54871 7.04097 1.54871 8.5C1.54871 9.95903 2.1283 11.3583 3.16 12.39L4.22 13.45L12 21.23L19.78 13.45L20.84 12.39C21.351 11.8792 21.7563 11.2728 22.0329 10.6054C22.3095 9.93789 22.4518 9.22249 22.4518 8.5C22.4518 7.77751 22.3095 7.0621 22.0329 6.39464C21.7563 5.72718 21.351 5.12075 20.84 4.61Z"
+                d="M9 19C4 20.5 4 16.5 2 16M16 22V18.13C16.0375 17.6532 15.9731 17.1738 15.811 16.7238C15.6489 16.2738 15.3929 15.8634 15.06 15.52C18.2 15.17 21.5 13.98 21.5 8.52C21.4997 7.12383 20.9627 5.7812 20 4.77C20.4559 3.54851 20.4236 2.19835 19.91 1C19.91 1 18.73 0.650001 16 2.48C13.708 1.85882 11.292 1.85882 9 2.48C6.27 0.650001 5.09 1 5.09 1C4.57638 2.19835 4.54414 3.54851 5 4.77C4.03013 5.7887 3.49252 7.14346 3.5 8.55C3.5 13.97 6.8 15.16 9.94 15.55C9.611 15.89 9.35726 16.2954 9.19531 16.7399C9.03335 17.1844 8.96681 17.658 9 18.13V22"
                 stroke="currentColor"
                 stroke-width="2"
                 stroke-linecap="round"
@@ -240,8 +197,33 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
               />
             </svg>
           </div>
-          <div class="card-label">赞助支持</div>
-          <div class="card-value">支持作者</div>
+          <div class="card-label">本项目</div>
+          <div class="card-value">
+            MonoTools
+            <svg class="external-icon" width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M18 13V19C18 19.5304 17.7893 20.0391 17.4142 20.4142C17.0391 20.7893 16.5304 21 16 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V8C3 7.46957 3.21071 6.96086 3.58579 6.58579C3.96086 6.21071 4.46957 6 5 6H11"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M15 3H21V9"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M10 14L21 3"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </div>
         </div>
       </div>
 
@@ -376,11 +358,11 @@ async function handleAutoCheckUpdateChange(): Promise<void> {
 /* 卡片区域 */
 .about-cards {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 12px;
-  width: 100%;
+  width: fit-content;
   max-width: 560px;
-  margin-bottom: 24px;
+  margin: 0 auto 24px;
 }
 
 .about-card {

@@ -1,29 +1,61 @@
-import { clipboard, BrowserWindow } from 'electron'
+import { clipboard, BrowserWindow, desktopCapturer } from 'electron'
 import { exec, execSync, ChildProcess } from 'child_process'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
-import { ScreenCapture } from './native'
 import windowManager from '../managers/windowManager'
 
-// 截图方法windows
+// 截图方法 Windows（使用 Electron desktopCapturer）
 export const screenWindow = (
   cb: (image: string, bounds?: { x: number; y: number; width: number; height: number }) => void
 ): void => {
-  ScreenCapture.start((result) => {
-    if (result.success) {
-      const image = clipboard.readImage()
-      const bounds = {
-        x: result.x!,
-        y: result.y!,
-        width: result.width!,
-        height: result.height!
+  // 隐藏主窗口
+  const mainWin = windowManager.getMainWindow()
+  if (mainWin?.isVisible()) {
+    mainWin.hide()
+  }
+
+  // 使用 PowerShell 截图（简单可靠）
+  const tmpPath = path.join(os.tmpdir(), `screenshot_${Date.now()}.png`)
+  exec(
+    `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Screen]::PrimaryScreen.Bounds"`,
+    (err, stdout) => {
+      if (err) {
+        console.error('[ScreenCapture] Failed to get screen bounds:', err)
+        cb('')
+        return
       }
-      cb && cb(image.isEmpty() ? '' : image.toDataURL(), bounds)
-    } else {
-      cb && cb('')
+
+      // 使用 PowerShell 截图
+      exec(
+        `powershell -Command "Add-Type -AssemblyName System.Windows.Forms; $bounds=[System.Windows.Forms.Screen]::PrimaryScreen.Bounds; $bitmap=[System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height); $graphics=[System.Drawing.Graphics]::FromImage($bitmap); $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size); $bitmap.Save('${tmpPath}', [System.Drawing.Imaging.ImageFormat]::Png); $graphics.Dispose(); $bitmap.Dispose()"`,
+        (err) => {
+          if (err || !fs.existsSync(tmpPath)) {
+            console.error('[ScreenCapture] Screenshot failed:', err)
+            cb('')
+            if (mainWin?.isVisible()) {
+              mainWin.show()
+            }
+            return
+          }
+
+          try {
+            const imageBuffer = fs.readFileSync(tmpPath)
+            const base64Image = `data:image/png;base64,${imageBuffer.toString('base64')}`
+            fs.unlinkSync(tmpPath)
+            cb(base64Image)
+          } catch (error) {
+            console.error('[ScreenCapture] Failed to read screenshot:', error)
+            cb('')
+          } finally {
+            if (mainWin?.isVisible()) {
+              mainWin.show()
+            }
+          }
+        }
+      )
     }
-  })
+  )
 }
 
 // 截图方法mac

@@ -1,5 +1,4 @@
-import { protocol } from 'electron'
-import { IconExtractor } from './native/index'
+import { protocol, app, nativeImage } from 'electron'
 
 /** 图标内存缓存（LRU 淘汰，Map 按插入顺序迭代） */
 const iconMemoryCache = new Map<string, Buffer>()
@@ -27,11 +26,17 @@ function setIconCache(key: string, buffer: Buffer): void {
  * 根据平台提取图标并返回 PNG Buffer（异步，直接调用原生，无队列）
  */
 async function extractIcon(iconPath: string): Promise<Buffer> {
-  const iconBuffer = await IconExtractor.getFileIcon(iconPath)
-  if (!iconBuffer) {
-    throw new Error('Failed to extract icon')
+  try {
+    const icon = await app.getFileIcon(iconPath, { size: 'normal' })
+    const buffer = icon.toPNG()
+    if (!buffer || buffer.length === 0) {
+      throw new Error('Empty icon buffer')
+    }
+    return buffer
+  } catch (error) {
+    console.error('[Icon] Failed to extract icon:', iconPath, error)
+    throw error
   }
-  return iconBuffer
 }
 
 /**

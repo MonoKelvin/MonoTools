@@ -7,7 +7,6 @@ import { GLOBAL_SCROLLBAR_CSS } from '../../core/globalStyles'
 import { screenCapture } from '../../core/screenCapture'
 import windowManager from '../../managers/windowManager'
 import databaseAPI from '../shared/database'
-import { ColorPicker } from '../../core/native/index.js'
 import { getExplorerFolderPathFromWindow } from '../../utils/common'
 
 interface SystemCommandContext {
@@ -662,29 +661,18 @@ async function handleOpenFolder(ctx: SystemCommandContext, param: any): Promise<
 }
 
 function handleColorPicker(ctx: SystemCommandContext): Promise<any> {
-  console.log('[SystemCmd] 执行屏幕取色')
-  ctx.mainWindow?.hide()
+  console.log('[SystemCmd] 屏幕取色功能暂不可用（原生模块已移除）')
+  ctx.mainWindow?.show()
 
-  return new Promise((resolve) => {
-    try {
-      ColorPicker.start((result) => {
-        if (result.success && result.hex) {
-          clipboard.writeText(result.hex)
-          console.log('[SystemCmd] 已复制颜色值:', result.hex)
-          if (Notification.isSupported()) {
-            new Notification({ title: 'MonoTools', body: `已复制颜色值: ${result.hex}` }).show()
-          }
-          resolve({ success: true, hex: result.hex })
-        } else {
-          console.log('[SystemCmd] 取色已取消')
-          resolve({ success: false, error: '取色已取消' })
-        }
-      })
-    } catch (error) {
-      console.error('[SystemCmd] 取色失败:', error)
-      resolve({ success: false, error: String(error) })
-    }
-  })
+  // 显示提示通知
+  if (Notification.isSupported()) {
+    new Notification({
+      title: 'MonoTools',
+      body: '屏幕取色功能暂不可用，正在开发中...'
+    }).show()
+  }
+
+  return Promise.resolve({ success: false, error: '功能暂不可用' })
 }
 
 /**

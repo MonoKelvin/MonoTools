@@ -4,7 +4,6 @@ import fsPromises from 'fs/promises'
 import path from 'path'
 import { extractAcronym } from '../../utils/common'
 import { getWindowsRootScanPaths, getWindowsScanPaths } from '../../utils/systemPaths'
-import { MuiResolver } from '../native/index'
 import { Command } from './types'
 
 // ========== 配置 ==========
@@ -82,11 +81,11 @@ async function parseDesktopIni(dirPath: string): Promise<Map<string, string>> {
 
 /**
  * 批量解析 MUI 资源字符串（如 @%SystemRoot%\system32\shell32.dll,-22067）。
- * 通过原生模块调用 Win32 API 实现。
+ * 注意：原生模块已移除，此功能暂时禁用
  */
-function resolveMuiStrings(muiRefs: string[]): Map<string, string> {
-  if (muiRefs.length === 0) return new Map()
-  return MuiResolver.resolve(muiRefs)
+function resolveMuiStrings(_muiRefs: string[]): Map<string, string> {
+  // 原生模块已移除，返回空 Map
+  return new Map()
 }
 
 /**
@@ -94,9 +93,7 @@ function resolveMuiStrings(muiRefs: string[]): Map<string, string> {
  * Windows 系统快捷方式的磁盘文件名通常是英文（如 File Explorer.lnk），
  * 但通过 desktop.ini + MUI 资源显示为本地化名称（如"文件资源管理器"）。
  *
- * 分两步：
- * 1. Node.js 直接读取 desktop.ini（纯文件 I/O + 解析）
- * 2. 遇到 MUI 引用（@dll,-id）时，批量交给原生模块解析（Win32 API）
+ * 注意：原生模块已移除，仅支持纯文本本地化名称，不支持 MUI 引用解析
  */
 async function getLocalizedDisplayNames(dirPaths: string[]): Promise<Map<string, string>> {
   const nameMap = new Map<string, string>()
@@ -104,8 +101,8 @@ async function getLocalizedDisplayNames(dirPaths: string[]): Promise<Map<string,
   if (process.platform !== 'win32') return nameMap
 
   try {
-    // 第 1 步：用 Node.js 递归读取所有 desktop.ini，收集本地化条目
-    const pendingMui = new Map<string, string[]>() // muiRef → [fullPath, ...]
+    // 仅支持纯文本本地化名称（跳过 MUI 引用）
+    const pendingMui = new Map<string, string[]>()
 
     async function scanDir(dirPath: string): Promise<void> {
       const iniEntries = await parseDesktopIni(dirPath)
@@ -113,7 +110,7 @@ async function getLocalizedDisplayNames(dirPaths: string[]): Promise<Map<string,
       for (const [fileName, value] of iniEntries) {
         const fullPath = path.join(dirPath, fileName)
         if (value.startsWith('@')) {
-          // MUI 引用，稍后批量解析
+          // MUI 引用，原生模块已移除，跳过
           const arr = pendingMui.get(value) || []
           arr.push(fullPath)
           pendingMui.set(value, arr)
@@ -140,22 +137,8 @@ async function getLocalizedDisplayNames(dirPaths: string[]): Promise<Map<string,
       await scanDir(dirPath)
     }
 
-    // 第 2 步：批量解析 MUI 引用（通过原生模块调用 Win32 API）
-    if (pendingMui.size > 0) {
-      const muiRefs = Array.from(pendingMui.keys())
-      const resolved = resolveMuiStrings(muiRefs)
-
-      for (const [ref, localizedName] of resolved) {
-        const filePaths = pendingMui.get(ref) || []
-        for (const fp of filePaths) {
-          nameMap.set(fp.toLowerCase(), localizedName)
-        }
-      }
-    }
-
-    console.log(`[Scanner] 获取到 ${nameMap.size} 个本地化文件名映射`)
+    console.log(`[Scanner] 获取到 ${nameMap.size} 个本地化文件名映射（MUI 引用已跳过）`)
   } catch (error) {
-    // 失败不影响扫描，降级使用磁盘文件名
     console.error('[Scanner] 获取本地化显示名称失败（将使用文件名）:', error)
   }
 

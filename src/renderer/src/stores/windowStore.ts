@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import defaultAvatar from '../assets/image/default.png'
+import logo from '../assets/logo.png'
 
 interface WindowInfo {
   title?: string
@@ -28,7 +28,7 @@ interface PluginInfo {
 }
 
 export const DEFAULT_PLACEHOLDER = '搜索应用和指令 / 粘贴文件或图片'
-export const DEFAULT_AVATAR = defaultAvatar
+export const DEFAULT_AVATAR = logo
 
 // 自动粘贴选项
 export type AutoPasteOption = 'off' | '1s' | '3s' | '5s' | '10s'
