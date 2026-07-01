@@ -1,16 +1,15 @@
 import fs from 'fs'
 import path from 'path'
 import log from 'electron-log'
-import lmdbInstance from './lmdb/lmdbInstance'
 import { app } from 'electron'
 
 /**
  * 数据迁移管理器
- * 负责将 ZTools 的数据迁移到 MonoTools
+ * 负责将旧版本 ZTools 的数据迁移到 MonoTools
  */
 export class DataMigrationManager {
   private userDataPath: string
-  private ztoolsPaths: {
+  private oldZtoolsPaths: {
     data: string
     config: string
     clipboard: string
@@ -19,7 +18,7 @@ export class DataMigrationManager {
 
   constructor() {
     this.userDataPath = app.getPath('userData')
-    this.ztoolsPaths = {
+    this.oldZtoolsPaths = {
       data: path.join(this.userDataPath, 'lmdb.ztools'),
       config: path.join(this.userDataPath, 'settings.ztools.json'),
       clipboard: path.join(this.userDataPath, 'clipboard.ztools.json'),
@@ -32,10 +31,10 @@ export class DataMigrationManager {
    */
   needsMigration(): boolean {
     return (
-      fs.existsSync(this.ztoolsPaths.data) ||
-      fs.existsSync(this.ztoolsPaths.config) ||
-      fs.existsSync(this.ztoolsPaths.clipboard) ||
-      fs.existsSync(this.ztoolsPaths.plugins)
+      fs.existsSync(this.oldZtoolsPaths.data) ||
+      fs.existsSync(this.oldZtoolsPaths.config) ||
+      fs.existsSync(this.oldZtoolsPaths.clipboard) ||
+      fs.existsSync(this.oldZtoolsPaths.plugins)
     )
   }
 
@@ -44,7 +43,7 @@ export class DataMigrationManager {
    */
   async migrate(): Promise<boolean> {
     try {
-      log.info('[DataMigration] 开始迁移 ZTools 数据...')
+      log.info('[DataMigration] 开始迁移旧版本 ZTools 数据...')
 
       // 1. 迁移剪贴板历史
       await this.migrateClipboardHistory()
@@ -70,7 +69,7 @@ export class DataMigrationManager {
    * 迁移剪贴板历史
    */
   private async migrateClipboardHistory(): Promise<void> {
-    const source = this.ztoolsPaths.clipboard
+    const source = this.oldZtoolsPaths.clipboard
     const target = path.join(this.userDataPath, 'clipboard.json')
 
     if (!fs.existsSync(source)) {
@@ -92,7 +91,7 @@ export class DataMigrationManager {
    * 迁移配置文件
    */
   private async migrateConfigFiles(): Promise<void> {
-    const source = this.ztoolsPaths.config
+    const source = this.oldZtoolsPaths.config
     const target = path.join(this.userDataPath, 'settings.json')
 
     if (!fs.existsSync(source)) {
@@ -106,13 +105,13 @@ export class DataMigrationManager {
       // 读取并更新配置
       const config = JSON.parse(fs.readFileSync(source, 'utf-8'))
 
-      // 更新应用 ID（如果存在）
+      // 更新应用 ID（从旧版本 ZTools 迁移）
       if (config.appId === 'link.eiot.ztools') {
         config.appId = 'link.eiot.monotools'
         log.info('[DataMigration] 更新应用 ID')
       }
 
-      // 更新产品名称
+      // 更新产品名称（从旧版本 ZTools 迁移）
       if (config.productName === 'ZTools') {
         config.productName = 'MonoTools'
         log.info('[DataMigration] 更新产品名称')
@@ -131,7 +130,7 @@ export class DataMigrationManager {
    * 迁移插件目录
    */
   private async migratePlugins(): Promise<void> {
-    const source = this.ztoolsPaths.plugins
+    const source = this.oldZtoolsPaths.plugins
     const target = path.join(this.userDataPath, 'plugins')
 
     if (!fs.existsSync(source)) {
@@ -165,7 +164,7 @@ export class DataMigrationManager {
    * 注意：需要应用先退出，迁移后重启
    */
   private async migrateLmdbData(): Promise<void> {
-    const source = this.ztoolsPaths.data
+    const source = this.oldZtoolsPaths.data
     const target = path.join(this.userDataPath, 'lmdb')
 
     if (!fs.existsSync(source)) {
@@ -211,23 +210,23 @@ export class DataMigrationManager {
       log.info('[DataMigration] 清理旧数据...')
 
       // 删除旧数据目录
-      if (fs.existsSync(this.ztoolsPaths.data)) {
-        fs.rmSync(this.ztoolsPaths.data, { recursive: true, force: true })
+      if (fs.existsSync(this.oldZtoolsPaths.data)) {
+        fs.rmSync(this.oldZtoolsPaths.data, { recursive: true, force: true })
         log.info('[DataMigration] ✅ 旧 LMDB 数据已删除')
       }
 
-      if (fs.existsSync(this.ztoolsPaths.config)) {
-        fs.unlinkSync(this.ztoolsPaths.config)
+      if (fs.existsSync(this.oldZtoolsPaths.config)) {
+        fs.unlinkSync(this.oldZtoolsPaths.config)
         log.info('[DataMigration] ✅ 旧配置文件已删除')
       }
 
-      if (fs.existsSync(this.ztoolsPaths.clipboard)) {
-        fs.unlinkSync(this.ztoolsPaths.clipboard)
+      if (fs.existsSync(this.oldZtoolsPaths.clipboard)) {
+        fs.unlinkSync(this.oldZtoolsPaths.clipboard)
         log.info('[DataMigration] ✅ 旧剪贴板文件已删除')
       }
 
-      if (fs.existsSync(this.ztoolsPaths.plugins)) {
-        fs.rmSync(this.ztoolsPaths.plugins, { recursive: true, force: true })
+      if (fs.existsSync(this.oldZtoolsPaths.plugins)) {
+        fs.rmSync(this.oldZtoolsPaths.plugins, { recursive: true, force: true })
         log.info('[DataMigration] ✅ 旧插件目录已删除')
       }
     } catch (error) {

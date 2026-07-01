@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useToast } from '@/components'
 import { weightedSearch } from '@/utils'
 import { AiModelEditor } from './components'
-import { useZtoolsSubInput } from '@/composables'
+import { useMonoToolsSubInput } from '@/composables'
 
 const { success, error, confirm } = useToast()
 
@@ -22,7 +22,7 @@ const models = ref<AiModel[]>([])
 const isDeleting = ref(false)
 const loading = ref(true)
 
-const { value: searchQuery } = useZtoolsSubInput('', '搜索 AI 模型...')
+const { value: searchQuery } = useMonoToolsSubInput('', '搜索 AI 模型...')
 
 const filteredModels = computed(() =>
   weightedSearch(models.value, searchQuery.value || '', [

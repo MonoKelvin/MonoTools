@@ -24,7 +24,7 @@ declare global {
       getPathForFile: (file: File) => string
 
       internal: {
-        // 数据库操作（主程序专用，直接操作 ZTOOLS 命名空间）
+        // 数据库操作（主程序专用，直接操作 MONOTOOLS 命名空间）
         dbPut: (key: string, data: any) => Promise<any>
         dbGet: (key: string) => Promise<any>
 

@@ -11,9 +11,7 @@ export default defineConfig(
       '**/dist',
       '**/out',
       'build/**',
-      'resources/**',
-      'ztools-api-types/**',
-      'ztools-plugin-cli/templates/**'
+      'resources/**'
     ]
   },
   tseslint.configs.recommended,

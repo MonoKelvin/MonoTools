@@ -1,15 +1,10 @@
 import { app, dialog, IpcMainInvokeEvent, ipcMain } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
 import windowManager from '../../managers/windowManager.js'
-import logCollector from '../../core/logCollector.js'
 import clipboardManager from '../../managers/clipboardManager.js'
 import detachedWindowManager from '../../core/detachedWindowManager.js'
 import floatingBallManager from '../../core/floatingBallManager.js'
-import httpServer from '../../core/httpServer.js'
-import mcpServer from '../../core/mcpServer.js'
 import superPanelManager from '../../core/superPanelManager.js'
-import translationManager from '../../core/translationManager.js'
-import providerManager from '../../core/provider/providerManager.js'
 import aiModelsAPI from '../renderer/aiModels.js'
 import commandsAPI from '../renderer/commands.js'
 import pluginsAPI from '../renderer/plugins.js'
@@ -18,7 +13,6 @@ import { promises as fs } from 'fs'
 import settingsAPI from '../renderer/settings.js'
 import systemAPI from '../renderer/system.js'
 import windowAPI from '../renderer/window.js'
-import pluginToolsAPI from './tools'
 import databaseAPI from '../shared/database'
 import { analyzeImage } from '../shared/imageAnalysis'
 import updaterAPI from '../updater.js'
@@ -567,123 +561,6 @@ export class InternalPluginAPI {
       return await aiModelsAPI.deleteModel(modelId)
     })
 
-    // ==================== Provider（翻译 / OCR 等）管理 API ====================
-    ipcMain.handle('internal:providers-get-all', async (event, type?: string) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:providers-get-all')
-      }
-      try {
-        const data = providerManager.getAllProviders(type as never)
-        return { success: true, data }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '未知错误'
-        }
-      }
-    })
-
-    ipcMain.handle('internal:providers-get-settings', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:providers-get-settings')
-      }
-      try {
-        return { success: true, data: providerManager.getSettings() }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '未知错误'
-        }
-      }
-    })
-
-    ipcMain.handle(
-      'internal:providers-set-enabled',
-      async (event, providerId: string, enabled: boolean) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:providers-set-enabled')
-        }
-        try {
-          const data = providerManager.setEnabled(providerId, enabled)
-          return { success: true, data }
-        } catch (error: unknown) {
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : '未知错误'
-          }
-        }
-      }
-    )
-
-    ipcMain.handle(
-      'internal:providers-set-default',
-      async (event, type: string, providerId: string) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:providers-set-default')
-        }
-        try {
-          const data = providerManager.setDefault(type as never, providerId)
-          return { success: true, data }
-        } catch (error: unknown) {
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : '未知错误'
-          }
-        }
-      }
-    )
-
-    ipcMain.handle('internal:providers-get-params', async (event, providerId: string) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:providers-get-params')
-      }
-      try {
-        return { success: true, data: providerManager.getParams(providerId) }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '未知错误'
-        }
-      }
-    })
-
-    ipcMain.handle(
-      'internal:providers-set-params',
-      async (event, providerId: string, params: Record<string, unknown>) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:providers-set-params')
-        }
-        try {
-          const data = providerManager.setParams(providerId, params)
-          return { success: true, data }
-        } catch (error: unknown) {
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : '未知错误'
-          }
-        }
-      }
-    )
-
-    // 超级面板翻译状态（供翻译 tab 展示内置 Bergamot 引擎状态）
-    ipcMain.handle('internal:providers-translation-status', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:providers-translation-status')
-      }
-      return translationManager.getStatus()
-    })
-
-    ipcMain.handle(
-      'internal:providers-translation-set-enabled',
-      async (event, enabled: boolean) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:providers-translation-set-enabled')
-        }
-        translationManager.updateEnabled(enabled)
-        return { success: true }
-      }
-    )
-
     // ==================== 全局快捷键 API ====================
     ipcMain.handle(
       'internal:register-global-shortcut',
@@ -1132,219 +1009,12 @@ export class InternalPluginAPI {
       return clipboardManager.getCurrentWindow()
     })
 
-    // ==================== 超级面板翻译 API ====================
-    ipcMain.handle('internal:update-super-panel-translate', async (event, enabled: boolean) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:update-super-panel-translate')
-      }
-      translationManager.updateEnabled(enabled)
-      return { success: true }
-    })
-
-    ipcMain.handle('internal:get-translation-status', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:get-translation-status')
-      }
-      return translationManager.getStatus()
-    })
-
     // ==================== 图片分析 API ====================
     ipcMain.handle('internal:analyze-image', async (event, imagePath: string) => {
       if (!requireInternalPlugin(this.pluginManager, event)) {
         throw new PermissionDeniedError('internal:analyze-image')
       }
       return await analyzeImage(imagePath)
-    })
-
-    // ==================== 调试日志 API ====================
-    ipcMain.handle('internal:log-enable', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:log-enable')
-      }
-      logCollector.enable(event.sender)
-      return { success: true }
-    })
-
-    ipcMain.handle('internal:log-disable', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:log-disable')
-      }
-      logCollector.disable(event.sender)
-      return { success: true }
-    })
-
-    ipcMain.handle('internal:log-get-buffer', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:log-get-buffer')
-      }
-      return logCollector.getBufferedLogs()
-    })
-
-    ipcMain.handle('internal:log-is-enabled', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:log-is-enabled')
-      }
-      return logCollector.isEnabled()
-    })
-
-    ipcMain.handle('internal:log-subscribe', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:log-subscribe')
-      }
-      logCollector.addSubscriber(event.sender)
-      return { success: true }
-    })
-
-    // ==================== HTTP 服务 API ====================
-    ipcMain.handle('internal:http-server-get-config', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:http-server-get-config')
-      }
-      try {
-        const config = httpServer.getConfig()
-        return { success: true, config }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '获取配置失败'
-        }
-      }
-    })
-
-    ipcMain.handle(
-      'internal:http-server-save-config',
-      async (event, config: { enabled: boolean; port: number; apiKey: string }) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:http-server-save-config')
-        }
-        try {
-          const wasRunning = httpServer.isRunning()
-          const savedConfig = await httpServer.saveConfig(config)
-
-          if (savedConfig.enabled && !wasRunning) {
-            httpServer.start()
-          } else if (!savedConfig.enabled && wasRunning) {
-            httpServer.stop()
-          } else if (savedConfig.enabled && wasRunning) {
-            httpServer.stop()
-            httpServer.start()
-          }
-
-          return { success: true, config: savedConfig }
-        } catch (error: unknown) {
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : '保存配置失败'
-          }
-        }
-      }
-    )
-
-    ipcMain.handle('internal:http-server-regenerate-key', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:http-server-regenerate-key')
-      }
-      try {
-        const newKey = httpServer.generateApiKey()
-        await httpServer.saveConfig({ apiKey: newKey })
-        return { success: true, apiKey: newKey }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '重新生成密钥失败'
-        }
-      }
-    })
-
-    ipcMain.handle('internal:http-server-status', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:http-server-status')
-      }
-      return { success: true, running: httpServer.isRunning() }
-    })
-
-    // ==================== MCP 服务 API ====================
-    ipcMain.handle('internal:mcp-server-get-config', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:mcp-server-get-config')
-      }
-      try {
-        // 读取当前 MCP 服务配置；缺失 API Key 时会在 getConfig 内补齐。
-        const config = mcpServer.getConfig()
-        return { success: true, config }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '获取配置失败'
-        }
-      }
-    })
-
-    ipcMain.handle(
-      'internal:mcp-server-save-config',
-      async (event, config: { enabled: boolean; port: number; apiKey: string }) => {
-        if (!requireInternalPlugin(this.pluginManager, event)) {
-          throw new PermissionDeniedError('internal:mcp-server-save-config')
-        }
-        try {
-          const wasRunning = mcpServer.isRunning()
-          const savedConfig = await mcpServer.saveConfig(config)
-
-          // 配置变更后按运行状态决定启动、停止或重启服务。
-          if (savedConfig.enabled && !wasRunning) {
-            mcpServer.start()
-          } else if (!savedConfig.enabled && wasRunning) {
-            mcpServer.stop()
-          } else if (savedConfig.enabled && wasRunning) {
-            mcpServer.stop()
-            mcpServer.start()
-          }
-
-          return { success: true, config: savedConfig }
-        } catch (error: unknown) {
-          return {
-            success: false,
-            error: error instanceof Error ? error.message : '保存配置失败'
-          }
-        }
-      }
-    )
-
-    ipcMain.handle('internal:mcp-server-regenerate-key', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:mcp-server-regenerate-key')
-      }
-      try {
-        // 仅更新密钥，不直接改动启停状态，由现有服务继续使用新配置。
-        const newKey = mcpServer.generateApiKey()
-        await mcpServer.saveConfig({ apiKey: newKey })
-        return { success: true, apiKey: newKey }
-      } catch (error: unknown) {
-        return {
-          success: false,
-          error: error instanceof Error ? error.message : '重新生成密钥失败'
-        }
-      }
-    })
-
-    // 查询 MCP 服务运行状态
-    ipcMain.handle('internal:mcp-server-status', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:mcp-server-status')
-      }
-      return { success: true, running: mcpServer.isRunning() }
-    })
-
-    // 获取所有已安装插件中声明的 MCP 工具列表
-    ipcMain.handle('internal:mcp-server-tools', async (event) => {
-      if (!requireInternalPlugin(this.pluginManager, event)) {
-        throw new PermissionDeniedError('internal:mcp-server-tools')
-      }
-      return {
-        success: true,
-        // 返回所有已安装插件声明的工具，供设置页展示与调试。
-        data: pluginToolsAPI.getAllDeclaredToolEntries()
-      }
     })
   }
 }

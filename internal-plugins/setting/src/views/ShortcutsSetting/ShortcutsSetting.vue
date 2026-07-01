@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useToast, ShortcutEditor, AdaptiveIcon } from '@/components'
 import { weightedSearch } from '@/utils'
-import { useJumpFunction, useZtoolsSubInput } from '@/composables'
+import { useJumpFunction, useMonoToolsSubInput } from '@/composables'
 import type {
   ShortcutsSettingAliasCommandOption,
   ShortcutsSettingAliasDialogState,
@@ -158,7 +158,7 @@ const currentShortcuts = computed(() => {
   return []
 })
 
-const { value: searchQuery } = useZtoolsSubInput('', '搜索快捷键或别名...')
+const { value: searchQuery } = useMonoToolsSubInput('', '搜索快捷键或别名...')
 
 const filteredShortcuts = computed(() =>
   weightedSearch(currentShortcuts.value, searchQuery.value || '', [

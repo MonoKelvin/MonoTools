@@ -1,15 +1,13 @@
 import { platform } from '@electron-toolkit/utils'
-import { app, BrowserWindow, session, webContents, shell } from 'electron'
+import { app, BrowserWindow, session, webContents } from 'electron'
 import log from 'electron-log'
 import path from 'path'
-import lmdbInstance from './core/lmdb/lmdbInstance'
+import lmdbInstance, { closeLmdb } from './core/lmdb/lmdbInstance'
 import api from './api/index'
 import pluginsAPI from './api/renderer/plugins'
 import appWatcher from './appWatcher'
 import detachedWindowManager from './core/detachedWindowManager'
 import floatingBallManager from './core/floatingBallManager'
-import httpServer from './core/httpServer'
-import mcpServer from './core/mcpServer'
 import { registerIconProtocolForSession, registerIconScheme } from './core/iconProtocol'
 import { loadInternalPlugins } from './core/internalPluginLoader'
 import { startInternalPluginServer } from './core/internalPluginServer'
@@ -89,10 +87,6 @@ log.transports.console.level = 'debug'
 // if (process.env.NODE_ENV === 'production') {
 Object.assign(console, log.functions)
 // }
-
-// 安装日志收集器 hook（用于设置插件的调试控制台）
-import logCollector from './core/logCollector.js'
-logCollector.install()
 
 // 开发模式下禁用某些警告
 if (process.env.NODE_ENV !== 'production') {
@@ -183,12 +177,12 @@ async function performMigration(): Promise<void> {
     migrationManager = new DataMigrationManager()
 
     if (!migrationManager.needsMigration()) {
-      console.log('[Main] 未检测到 ZTools 数据，无需迁移')
+      console.log('[Main] 未检测到旧版本数据，无需迁移')
       showMigrationCompleteAndRestart()
       return
     }
 
-    console.log('[Main] 检测到 ZTools 数据，开始迁移...')
+    console.log('[Main] 检测到旧版本数据，开始迁移...')
 
     // 显示迁移进度
     showMigrationWindow('正在迁移剪贴板历史...')
@@ -327,20 +321,14 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('will-quit', (event) => {
+app.on('will-quit', (_event) => {
   console.log('[Main] will-quit event fired')
   windowManager.unregisterAllShortcuts()
   // 停止应用目录监听
   appWatcher.stop()
   // 清理悬浮球
   floatingBallManager.cleanup()
-  // 关闭 HTTP 服务器
-  httpServer.stop()
-  // 关闭 MCP 服务器
-  mcpServer.stop()
-  // 关闭 LMDB 数据库
-  console.log('[Main] Calling closeLmdb from will-quit')
-  closeLmdb()
+  // LMDB 数据库会在 lmdbInstance.ts 的 will-quit 监听器中自动关闭
 })
 
 app.on('before-quit', (event) => {

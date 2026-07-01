@@ -4,7 +4,7 @@ import { useToast, AdaptiveIcon } from '@/components'
 import type { PluginUninstallOptions } from '@/components'
 import { PluginDetail, NpmInstallPanel } from './components'
 import { compareVersions, upgradeInstalledPluginFromMarket, weightedSearch } from '@/utils'
-import { useJumpFunction, useZtoolsSubInput } from '@/composables'
+import { useJumpFunction, useMonoToolsSubInput } from '@/composables'
 import { useRouter } from 'vue-router'
 
 // const emit = defineEmits<{
@@ -50,7 +50,7 @@ const pinnedPluginPaths = ref<string[]>([])
 // 路由
 const router = useRouter()
 
-const { value: searchQuery } = useZtoolsSubInput('', '搜索已安装插件...')
+const { value: searchQuery } = useMonoToolsSubInput('', '搜索已安装插件...')
 // 先进行搜索过滤（不考虑运行状态）
 const searchFilteredPlugins = computed(() => {
   return weightedSearch(plugins.value, searchQuery.value || '', [

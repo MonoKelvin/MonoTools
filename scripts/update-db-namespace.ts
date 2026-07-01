@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 /**
- * 批量更新数据库命名空间从 MONOTOOLS/ 到 MONOTOOLS/
+ * 批量更新数据库命名空间从 ZTOOLS/ 到 MONOTOOLS/
+ * 注意：此脚本仅在数据迁移期间使用，迁移完成后不再需要
  */
 
 const fs = require('fs')

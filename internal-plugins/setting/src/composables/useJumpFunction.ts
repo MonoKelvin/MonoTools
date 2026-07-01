@@ -9,12 +9,12 @@ import { onBeforeRouteUpdate, useRoute } from 'vue-router'
 export function useJumpFunction<T = any>(handler: (data: Partial<T>) => void): void {
   const route = useRoute()
   // 处理对应 monotools code 进来的功能
-  const handleJumpZtoolsCode = (): void => {
+  const handleJumpMonoToolsCode = (): void => {
     const state = useHistoryState<T>()
     handler(state)
   }
   onMounted(() => {
-    handleJumpZtoolsCode()
+    handleJumpMonoToolsCode()
   })
 
   watch(
@@ -24,10 +24,10 @@ export function useJumpFunction<T = any>(handler: (data: Partial<T>) => void): v
         return
       }
       await nextTick()
-      handleJumpZtoolsCode()
+      handleJumpMonoToolsCode()
     }
   )
   onBeforeRouteUpdate(() => {
-    handleJumpZtoolsCode()
+    handleJumpMonoToolsCode()
   })
 }

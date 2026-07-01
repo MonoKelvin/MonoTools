@@ -12,7 +12,7 @@ import {
   useMatchCommandDetail
 } from '@/components'
 import type { TagDropdownMenuItem } from '@/components'
-import { useZtoolsSubInput } from '@/composables'
+import { useMonoToolsSubInput } from '@/composables'
 import {
   jumpFunctionShortcutsSetting,
   type ShortcutsSettingAliasDraftTarget
@@ -681,7 +681,7 @@ const localShortcutCount = computed(
   () => getFilteredSystemCommandsForSource({ subType: 'local-shortcut', name: '本地启动' }).length
 )
 
-const { value: searchQuery } = useZtoolsSubInput('', '搜索指令...')
+const { value: searchQuery } = useMonoToolsSubInput('', '搜索指令...')
 const normalizedSearchQuery = computed(() => (searchQuery.value || '').trim().toLowerCase())
 const isSearching = computed(() => normalizedSearchQuery.value.length > 0)
 

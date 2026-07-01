@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useToast, AdaptiveIcon } from '@/components'
 import { weightedSearch } from '@/utils'
-import { useJumpFunction, useZtoolsSubInput } from '@/composables'
+import { useJumpFunction, useMonoToolsSubInput } from '@/composables'
 import { LocalLaunchSettingJumpFunction } from '@/views/LocalLaunchSetting/LocalLaunchSetting'
 
 const emit = defineEmits<{
@@ -31,7 +31,7 @@ const isDragging = ref(false)
 // 防止并发消费待添加路径
 const isConsumingPending = ref(false)
 
-const { value: searchQuery } = useZtoolsSubInput('', '搜索本地启动项...')
+const { value: searchQuery } = useMonoToolsSubInput('', '搜索本地启动项...')
 
 const filteredShortcuts = computed(() =>
   weightedSearch(shortcuts.value, searchQuery.value || '', [

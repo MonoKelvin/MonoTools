@@ -20,36 +20,6 @@
       "cmds": ["清除使用记录", "Clear History"]
     },
     {
-      "code": "reboot",
-      "explain": "重启",
-      "icon": "reboot.png",
-      "cmds": ["Reboot", "重启"]
-    },
-    {
-      "code": "shutdown",
-      "explain": "关机",
-      "icon": "shutdown.png",
-      "cmds": ["Shutdown", "关机"]
-    },
-    {
-      "code": "logoff",
-      "explain": "注销",
-      "icon": "logoff.png",
-      "cmds": ["Log Off", "Sign Out", "注销", "退出登录"]
-    },
-    {
-      "code": "sleep",
-      "explain": "睡眠",
-      "icon": "sleep.png",
-      "cmds": ["Sleep", "睡眠"]
-    },
-    {
-      "code": "lock-screen",
-      "explain": "锁屏",
-      "icon": "lock.png",
-      "cmds": ["Lock Screen", "锁屏", "锁定屏幕"]
-    },
-    {
       "code": "open-url",
       "explain": "打开网址",
       "icon": "openurl.png",
@@ -103,44 +73,10 @@
       ]
     },
     {
-      "code": "open-terminal",
-      "explain": "在终端打开",
-      "icon": "terminal.png",
-      "cmds": [
-        {
-          "type": "window",
-          "label": "在终端打开",
-          "match": {
-            "app": ["Finder.app", "explorer.exe"],
-            "className": ["", "CabinetWClass"]
-          }
-        },
-        {
-          "type": "files",
-          "label": "在终端打开",
-          "fileType": "directory",
-          "minLength": 1,
-          "maxLength": 1
-        }
-      ]
-    },
-    {
       "code": "add-to-wakeup-blacklist",
       "explain": "将当前活动窗口的应用添加到唤醒黑名单",
       "icon": "wakeup-blacklist.png",
       "cmds": ["添加到唤醒黑名单", "Wakeup Blacklist"]
-    },
-    {
-      "code": "color-picker",
-      "explain": "屏幕取色",
-      "icon": "color-picker.png",
-      "cmds": ["取色", "Color Picker", "屏幕取色"]
-    },
-    {
-      "code": "screenshot",
-      "explain": "截图并复制到剪贴板",
-      "icon": "screenshot.png",
-      "cmds": ["截图", "截屏", "Screenshot", "Screen Capture"]
     }
   ]
 }

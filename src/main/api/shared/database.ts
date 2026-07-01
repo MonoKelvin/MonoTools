@@ -2,6 +2,7 @@ import { ipcMain, IpcMainEvent, IpcMainInvokeEvent } from 'electron'
 import type { PluginManager } from '../../managers/pluginManager'
 import lmdbInstance from '../../core/lmdb/lmdbInstance'
 import pluginWindowManager from '../../core/pluginWindowManager'
+import { MONOTOOLS_HOST_PLUGIN, MONOTOOLS_NAMESPACE } from '../../common/constants'
 import {
   getPluginDataPrefix,
   isDevelopmentPluginName,
@@ -32,8 +33,8 @@ export class DatabaseAPI {
       return null
     }
 
-    if (pluginName === 'ZTOOLS') {
-      return { pluginName: 'ZTOOLS', prefix: 'MONOTOOLS/', isHostData: true }
+    if (pluginName === MONOTOOLS_HOST_PLUGIN || pluginName === 'monotools') {
+      return { pluginName: MONOTOOLS_HOST_PLUGIN, prefix: MONOTOOLS_NAMESPACE, isHostData: true }
     }
 
     return { pluginName, prefix: getPluginDataPrefix(pluginName), isHostData: false }
@@ -353,7 +354,7 @@ export class DatabaseAPI {
       }
     })
 
-    // ============ 主程序渲染进程专用API（直接操作 ZTOOLS 命名空间） ============
+    // ============ 主程序渲染进程专用API（直接操作 MONOTOOLS 命名空间） ============
     ipcMain.handle('monotools:db-put', (_event, key: string, data: any) => {
       // console.log('[Database] monotools:db-put', key, data)
       return this.dbPut(key, data)
@@ -388,7 +389,7 @@ export class DatabaseAPI {
 
   /**
    * 内部使用的数据库辅助方法
-   * 用于主进程内部直接操作 ZTOOLS 命名空间的数据
+   * 用于主进程内部直接操作 MONOTOOLS 命名空间的数据
    */
   public dbPut(key: string, data: any): any {
     try {
@@ -519,7 +520,7 @@ export class DatabaseAPI {
       // 将主程序数据插入到列表最前面
       if (monotoolsDocCount > 0 || monotoolsAttachmentCount > 0) {
         data.unshift({
-          pluginName: 'ZTOOLS',
+          pluginName: MONOTOOLS_HOST_PLUGIN,
           pluginTitle: '主程序',
           docCount: monotoolsDocCount,
           attachmentCount: monotoolsAttachmentCount,

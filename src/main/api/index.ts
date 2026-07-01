@@ -13,7 +13,6 @@ import appsAPI from './renderer/commands'
 import localShortcutsAPI from './renderer/localShortcuts'
 import pluginsAPI from './renderer/plugins'
 import settingsAPI from './renderer/settings'
-import syncAPI from './renderer/sync'
 import systemAPI from './renderer/system'
 import { systemSettingsAPI } from './renderer/systemSettings'
 import windowAPI from './renderer/window'
@@ -26,17 +25,14 @@ import pluginClipboardAPI from './plugin/clipboard'
 import pluginDeviceAPI from './plugin/device'
 import pluginDialogAPI from './plugin/dialog'
 import { pluginFeatureAPI } from './plugin/feature'
-import pluginHttpAPI from './plugin/http'
 import pluginInputAPI from './plugin/input'
 import internalPluginAPI from './plugin/internal'
 import pluginLifecycleAPI from './plugin/lifecycle'
 import { initPluginApiDispatcher } from './plugin/pluginApiDispatcher'
-import pluginProvidersAPI from './plugin/providers'
 import pluginRedirectAPI from './plugin/redirect'
 import pluginScreenAPI from './plugin/screen'
 import pluginShellAPI from './plugin/shell'
 import pluginToastAPI from './plugin/toast'
-import pluginToolsAPI from './plugin/tools'
 import pluginUIAPI from './plugin/ui'
 import pluginWindowAPI from './plugin/window'
 import { setupImageAnalysisAPI } from './shared/imageAnalysis'
@@ -48,15 +44,10 @@ import {
   type OverCmdLike,
   type RegexCmdLike
 } from '@shared/commandContextShared'
-import zbrowserAPI from './plugin/zbrowser'
 import pluginFFmpegAPI from './plugin/ffmpeg'
 
-import httpServer from '../core/httpServer'
-import mcpServer from '../core/mcpServer'
-import providerManager from '../core/provider/providerManager'
 import { runStartupDataMigrations } from '../core/startupDataMigrations'
 import superPanelManager from '../core/superPanelManager'
-import translationManager from '../core/translationManager'
 
 /**
  * 快捷键触发时携带的文件输入
@@ -111,18 +102,12 @@ class APIManager {
     settingsAPI.init(mainWindow, pluginManager)
     systemAPI.init(mainWindow)
     systemSettingsAPI.init()
-    syncAPI.init(mainWindow)
     localShortcutsAPI.init(mainWindow)
 
     // 初始化插件 API 统一分发器（必须在插件 API 初始化之前）
     initPluginApiDispatcher()
 
     // 初始化插件API
-    pluginToolsAPI.init(pluginManager)
-    // Provider 管理器（翻译、OCR 等），需在插件 API 之后、消费方之前初始化
-    providerManager.init(pluginManager)
-    // 暴露给所有插件的 provider 消费入口（查询默认渠道 / 调用），依赖 providerManager 已就绪
-    pluginProvidersAPI.init()
     pluginAiAPI.init(mainWindow, pluginManager)
     pluginLifecycleAPI.init(mainWindow, pluginManager)
     pluginUIAPI.init(mainWindow, pluginManager)
@@ -141,12 +126,8 @@ class APIManager {
     pluginShellAPI.init(clipboardManager)
     pluginRedirectAPI.init(mainWindow, pluginManager)
     pluginFeatureAPI.init(pluginManager)
-    pluginHttpAPI.init(pluginManager)
     pluginToastAPI.init(pluginManager)
     pluginFFmpegAPI.init()
-
-    // 初始化 zbrowser 浏览器自动化 API
-    zbrowserAPI.init(mainWindow, pluginManager)
 
     // 初始化内置插件专用API
     internalPluginAPI.init(mainWindow, pluginManager)
@@ -154,35 +135,8 @@ class APIManager {
     // 初始化软件更新API
     updaterAPI.init(mainWindow)
 
-    // 初始化 HTTP 服务
-    httpServer.init().catch((error) => {
-      console.error('[API] HTTP 服务初始化失败:', error)
-    })
-    // 初始化 MCP 服务
-    mcpServer.init().catch((error) => {
-      console.error('[API] MCP 服务初始化失败:', error)
-    })
-
     // 初始化超级面板管理器
     superPanelManager.init(mainWindow)
-
-    // 初始化翻译管理器
-    translationManager.init()
-
-    // 将内置 Bergamot 翻译引擎注册为 translation 类型 provider
-    providerManager.registerBuiltinProvider({
-      name: 'bergamot',
-      type: 'translation',
-      label: '离线翻译引擎（Bergamot）',
-      description: '英译中离线引擎，首次启用需下载约 55MB 模型',
-      isReady: () => translationManager.getStatus().status === 'ready',
-      invoke: async (input) => {
-        const { text, from } = input as { text: string; from?: string; to?: string }
-        // 当前内置引擎仅支持 en→zh，忽略 from/to 参数
-        const result = await translationManager.translate(text)
-        return { text: result || '', detectedFrom: from }
-      }
-    })
 
     // 设置一些特殊的IPC处理器
     this.setupSpecialHandlers()

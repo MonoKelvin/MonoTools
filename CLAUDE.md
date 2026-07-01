@@ -3,9 +3,15 @@
 ## 项目概述
 
 MonoTools 是一个跨平台 (macOS/Windows) 应用启动器和插件平台，类似 Alfred/Raycast。
+本项目基于 [ZTools](https://github.com/lzx8589561/ZTools) 进行重构和改进，感谢原作者 lzx8589561 的贡献。
+
+**原作者**: lzx8589561  
+**当前维护者**: MonoKelvin  
+**许可证**: MIT License (Copyright (c) 2025 lzx8589561)
+
 技术栈：Electron 41 + Vue 3 + TypeScript + Pinia + LMDB + WebContentsView。
 
-核心能力：拼音搜索、插件系统（UI/无界面）、剪贴板管理、超级面板、分离窗口、WebDAV 同步、MCP Server、AI 集成、ZBrowser 浏览器自动化、离线翻译、悬浮球、网页快开。
+核心能力：拼音搜索、插件系统（UI/无界面）、剪贴板管理、超级面板、分离窗口、悬浮球、网页快开、AI 模型配置。
 
 ## 开发命令
 
@@ -42,7 +48,7 @@ src/main/                          # 主进程
     index.ts                       # API 管理器（统一初始化所有模块 + 全局快捷键处理）
     updater.ts                     # 应用更新（蓝奏云 + 独立 updater 程序替换 asar）
     shared/                        # 主程序和插件共享 API
-      database.ts                  # LMDB 数据库（命名空间隔离：ZTOOLS/ 和 PLUGIN/{name}/）
+      database.ts                  # LMDB 数据库（命名空间隔离：MONOTOOLS/ 和 PLUGIN/{name}/）
       clipboard.ts                 # 剪贴板 API
       imageAnalysis.ts             # 图像分析（sharp）
     renderer/                      # 主程序渲染进程专用 API
@@ -54,7 +60,6 @@ src/main/                          # 主进程
       system.ts                    # 系统功能
       systemSettings.ts            # Windows 系统设置集成
       systemCommands.ts            # 系统内置指令执行（截图、取色等）
-      sync.ts                      # WebDAV 同步 API
       webSearch.ts                 # 网页快开搜索引擎管理
       localShortcuts.ts            # 本地启动项（自定义文件/文件夹/应用快捷方式）
       aiModels.ts                  # AI 模型配置管理（OpenAI 兼容格式）
@@ -73,9 +78,7 @@ src/main/                          # 主进程
       redirect.ts                  # 搜索重定向
       screen.ts                    # 屏幕功能（截图）
       toast.ts                     # Toast 通知（独立透明窗口）
-      tools.ts                     # 插件工具声明（供 MCP 消费）
       ai.ts                        # AI 对话 API（OpenAI 兼容，流式）
-      zbrowser.ts                  # 浏览器自动化 API
       ffmpeg.ts                    # FFmpeg 路径获取
       internal.ts                  # 内置插件专用 API（更高权限）
   core/
@@ -125,7 +128,6 @@ src/main/                          # 主进程
     appleScriptHelper.ts           # macOS AppleScript 辅助
     elevation.ts                   # 权限提升
     systemPaths.ts                 # 系统路径
-    devToolsShortcut.ts            # 开发者工具快捷键
     common.ts                      # 通用工具函数
 
 src/preload/index.ts               # 主程序 preload（contextBridge → window.monotools）
@@ -220,9 +222,9 @@ registerPluginApiServices({
 
 路径：`app.getPath('userData')/lmdb`，三个库：main、meta、attachment。
 
-命名空间：`ZTOOLS/`（主程序）、`PLUGIN/{name}/`（插件，自动隔离）、`SYNC/`（同步配置）。
+命名空间：`MONOTOOLS/`（主程序）、`PLUGIN/{name}/`（插件，自动隔离）。
 
-`window.monotools.dbGet/dbPut` 自动添加 `ZTOOLS/` 前缀。插件通过 `db.put/get` 自动添加 `PLUGIN/{name}/` 前缀。
+`window.monotools.dbGet/dbPut` 自动添加 `MONOTOOLS/` 前缀。插件通过 `db.put/get` 自动添加 `PLUGIN/{name}/` 前缀。
 
 ## 关键代码路径
 
@@ -235,13 +237,9 @@ registerPluginApiServices({
 | 剪贴板       | `managers/clipboardManager.ts`, `core/native/index.ts`                                                         |
 | 窗口管理     | `managers/windowManager.ts`, `core/detachedWindowManager.ts`                                                   |
 | 超级面板     | `core/superPanelManager.ts`, `components/SuperPanel.vue`                                                       |
-| 同步         | `core/sync/`, `api/renderer/sync.ts`                                                                           |
 | 插件 AI      | `api/plugin/ai.ts`, `api/renderer/aiModels.ts`                                                                 |
-| 浏览器自动化 | `core/zbrowser/`, `api/plugin/zbrowser.ts`                                                                     |
 | 内置插件     | `internal-plugins/`, `core/internalPlugins.ts`, `core/internalPluginLoader.ts`                                 |
 | 应用更新     | `api/updater.ts`, `components/updater/UpdateWindow.vue`                                                        |
-| MCP 服务     | `core/mcpServer.ts`, `api/plugin/tools.ts`                                                                     |
-| 翻译         | `core/translationManager.ts`                                                                                   |
 | IPC 通信     | `api/index.ts`（统一初始化），`api/shared/`、`api/renderer/`、`api/plugin/`                                    |
 | UI 样式      | `renderer/src/style.css`（通用控件类：.btn .input .select .toggle .card）                                      |
 

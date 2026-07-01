@@ -6,7 +6,6 @@ import databaseAPI from '../api/shared/database'
 import { applyWindowMaterial } from '../utils/windowUtils'
 import { GLOBAL_SCROLLBAR_CSS } from './globalStyles.js'
 import lmdbInstance from './lmdb/lmdbInstance'
-import devToolsShortcut, { getDevToolsMode } from '../utils/devToolsShortcut'
 import { WINDOW_WIDTH } from '../common/constants'
 import { registerExternalLinkInterceptor } from '../managers/pluginManager'
 import pluginWindowManager from './pluginWindowManager'
@@ -317,14 +316,9 @@ class DetachedWindowManager {
 
       pluginView.webContents.on('focus', () => {
         windowInfo.lastFocusTarget = 'plugin'
-        if (!pluginView.webContents.isDestroyed()) {
-          devToolsShortcut.register(pluginView.webContents)
-        }
       })
 
-      pluginView.webContents.on('blur', () => {
-        devToolsShortcut.unregister()
-      })
+      pluginView.webContents.on('blur', () => {})
 
       // 拦截外部链接跳转，使用系统默认浏览器打开
       registerExternalLinkInterceptor(pluginView.webContents)
@@ -395,7 +389,7 @@ class DetachedWindowManager {
             if (pluginView.webContents.isDevToolsOpened()) {
               pluginView.webContents.closeDevTools()
             } else {
-              const mode = getDevToolsMode()
+              const mode = 'right'
               if (!pluginView.webContents.isDestroyed()) {
                 pluginView.webContents.openDevTools({ mode })
               }

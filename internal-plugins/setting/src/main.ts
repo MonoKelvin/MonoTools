@@ -2,7 +2,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import './assets/styles'
 import { router } from './router'
-import { dispatchZtoolsCodeEvent, initZtoolsBaseEventHandler } from '@/events'
+import { dispatchMonoToolsCodeEvent, initMonoToolsBaseEventHandler } from '@/events'
 // 单独导入注册事件
 import './events/allCodeEvent'
 
@@ -10,7 +10,7 @@ import './events/allCodeEvent'
 monotools.onPluginEnter((action) => {
   // 将 utools 事件派发根据不同的 code 进行派发出去
   console.log('[插件事件: onPluginEnter]', action)
-  dispatchZtoolsCodeEvent(action, router)
+  dispatchMonoToolsCodeEvent(action, router)
 })
 
 monotools.onPluginOut(() => {
@@ -44,4 +44,4 @@ app.use(router)
 app.mount('#app')
 
 // 注册 monotools 关键字跳转事件
-initZtoolsBaseEventHandler()
+initMonoToolsBaseEventHandler()

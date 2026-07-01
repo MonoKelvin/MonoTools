@@ -1,4 +1,4 @@
-import { addZtoolsCodeEventListener } from '@/events/codeEvent'
+import { addMonoToolsCodeEventListener } from '@/events/codeEvent'
 import { jumpFunctionPluginInstaller } from '@/views/PluginInstaller/PluginInstaller'
 import { jumpFunctionPluginMarketSetting } from '@/views/PluginMarketSetting/PluginMarketSetting'
 import { jumpLocalLaunchSettingJumpFunction } from '@/views/LocalLaunchSetting/LocalLaunchSetting'
@@ -6,7 +6,7 @@ import { jumpLocalLaunchSettingJumpFunction } from '@/views/LocalLaunchSetting/L
 /**
  * 将文件和文件夹添加到本地启动
  */
-addZtoolsCodeEventListener('function.local-launch-add', (e) => {
+addMonoToolsCodeEventListener('function.local-launch-add', (e) => {
   const { payload, code } = e.pluginEnterParams
   console.info(`[code-event] ${code} 成功接收事件`)
   const files = Array.isArray(payload) ? payload : []
@@ -21,7 +21,7 @@ addZtoolsCodeEventListener('function.local-launch-add', (e) => {
 /**
  * 插件市场搜索
  */
-addZtoolsCodeEventListener('function.plugin-market-search', async (e) => {
+addMonoToolsCodeEventListener('function.plugin-market-search', async (e) => {
   const { payload, code, type } = e.pluginEnterParams
   console.info(`[code-event] ${code} 成功接收事件`, payload)
   if (payload) {
@@ -32,7 +32,7 @@ addZtoolsCodeEventListener('function.plugin-market-search', async (e) => {
 /**
  * 安装插件
  */
-addZtoolsCodeEventListener('function.install-plugin', (e) => {
+addMonoToolsCodeEventListener('function.install-plugin', (e) => {
   const { payload, code } = e.pluginEnterParams
   console.info(`[code-event] ${code} 成功接收事件`)
   const files = Array.isArray(payload) ? payload : []
@@ -49,7 +49,7 @@ addZtoolsCodeEventListener('function.install-plugin', (e) => {
 /**
  * 固定文件/文件夹到搜索框
  */
-addZtoolsCodeEventListener('function.pin-to-search', async (e) => {
+addMonoToolsCodeEventListener('function.pin-to-search', async (e) => {
   const { payload, code } = e.pluginEnterParams
   console.info(`[code-event] ${code} 成功接收事件`)
   const files = Array.isArray(payload) ? payload : []
@@ -91,6 +91,6 @@ addZtoolsCodeEventListener('function.pin-to-search', async (e) => {
 /**
  * 退出 MonoTools 应用
  */
-addZtoolsCodeEventListener('function.exit', () => {
+addMonoToolsCodeEventListener('function.exit', () => {
   void window.monotools.internal.quitApp()
 })

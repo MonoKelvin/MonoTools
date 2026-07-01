@@ -31,7 +31,7 @@ if (platform === 'darwin') {
   try {
     // 动态导入 macOS 原生模块
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    addon = require(path.join(nativeBasePath, 'resources', 'lib', 'mac', 'ztools_native.node'))
+    addon = require(path.join(nativeBasePath, 'resources', 'lib', 'mac', 'monotools_native.node'))
   } catch (e) {
     console.warn(
       `Failed to load macOS native module, falling back to Electron APIs: ${

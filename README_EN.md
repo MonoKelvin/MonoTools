@@ -6,11 +6,11 @@
 
 **A High-Performance, Extensible Application Launcher and Plugin Platform**
 
-_Open Source Implementation of uTools | Supports macOS and Windows_
+_Supports macOS and Windows_
 
-[![GitHub release](https://img.shields.io/github/v/release/lzx8589561/MonoTools)](https://github.com/MonoToolsCenter/MonoTools/releases)
-[![License](https://img.shields.io/github/license/lzx8589561/MonoTools)](./LICENSE)
-[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/MonoToolsCenter/MonoTools)
+[![GitHub release](https://img.shields.io/github/v/release/MonoKelvin/MonoTools)](https://github.com/MonoKelvin/MonoTools/releases)
+[![License](https://img.shields.io/github/license/MonoKelvin/MonoTools)](./LICENSE)
+[![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-blue)](https://github.com/MonoKelvin/MonoTools)
 
 English | [简体中文](./README.md)
 
@@ -70,7 +70,7 @@ English | [简体中文](./README.md)
 
 #### Method 1: Download Pre-built Version (Recommended)
 
-Download the latest version from [Releases](https://github.com/MonoToolsCenter/MonoTools/releases):
+Download the latest version from [Releases](https://github.com/MonoKelvin/MonoTools/releases):
 
 - **macOS**: `monotools-x.x.x.dmg` or `MonoTools-x.x.x-arm64-mac.zip`
 - **Windows**: `monotools-x.x.x-setup.exe` or `monotools-x.x.x-win.zip`
@@ -79,7 +79,7 @@ Download the latest version from [Releases](https://github.com/MonoToolsCenter/M
 
 ```bash
 # Clone the repository
-git clone https://github.com/MonoToolsCenter/MonoTools.git
+git clone https://github.com/MonoKelvin/MonoTools.git
 cd MonoTools
 
 # Install dependencies
@@ -122,7 +122,7 @@ MonoTools provides a built-in plugin market for easy browsing and installation:
 
 **Technical Implementation**:
 
-- Plugins hosted on GitHub Releases ([MonoTools-plugins](https://github.com/MonoToolsCenter/MonoTools-plugins/releases))
+- Plugins hosted on GitHub Releases ([MonoTools-plugins](https://github.com/MonoKelvin/MonoTools-plugins/releases))
 - Plugin list: Fetched from `plugins.json` file for plugin information and download links
 - Plugin package format: ZIP archive containing `plugin.json` and plugin files
 - Version comparison: Automatically compare local and market versions (semantic versioning)
@@ -141,7 +141,7 @@ MonoTools supports one-click in-app updates without manual download:
 
 **Technical Implementation**:
 
-- Update source: GitHub Releases ([MonoTools](https://github.com/MonoToolsCenter/MonoTools/releases))
+- Update source: GitHub Releases ([MonoTools](https://github.com/MonoKelvin/MonoTools/releases))
 - Update info file: `latest.yml` (contains version number, changelog, etc.)
 - Update package format: ZIP archive with naming format `update-{platform}-{arch}-{version}.zip`
   - Example: `update-darwin-arm64-1.2.8.zip` (macOS Apple Silicon)
@@ -169,11 +169,11 @@ MonoTools is a powerful and extensible plugin platform that enhances your produc
 **Plugin System Features**:
 
 - 📝 **Simple Configuration** - Easily define plugins through standard `plugin.json` files, no complex setup required
-- 🔌 **Rich APIs** - Access system capabilities through the global `ztools` object, including notifications, simulated input, and persistent storage
+- 🔌 **Rich APIs** - Access system capabilities through the global `monotools` object, including notifications, simulated input, and persistent storage
 - 🎯 **Flexible Commands** - Trigger your plugins using text, regex, or global hooks to adapt to any workflow
 - 🌍 **Cross-Platform** - Build once, run on Windows, macOS, and Linux with a consistent experience across all devices
 
-> 📖 **Full Documentation**: Visit [MonoTools Developer Documentation](https://ztoolscenter.github.io/MonoTools-doc/) for more details
+> 📖 **Full Documentation**: Visit [MonoTools Developer Documentation](https://monotoolscenter.github.io/MonoTools-doc/) for more details
 
 MonoTools provides a complete plugin system supporting two types:
 
@@ -226,7 +226,7 @@ window.exports = {
     args: {
       enter: async (action) => {
         // Processing logic
-        window.ztools.showNotification('Execution completed')
+        window.monotools.showNotification('Execution completed')
         return { success: true }
       }
     }
@@ -262,7 +262,7 @@ For detailed documentation, see [CLAUDE.md](./CLAUDE.md)
 ## 📁 Project Structure
 
 ```
-ztools/
+MonoTools/
 ├── src/
 │   ├── main/              # Main process
 │   │   ├── api/          # IPC API modules
@@ -349,7 +349,7 @@ pnpm build:unpack       # Package without installer (for debugging)
 
 ## 🐛 Issue Reporting
 
-Having issues? Please report them in [Issues](https://github.com/MonoToolsCenter/MonoTools/issues).
+Having issues? Please report them in [Issues](https://github.com/MonoKelvin/MonoTools/issues).
 
 When submitting an issue, please include:
 
@@ -360,26 +360,53 @@ When submitting an issue, please include:
 
 ## 📄 License
 
-This project is licensed under the [MIT License](./LICENSE).
+This project is licensed under the [MIT License](https://opensource.org/licenses/MIT).
 
-## 💖 Sponsor
+```
+MIT License
 
-If MonoTools has been helpful to you, consider sponsoring the project on Afdian to support continued development:
+Copyright (c) 2025 lzx8589561
 
-<a href="https://afdian.com/a/MonoTools">
-  <img src="https://img.shields.io/badge/Afdian-Sponsor-946ce6?style=for-the-badge" alt="Afdian">
-</a>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
 
 ## 💝 Acknowledgments
 
-- [uTools](https://u.tools/) - Source of inspiration
+- [ZTools](https://github.com/lzx8589561/ZTools) - Inspiration and foundational architecture reference
 - [Electron](https://www.electronjs.org/) - Cross-platform desktop app framework
 - [Vue.js](https://vuejs.org/) - Progressive JavaScript framework
 - [LMDB](http://www.lmdb.tech/) - High-performance embedded database
 
+## 📜 License Notice
+
+MonoTools is developed and improved based on the [ZTools](https://github.com/lzx8589561/ZTools) project. Thanks to the original author for their contribution.
+
+**Important Note**: In accordance with ZTools' MIT License, users of this software must comply with the corresponding license terms.
+
+- ZTools Original Repository: [https://github.com/lzx8589561/ZTools](https://github.com/lzx8589561/ZTools)
+- ZTools License: [MIT License](https://github.com/lzx8589561/ZTools/blob/main/LICENSE)
+
+MonoTools itself is also released under the MIT License, see the License section above.
+
 ## ⭐ Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=lzx8589561/MonoTools&type=Date)](https://star-history.com/#lzx8589561/MonoTools&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=MonoKelvin/MonoTools&type=Date)](https://star-history.com/#MonoKelvin/MonoTools&Date)
 
 ---
 
@@ -387,6 +414,6 @@ If MonoTools has been helpful to you, consider sponsoring the project on Afdian 
 
 **If this project helps you, please give it a Star ⭐️**
 
-Made with ❤️ by [lzx8589561](https://github.com/lzx8589561)
+Made with ❤️ by [MonoKelvin](https://github.com/MonoKelvin)
 
 </div>

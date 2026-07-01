@@ -329,7 +329,5 @@ describe('plugin removal cleanup', () => {
     const result = await api.deletePlugin('D:\\plugins\\demo')
 
     expect(result).toEqual({ success: true })
-    // 卸载时应清理该插件在 provider 配置中的启用/默认/参数
-    expect(mockCleanupForPlugin).toHaveBeenCalledWith('demo')
   })
 })

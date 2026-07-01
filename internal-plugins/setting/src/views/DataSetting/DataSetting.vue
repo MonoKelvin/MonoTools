@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useToast, AdaptiveIcon, DetailPanel } from '@/components'
 import { weightedSearch } from '@/utils'
-import { useZtoolsSubInput } from '@/composables'
+import { useMonoToolsSubInput } from '@/composables'
 
 const { success, error, confirm } = useToast()
 
@@ -37,7 +37,7 @@ function getPluginDataKey(data: PluginData): string {
   return data.pluginName
 }
 
-const { value: searchQuery } = useZtoolsSubInput('', '搜索数据...')
+const { value: searchQuery } = useMonoToolsSubInput('', '搜索数据...')
 
 const filteredPluginDataList = computed(() =>
   weightedSearch(pluginDataList.value, searchQuery.value || '', [
@@ -199,7 +199,7 @@ async function handleClearData(): Promise<void> {
   if (!currentPluginData.value) return
 
   // 禁止清空主程序数据
-  if (currentPluginData.value.pluginName === 'ZTOOLS') {
+  if (currentPluginData.value.pluginName === 'MONOTOOLS') {
     error('无法清空主程序数据，这可能导致应用异常')
     return
   }
@@ -270,14 +270,14 @@ onUnmounted(() => {
             v-for="pluginData in filteredPluginDataList"
             :key="getPluginDataKey(pluginData)"
             class="card plugin-card"
-            :class="{ 'monotools-card': pluginData.pluginName === 'ZTOOLS' }"
+            :class="{ 'monotools-card': pluginData.pluginName === 'MONOTOOLS' }"
             @click="viewPluginDocs(pluginData)"
           >
             <!-- 图标区域（含 DEV 角标） -->
             <div class="plugin-icon-wrapper">
               <!-- 主程序特殊图标 -->
               <div
-                v-if="pluginData.pluginName === 'ZTOOLS'"
+                v-if="pluginData.pluginName === 'MONOTOOLS'"
                 class="plugin-icon-placeholder monotools-icon"
               >
                 <div class="i-z-database font-size-24px" />
@@ -320,7 +320,7 @@ onUnmounted(() => {
       :class="docListAnimationClass"
       @back="closeDocListModal"
     >
-      <div v-if="currentPluginData?.pluginName !== 'ZTOOLS'" class="detail-header-actions">
+      <div v-if="currentPluginData?.pluginName !== 'MONOTOOLS'" class="detail-header-actions">
         <button class="btn btn-danger" @click="handleClearData">
           <div class="i-z-trash font-size-16px" />
           <span>清空所有数据</span>

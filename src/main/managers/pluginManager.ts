@@ -26,7 +26,6 @@ import {
   PluginAssemblyCoordinator,
   type AssemblySession
 } from './pluginAssemblyCoordinator'
-import devToolsShortcut, { getDevToolsMode } from '../utils/devToolsShortcut'
 import windowManager from './windowManager'
 import {
   getDetachedWindowSizeKey,
@@ -718,14 +717,9 @@ export class PluginManager {
 
     view.webContents.on('focus', () => {
       windowManager.updateFocusTarget('plugin')
-      if (this.pluginView && !this.pluginView.webContents.isDestroyed()) {
-        devToolsShortcut.register(this.pluginView.webContents)
-      }
     })
 
-    view.webContents.on('blur', () => {
-      devToolsShortcut.unregister()
-    })
+    view.webContents.on('blur', () => {})
 
     // Cmd+D / Ctrl+D 和 Cmd+Q / Ctrl+Q 快捷键
     view.webContents.on('before-input-event', (event, input) => {
@@ -1224,7 +1218,7 @@ export class PluginManager {
         console.log('[Plugin] 已关闭插件开发者工具')
       } else {
         // 如果未打开，打开开发者工具
-        const mode = getDevToolsMode()
+        const mode = 'right'
         this.pluginView.webContents.openDevTools({ mode })
         console.log('[Plugin] 已打开插件开发者工具')
       }

@@ -310,7 +310,7 @@ const api = {
   onUpdateSubInputVisible: (callback: (visible: boolean) => void) => {
     ipcRenderer.on('update-sub-input-visible', (_event, visible) => callback(visible))
   },
-  // 数据库相关（主程序专用，直接操作 ZTOOLS 命名空间）
+  // 数据库相关（主程序专用，直接操作 MONOTOOLS 命名空间）
   dbPut: (key: string, data: any) => ipcRenderer.invoke('monotools:db-put', key, data),
   dbGet: (key: string) => ipcRenderer.invoke('monotools:db-get', key),
   // 插件数据管理
@@ -678,7 +678,7 @@ declare global {
       onUpdateSpaceOpenCommand: (callback: (enabled: boolean) => void) => void
       onUpdateShowRecentInSearch: (callback: (showRecentInSearch: boolean) => void) => void
       onUpdateMatchRecommendation: (callback: (showMatchRecommendation: boolean) => void) => void
-      // 数据库相关（主程序专用，直接操作 ZTOOLS 命名空间）
+      // 数据库相关（主程序专用，直接操作 MONOTOOLS 命名空间）
       dbPut: (key: string, data: any) => Promise<any>
       dbGet: (key: string) => Promise<any>
       // 插件数据管理

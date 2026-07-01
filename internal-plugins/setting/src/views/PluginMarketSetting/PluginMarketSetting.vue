@@ -10,7 +10,7 @@ import {
 } from '@/utils'
 import { PluginDetail, PluginCard, CategoryCard, CategoryDetail, RefreshButton } from './components'
 import type { Plugin, CategoryInfo, CategoryLayoutSection, PluginDownloadState } from './components'
-import { useJumpFunction, useZtoolsSubInput } from '@/composables'
+import { useJumpFunction, useMonoToolsSubInput } from '@/composables'
 import { PluginMarketSettingJumpFunction } from '@/views/PluginMarketSetting/PluginMarketSetting'
 import { getMarketCategoryIcon, marketBannerImage } from './marketAssets'
 
@@ -82,7 +82,7 @@ const installingPlugin = ref<string | null>(null)
 const downloadStates = ref<Record<string, PluginDownloadState | undefined>>({})
 let stopDownloadProgressListener: (() => void) | undefined
 
-const { value: searchQuery, setSubInput } = useZtoolsSubInput('', '搜索插件市场...')
+const { value: searchQuery, setSubInput } = useMonoToolsSubInput('', '搜索插件市场...')
 
 // 搜索模式：有搜索词时使用扁平搜索
 const isSearchMode = computed(() => (searchQuery.value || '').trim().length > 0)

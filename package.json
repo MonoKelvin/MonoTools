@@ -1,16 +1,16 @@
 {
   "name": "MonoTools",
-  "version": "2.6.1",
-  "description": "MonoTools",
+  "version": "1.0.0",
+  "description": "MonoTools - Lightweight System Launcher",
   "main": "./out/main/index.js",
-  "author": "lzx8589561",
-  "homepage": "https://github.com/MonoToolsCenter/MonoTools",
+  "author": "MonoKelvin",
+  "homepage": "https://github.com/MonoKelvin/MonoTools",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MonoToolsCenter/MonoTools.git"
+    "url": "https://github.com/MonoKelvin/MonoTools.git"
   },
   "bugs": {
-    "url": "https://github.com/MonoToolsCenter/MonoTools/issues"
+    "url": "https://github.com/MonoKelvin/MonoTools/issues"
   },
   "license": "MIT",
   "scripts": {
@@ -40,8 +40,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "sync-api-types": "node scripts/sync-api-types.js",
-    "check-api-types": "node -p \"require('./monotools-api-types/package.json')['utools-version']\"",
     "hooks:install": "git config core.hooksPath .githooks",
     "postinstall": "pnpm run hooks:install || true"
   },
@@ -98,10 +96,8 @@
   "keywords": [
     "launcher",
     "app-launcher",
-    "plugin-platform",
     "electron",
-    "monotools",
-    "monotools-fork"
+    "monotools"
   ],
   "engines": {
     "node": ">=18",

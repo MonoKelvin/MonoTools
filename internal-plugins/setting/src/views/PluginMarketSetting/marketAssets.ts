@@ -6,7 +6,7 @@ import otherIcon from '../../assets/market/other.png'
 import productivityIcon from '../../assets/market/productivity.png'
 import systemIcon from '../../assets/market/system.png'
 import textIcon from '../../assets/market/text.png'
-import bannerImage from '../../assets/market/ztools-banner.png'
+import bannerImage from '../../assets/market/monotools-banner.png'
 
 export const marketBannerImage = bannerImage
 

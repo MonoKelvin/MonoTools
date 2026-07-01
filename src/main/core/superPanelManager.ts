@@ -14,7 +14,6 @@ import pluginsAPI from '../api/renderer/plugins.js'
 import windowManager from '../managers/windowManager.js'
 import clipboardManager, { type LastCopiedContent } from '../managers/clipboardManager.js'
 import { applyWindowMaterial, getDefaultWindowMaterial } from '../utils/windowUtils.js'
-import providerManager from './provider/providerManager.js'
 import { filterSuperPanelPinnedCommands } from './superPanelPinnedCommands.js'
 import { decodeFileUrlToPath } from '../utils/common'
 
@@ -322,11 +321,6 @@ class SuperPanelManager {
       if (hasNewContent && newContent) {
         // 有新内容：发送搜索请求到主窗口（携带剪贴板类型和数据）
         this.requestSearch(newContent)
-
-        // 如果是文本内容，异步请求翻译
-        if (newContent.type === 'text' && newContent.text) {
-          this.requestTranslation(newContent.text)
-        }
       } else {
         // 无新内容：加载固定列表
         this.loadPinnedCommands()
@@ -520,25 +514,6 @@ class SuperPanelManager {
       text: searchText,
       clipboardContent: content
     })
-  }
-
-  /**
-   * 请求翻译选中的文本
-   * 经 providerManager 按用户默认翻译提供商分发（内置 Bergamot 或插件翻译 provider）。
-   */
-  private async requestTranslation(text: string): Promise<void> {
-    try {
-      const result = await providerManager.invoke('translation', { text })
-      if (result?.text) {
-        this.sendToSuperPanel('super-panel-translation', {
-          text: result.text,
-          sourceText: text
-        })
-      }
-    } catch (error) {
-      // 没有可用的翻译提供商属于正常情形（用户未启用），静默处理
-      console.error('[SuperPanel] 翻译请求失败:', error)
-    }
   }
 
   private filterPinnedCommandsForDisplay(commands: any[]): any[] {
