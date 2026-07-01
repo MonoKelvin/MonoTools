@@ -1,7 +1,11 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use crate::models::plugin::PluginManifest;
 use crate::models::plugin::PluginInfo;
+use crate::plugins::sandbox::PluginSandbox;
+use crate::plugins::loader::PluginLoader;
+use anyhow::Result;
 
 /// 插件管理器
 pub struct PluginManager {
