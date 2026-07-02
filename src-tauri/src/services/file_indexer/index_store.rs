@@ -44,7 +44,7 @@ impl IndexStore {
                 CREATE INDEX IF NOT EXISTS idx_list{}_parent ON list{}(parent_path);
                 CREATE INDEX IF NOT EXISTS idx_list{}_modified ON list{}(modified_at);
                 "#,
-                i, i, i, i, i, i, i, i
+                i, i, i, i, i, i, i, i, i
             );
 
             conn.execute_batch(&sql)?;
@@ -135,14 +135,14 @@ impl IndexStore {
                 &file.name,
                 &file.path,
                 &file.parent_path,
-                &file.ext,
+                file.ext.as_deref().unwrap_or(""),
                 &file.size.to_string(),
                 &file.created_at.to_string(),
                 &file.modified_at.to_string(),
                 &file.accessed_at.to_string(),
                 &file.is_dir.to_string(),
                 &file.ascii_sum.to_string(),
-                &file.pinyin,
+                file.pinyin.as_deref().unwrap_or(""),
                 &file.priority.to_string(),
                 &file.volume,
             ],
@@ -153,7 +153,7 @@ impl IndexStore {
 
     /// 批量插入文件
     pub async fn insert_files_batch(&self, files: &[FileEntry]) -> Result<()> {
-        let conn = self.conn.read().await;
+        let mut conn = self.conn.write().await;
         let tx = conn.transaction()?;
 
         for file in files {
@@ -171,14 +171,14 @@ impl IndexStore {
                     &file.name,
                     &file.path,
                     &file.parent_path,
-                    &file.ext,
+                    file.ext.as_deref().unwrap_or(""),
                     &file.size.to_string(),
                     &file.created_at.to_string(),
                     &file.modified_at.to_string(),
                     &file.accessed_at.to_string(),
                     &file.is_dir.to_string(),
                     &file.ascii_sum.to_string(),
-                    &file.pinyin,
+                    file.pinyin.as_deref().unwrap_or(""),
                     &file.priority.to_string(),
                     &file.volume,
                 ],

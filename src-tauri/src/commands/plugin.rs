@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
-use crate::commands::bus::{Command, CommandHandler, CommandContext};
+use crate::models::command::{Command, CommandHandler, CommandContext};
 use crate::plugins::manager::PluginManager;
 
 pub struct PluginCommandHandler {
@@ -201,6 +201,8 @@ impl PluginCommandHandler {
 
 impl Default for PluginCommandHandler {
     fn default() -> Self {
-        Self::new()
+        Self {
+            plugin_manager: std::sync::Arc::new(tokio::sync::RwLock::new(PluginManager::default())),
+        }
     }
 }

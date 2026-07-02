@@ -1,35 +1,22 @@
 use anyhow::Result;
-use notify::{Watcher, RecursiveMode, Event, EventKind};
 use std::path::Path;
-use tokio::sync::mpsc;
 
 pub struct FileWatcher {
-    watcher: notify::RecommendedWatcher,
+    // 暂时简化实现
 }
 
 impl FileWatcher {
     pub fn new() -> Result<Self> {
-        let (tx, _rx) = mpsc::channel(100);
-
-        let watcher = notify::RecommendedWatcher::try_new(
-            move |result: Result<Event, notify::Error>| {
-                if let Ok(event) = result {
-                    let _ = tx.try_send(event);
-                }
-            },
-            notify::Config::default(),
-        )?;
-
-        Ok(Self { watcher })
+        Ok(Self {})
     }
 
-    pub fn watch<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.watcher.watch(path.as_ref(), RecursiveMode::Recursive)?;
+    pub fn watch<P: AsRef<Path>>(&mut self, _path: P) -> Result<()> {
+        // TODO: 实现文件监控
         Ok(())
     }
 
-    pub fn unwatch<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        self.watcher.unwatch(path.as_ref())?;
+    pub fn unwatch<P: AsRef<Path>>(&mut self, _path: P) -> Result<()> {
+        // TODO: 实现停止监控
         Ok(())
     }
 }

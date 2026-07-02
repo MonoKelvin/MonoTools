@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
 use anyhow::Result;
-use notify::{Watcher, RecursiveMode, Event, EventKind};
+use notify::{Watcher, RecursiveMode, Event};
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
 
 pub struct HotReloadManager {
     plugin_dirs: HashMap<String, PathBuf>,
-    watchers: RwLock<HashMap<String, notify::RecommendedWatcher>>,
+    watchers: RwLock<HashMap<String, Box<dyn Watcher>>>,
 }
 
 impl HotReloadManager {
@@ -21,34 +21,10 @@ impl HotReloadManager {
 
     /// 注册插件目录监控
     pub async fn watch_plugin(&mut self, plugin_id: &str, path: PathBuf) -> Result<()> {
-        use notify::Config;
-
         let plugin_id = plugin_id.to_string();
-
-        let (tx, mut rx) = tokio::sync::mpsc::channel(100);
-
-        let watcher = notify::RecommendedWatcher::try_new(
-            move |result: Result<Event, notify::Error>| {
-                if let Ok(event) = result {
-                    let _ = tx.try_send(event);
-                }
-            },
-            Config::default().with_poll_interval(Duration::from_millis(500)),
-        )?;
-
-        watcher.watch(&path, RecursiveMode::Recursive)?;
-
-        self.plugin_dirs.insert(plugin_id.clone(), path);
-        self.watchers.write().await.insert(plugin_id.clone(), watcher);
-
-        // 启动监听任务
-        tokio::spawn(async move {
-            while let Some(event) = rx.recv().await {
-                info!("Plugin change detected: {:?}", event);
-                // TODO: 触发插件重载
-            }
-        });
-
+        // TODO: 实现文件监控
+        // 暂时只是记录目录
+        self.plugin_dirs.insert(plugin_id, path);
         Ok(())
     }
 

@@ -1,13 +1,12 @@
-use crate::services::file_indexer::Volume;
 use anyhow::Result;
 
 pub struct UsnJournal {
-    volume: Volume,
+    volume: String,
     // TODO: 添加句柄等字段
 }
 
 impl UsnJournal {
-    pub fn new(volume: Volume) -> Result<Self> {
+    pub fn new(volume: String) -> Result<Self> {
         Ok(Self { volume })
     }
 

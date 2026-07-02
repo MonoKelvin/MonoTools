@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
-use crate::commands::bus::{Command, CommandHandler, CommandContext};
+use crate::models::command::{Command, CommandHandler, CommandContext};
 use crate::services::workspace::snapshot::SnapshotService;
 use crate::models::workspace::Workspace;
 

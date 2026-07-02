@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -143,6 +144,7 @@ impl Default for ConfigData {
 }
 
 /// 配置存储
+#[derive(Debug)]
 pub struct ConfigStore {
     data: ConfigData,
     config_path: PathBuf,
@@ -176,8 +178,7 @@ impl ConfigStore {
         }
 
         // 使用 %LOCALAPPDATA%/MonoTools
-        let appdata = dirs::next_local_data_dir()
-            .context("Failed to get local app data directory")?
+        let appdata = dirs::data_local_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not determine local app data directory"))?;
 
         Ok(appdata.join("MonoTools").join("config"))
@@ -191,7 +192,7 @@ impl ConfigStore {
     }
 
     /// 获取配置项
-    pub fn get<T: serde::de::DeserializeOwn>(&self, key: &str) -> Result<Option<T>> {
+    pub fn get<T: serde::de::DeserializeOwned>(&self, key: &str) -> Result<Option<T>> {
         let value = self.get_raw(key)?;
         match value {
             Some(v) => Ok(Some(serde_json::from_value(v)?)),
@@ -226,7 +227,7 @@ impl ConfigStore {
         for (i, k) in keys.iter().enumerate() {
             if i == keys.len() - 1 {
                 // 最后一层，设置值
-                map.insert(k.to_string(), serde_json::to_value(value)?);
+                map.insert(k.to_string(), serde_json::to_value(&value)?);
             } else {
                 // 进入下一层
                 if !map.contains_key(*k) {

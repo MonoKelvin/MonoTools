@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
+use tauri::{AppHandle, WebviewWindow};
+use anyhow::Result;
 
 /// 命令定义
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,7 +26,7 @@ pub struct CommandResponse {
 #[derive(Debug, Clone)]
 pub struct CommandContext {
     pub app_handle: AppHandle,
-    pub window: Option<tauri::WebviewWindow>,
+    pub window: Option<WebviewWindow>,
     pub plugin_manager: std::sync::Arc<tokio::sync::RwLock<crate::plugins::manager::PluginManager>>,
     pub config: std::sync::Arc<tokio::sync::RwLock<crate::config::store::ConfigStore>>,
     pub caller: CallerType,

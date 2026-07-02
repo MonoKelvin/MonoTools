@@ -1,9 +1,10 @@
 use crate::models::workspace::{AppSnapshot, WindowRect, WindowState};
 use anyhow::Result;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, HANDLE};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::Win32::System::Threading::*;
-use windows::Win32::Storage::FileSystem::GetModuleFileNameExW;
+use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+use windows::Win32::System::ProcessStatus::GetModuleFileNameExW;
+use windows::Win32::Foundation::CloseHandle;
 use std::collections::VecDeque;
 
 pub struct WindowEnumerator;
@@ -39,7 +40,7 @@ impl WindowEnumerator {
             let title = String::from_utf16_lossy(&title[..len as usize]);
 
             // 过滤系统窗口
-            if is_system_window(&title) {
+            if Self::is_system_window(&title) {
                 return BOOL(1);
             }
 
@@ -73,8 +74,8 @@ impl WindowEnumerator {
                     height: rect.bottom - rect.top,
                 },
                 window_state: match placement.showCmd {
-                    SW_SHOWMINIMIZED => WindowState::Minimized,
-                    SW_SHOWMAXIMIZED => WindowState::Maximized,
+                    2 => WindowState::Minimized,  // SW_SHOWMINIMIZED
+                    3 => WindowState::Maximized,  // SW_SHOWMAXIMIZED
                     _ => WindowState::Normal,
                 },
                 launch_order: 0,
@@ -99,7 +100,7 @@ impl WindowEnumerator {
         };
 
         let mut path = [0u16; 512];
-        let len = GetModuleFileNameExW(Some(handle), None, &mut path);
+        let len = GetModuleFileNameExW(handle, None, &mut path);
         let result = String::from_utf16_lossy(&path[..len as usize]);
 
         let _ = CloseHandle(handle);

@@ -2,11 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use anyhow::{Result, Context};
 use serde_json::Value;
-use tauri::AppHandle;
-
-pub use super::models::command::*;
-pub use super::models::plugin::*;
-pub use super::config::store::*;
+use crate::models::command::{Command, CommandHandler, CommandContext, CommandResponse};
 
 /// 命令总线 - 所有功能的统一入口
 #[derive(Clone)]

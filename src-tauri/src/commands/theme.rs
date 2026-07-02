@@ -1,6 +1,7 @@
 use anyhow::Result;
 use serde_json::Value;
-use crate::commands::bus::{Command, CommandHandler, CommandContext};
+use tauri::Manager;
+use crate::models::command::{Command, CommandHandler, CommandContext};
 
 pub struct ThemeCommandHandler;
 
@@ -69,7 +70,8 @@ impl ThemeCommandHandler {
         // 3. 发送 theme:changed 事件到前端
         // 4. 更新配置
 
-        // 发送事件到前端
+        // 发送事件到前端 (暂时禁用，等待 Tauri 2.0 API 确认)
+        /*
         let css_variables = serde_json::json!({
             "--mt-primary": "#5e6ad2",
             "--mt-surface-1": "#0f1011",
@@ -80,6 +82,7 @@ impl ThemeCommandHandler {
             "mode": mode.unwrap_or("dark"),
             "cssVariables": css_variables
         }));
+        */
 
         // 更新配置
         // TODO: 调用 config store

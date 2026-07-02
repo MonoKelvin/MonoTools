@@ -40,7 +40,7 @@ impl PluginRegistry {
     pub async fn register_command(&self, plugin_id: String, command: CommandEntry) {
         let mut commands = self.commands.write().await;
         let key = format!("{}:{}", plugin_id, command.id);
-        commands.insert(key, command);
+        commands.insert(key.clone(), command);
         tracing::info!("Registered command: {}", key);
     }
 
@@ -56,7 +56,7 @@ impl PluginRegistry {
     pub async fn register_view(&self, plugin_id: String, route: String, view: ViewEntry) {
         let mut views = self.views.write().await;
         let key = format!("{}:{}", plugin_id, route);
-        views.insert(key, view);
+        views.insert(key.clone(), view);
         tracing::info!("Registered view: {}", key);
     }
 

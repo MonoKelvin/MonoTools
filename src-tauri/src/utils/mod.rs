@@ -2,7 +2,7 @@ use std::path::Path;
 
 /// 将 Windows 路径转换为 Unix 风格路径
 pub fn normalize_path(path: &str) -> String {
-    path.replace('\\', '/')
+    path.replace('\\', "/")
 }
 
 /// 判断是否为绝对路径

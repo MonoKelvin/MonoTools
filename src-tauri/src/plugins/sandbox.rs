@@ -1,11 +1,12 @@
 use crate::models::plugin::PluginManifest;
+use anyhow::Result;
 
 /// 插件沙箱 - 权限检查
 pub struct PluginSandbox;
 
 impl PluginSandbox {
     /// 检查插件是否有权限执行操作
-    pub fn check_permission(manifest: &PluginManifest, required_permission: &str) -> Result<()> {
+    pub fn check_permission(manifest: &PluginManifest, required_permission: &str) -> anyhow::Result<()> {
         // 核心权限只有内置插件可以使用
         if required_permission.starts_with("core:") && !manifest.is_builtin {
             anyhow::bail!("Plugin '{}' does not have permission '{}' (core permissions are for builtin plugins only)", manifest.id, required_permission);
@@ -20,7 +21,7 @@ impl PluginSandbox {
     }
 
     /// 检查插件是否有任意一个所需权限
-    pub fn check_any_permission(manifest: &PluginManifest, required: &[&str]) -> Result<()> {
+    pub fn check_any_permission(manifest: &PluginManifest, required: &[&str]) -> anyhow::Result<()> {
         for perm in required {
             if manifest.permissions.contains(&perm.to_string()) {
                 return Ok(());
@@ -31,7 +32,7 @@ impl PluginSandbox {
     }
 
     /// 验证插件权限集合
-    pub fn validate_permissions(manifest: &PluginManifest) -> Result<()> {
+    pub fn validate_permissions(manifest: &PluginManifest) -> anyhow::Result<()> {
         for perm in &manifest.permissions {
             // 检查权限格式
             if !Self::is_valid_permission_format(perm) {

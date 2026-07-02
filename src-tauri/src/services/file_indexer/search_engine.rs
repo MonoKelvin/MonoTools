@@ -1,4 +1,5 @@
-use crate::models::search::{FileEntry, SearchQuery, SearchResult};
+use crate::models::file_entry::FileEntry;
+use crate::models::search::{SearchQuery, SearchResult};
 use anyhow::Result;
 use rusqlite::Connection;
 use std::sync::Arc;

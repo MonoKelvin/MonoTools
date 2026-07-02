@@ -8,6 +8,7 @@ use crate::plugins::loader::PluginLoader;
 use anyhow::Result;
 
 /// 插件管理器
+#[derive(Debug)]
 pub struct PluginManager {
     plugins: Arc<RwLock<HashMap<String, PluginInfo>>>,
     builtin_plugins: Arc<RwLock<HashMap<String, PluginManifest>>>,
@@ -34,7 +35,8 @@ impl PluginManager {
         Self::validate_permissions(&manifest)?;
 
         // 检查依赖
-        Self::check_dependencies(&manifest, &self.builtin_plugins.read().await).await?;
+        let builtins = self.builtin_plugins.read().await.clone();
+        Self::check_dependencies(&manifest, &builtins).await?;
 
         let info = PluginInfo {
             manifest: manifest.clone(),

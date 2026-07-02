@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use anyhow::{Result, Context};
 use serde_json::Value;
 use crate::models::plugin::PluginManifest;
@@ -168,9 +168,8 @@ pub enum BackendCode {
 
 impl Default for PluginLoader {
     fn default() -> Self {
-        let data_dir = dirs::next_data_dir()
-            .expect("Failed to get data directory")
-            .expect("Could not determine data directory");
+        let data_dir = dirs::data_dir()
+            .expect("Failed to get data directory");
         Self::new(data_dir.join("MonoTools").join("plugins"))
     }
 }

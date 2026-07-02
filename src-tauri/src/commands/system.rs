@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
-use crate::commands::bus::{Command, CommandHandler, CommandContext};
+use crate::models::command::{Command, CommandHandler, CommandContext};
 
 pub struct SystemCommandHandler;
 
@@ -65,9 +65,8 @@ impl SystemCommandHandler {
     async fn lock(&self) -> Result<Value> {
         #[cfg(target_os = "windows")]
         {
-            use windows::Win32::UI::WindowsAndMessaging::LockWorkStation;
             unsafe {
-                LockWorkStation();
+                windows::Win32::System::Shutdown::LockWorkStation();
             }
         }
 
@@ -81,11 +80,11 @@ impl SystemCommandHandler {
     async fn empty_trash(&self) -> Result<Value> {
         #[cfg(target_os = "windows")]
         {
-            use windows::Win32::UI::Shell::{SHEmptyRecycleBinW, SHERB_NOCONFIRMATION, SHERB_NOPROGRESSUI, SHERB_NOSOUND};
             unsafe {
-                SHEmptyRecycleBinW(
+                windows::Win32::UI::Shell::SHEmptyRecycleBinW(
                     None,
-                    SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND,
+                    None,
+                    windows::Win32::UI::Shell::SHERB_NOCONFIRMATION | windows::Win32::UI::Shell::SHERB_NOPROGRESSUI | windows::Win32::UI::Shell::SHERB_NOSOUND,
                 );
             }
         }

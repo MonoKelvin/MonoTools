@@ -1,4 +1,4 @@
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
 use windows::Win32::UI::Input::KeyboardAndMouse::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use std::collections::HashMap;
@@ -23,8 +23,14 @@ impl HotkeyService {
         vk: u32,
     ) -> anyhow::Result<()> {
         unsafe {
-            let atom = GlobalAddAtomW(&windows::core::HSTRING::from(id))?;
-            RegisterHotKey(hwnd, atom as i32, modifiers, vk as u16)
+            // 使用简单的计数器作为 ID，不使用 GlobalAddAtomW
+            let atom = self.registered.len() as i32;
+            RegisterHotKey(
+                hwnd,
+                atom,
+                HOT_KEY_MODIFIERS(modifiers),
+                vk,
+            )
                 .map_err(|e| anyhow::anyhow!("Failed to register hotkey: {:?}", e))?;
             self.registered.insert(id.to_string(), atom as u16);
         }
@@ -36,7 +42,7 @@ impl HotkeyService {
         if let Some(atom) = self.registered.remove(id) {
             unsafe {
                 UnregisterHotKey(hwnd, atom as i32)?;
-                GlobalDeleteAtom(atom)?;
+                // GlobalDeleteAtom 暂时跳过
             }
         }
         Ok(())
@@ -59,9 +65,9 @@ impl Default for HotkeyService {
 }
 
 /// 热键修饰符常量
-pub const MOD_ALT: u32 = MOD_ALT.0 as u32;
-pub const MOD_CONTROL: u32 = MOD_CONTROL.0 as u32;
-pub const MOD_SHIFT: u32 = MOD_SHIFT.0 as u32;
-pub const MOD_WIN: u32 = MOD_WIN.0 as u32;
+pub const MOD_ALT: u32 = 0x0001;
+pub const MOD_CONTROL: u32 = 0x0002;
+pub const MOD_SHIFT: u32 = 0x0004;
+pub const MOD_WIN: u32 = 0x0008;
 
-pub const VK_SPACE: u32 = VK_SPACE.0 as u32;
+pub const VK_SPACE: u32 = 0x20;

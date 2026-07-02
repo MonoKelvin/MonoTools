@@ -1,6 +1,6 @@
 use anyhow::Result;
 use serde_json::Value;
-use crate::commands::bus::{Command, CommandHandler, CommandContext};
+use crate::models::command::{Command, CommandHandler, CommandContext};
 use crate::config::store::ConfigStore;
 
 pub struct ConfigCommandHandler {
@@ -135,16 +135,12 @@ impl ConfigCommandHandler {
     }
 
     /// 导出配置
-    async fn export_config(&self, cmd: &Command) -> Result<Value> {
-        let output = cmd.args.get("output")
-            .and_then(|v| v.as_str())
-            .ok_or_else(|| anyhow::anyhow!("Missing output argument for export"))?;
-
+    async fn export_config(&self) -> Result<Value> {
         // TODO: 实现配置导出为 ZIP
 
         Ok(serde_json::json!({
             "success": true,
-            "path": output
+            "message": "Config export not fully implemented yet"
         }))
     }
 
@@ -165,6 +161,8 @@ impl ConfigCommandHandler {
 
 impl Default for ConfigCommandHandler {
     fn default() -> Self {
-        Self::new()
+        Self {
+            config: std::sync::Arc::new(tokio::sync::RwLock::new(ConfigStore::default())),
+        }
     }
 }

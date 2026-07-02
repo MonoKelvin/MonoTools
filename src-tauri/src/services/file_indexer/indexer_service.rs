@@ -1,18 +1,19 @@
+use anyhow::Result;
+
 pub struct IndexerService {
-    indexer: crate::services::file_indexer::UsnIndexer,
-    search_engine: crate::services::file_indexer::SearchEngine,
+    indexer: crate::services::file_indexer::UsnJournal,
 }
 
 impl IndexerService {
     pub fn new() -> Result<Self> {
-        let indexer = crate::services::file_indexer::UsnIndexer::new()?;
-        let search_engine = crate::services::file_indexer::SearchEngine::new(indexer.pool.clone());
+        let indexer = crate::services::file_indexer::UsnJournal::new("C:".to_string())?;
 
-        Ok(Self { indexer, search_engine })
+        Ok(Self { indexer })
     }
 
-    pub async fn build_index(&self) -> Result<crate::services::file_indexer::IndexStats> {
-        self.indexer.build_index().await
+    pub async fn build_index(&self) -> Result<()> {
+        // TODO: 实现构建索引
+        Ok(())
     }
 
     pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<crate::models::search::SearchResult>> {

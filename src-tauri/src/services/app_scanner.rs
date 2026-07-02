@@ -134,7 +134,7 @@ impl AppScanner {
         let mut paths = Vec::new();
 
         // 用户开始菜单
-        if let Some(appdata) = dirs::next_data_dir() {
+        if let Some(appdata) = dirs::data_dir() {
             paths.push(appdata.join("Microsoft/Windows/Start Menu/Programs").to_string_lossy().to_string());
         }
 
@@ -156,10 +156,10 @@ impl AppScanner {
                     &app.id,
                     &app.name,
                     &app.exe_path,
-                    &app.icon_path.as_deref().unwrap_or(""),
-                    &app.description.as_deref().unwrap_or(""),
+                    app.icon_path.as_deref().unwrap_or(""),
+                    app.description.as_deref().unwrap_or(""),
                     &serde_json::to_string(&app.keywords).unwrap_or_default(),
-                    &app.pinyin.as_deref().unwrap_or(""),
+                    app.pinyin.as_deref().unwrap_or(""),
                     &app.launch_count.to_string(),
                     &app.last_accessed.map(|t| t.to_string()).unwrap_or_default(),
                     &app.source,

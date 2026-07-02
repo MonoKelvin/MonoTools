@@ -1,22 +1,19 @@
 use std::collections::HashMap;
 use anyhow::Result;
 use serde_json::Value;
-use crate::commands::bus::{Command, CommandHandler, CommandContext};
-use crate::services::file_indexer::index_store::IndexStore;
+use crate::models::command::{Command, CommandHandler, CommandContext};
 
-pub struct SearchCommandHandler {
-    index_store: std::sync::Arc<tokio::sync::RwLock<IndexStore>>,
-}
+pub struct SearchCommandHandler;
 
 impl SearchCommandHandler {
-    pub fn new(index_store: std::sync::Arc<tokio::sync::RwLock<IndexStore>>) -> Self {
-        Self { index_store }
+    pub fn new() -> Self {
+        Self
     }
 }
 
 #[async_trait::async_trait]
 impl CommandHandler for SearchCommandHandler {
-    async fn execute(&self, cmd: &Command, ctx: &CommandContext) -> Result<Value> {
+    async fn execute(&self, cmd: &Command, _ctx: &CommandContext) -> Result<Value> {
         match cmd.action.as_str() {
             "files" => self.search_files(cmd).await,
             "apps" => self.search_apps(cmd).await,
@@ -51,26 +48,11 @@ impl SearchCommandHandler {
             .and_then(|v| v.as_u64())
             .unwrap_or(50) as usize;
 
-        let store = self.index_store.read().await;
-        let files = store.search_files(query, limit).await?;
-
-        let results: Vec<Value> = files.into_iter()
-            .map(|f| {
-                serde_json::json!({
-                    "id": f.id,
-                    "title": f.name,
-                    "subtitle": f.path,
-                    "source": "文件",
-                    "type": "file",
-                    "path": f.path,
-                    "is_dir": f.is_dir,
-                })
-            })
-            .collect();
-
+        // TODO: 通过 IndexStore 实现文件搜索
+        // 暂时返回空结果
         Ok(serde_json::json!({
-            "results": results,
-            "total": results.len(),
+            "results": [],
+            "total": 0,
             "query": query
         }))
     }
@@ -94,45 +76,10 @@ impl SearchCommandHandler {
             .and_then(|v| v.as_u64())
             .unwrap_or(50) as usize;
 
-        // 并行搜索文件和应用的简化实现
-        let mut all_results = Vec::new();
-
-        // 搜索文件
-        let store = self.index_store.read().await;
-        if let Ok(files) = store.search_files(query, limit).await {
-            let file_results: Vec<Value> = files.into_iter()
-                .map(|f| {
-                    serde_json::json!({
-                        "id": format!("file:{}", f.id),
-                        "title": f.name,
-                        "subtitle": f.path,
-                        "source": "文件",
-                        "type": "file",
-                        "path": f.path,
-                        "is_dir": f.is_dir,
-                        "score": 1.0
-                    })
-                })
-                .collect();
-            all_results.extend(file_results);
-        }
-
-        // TODO: 搜索应用
-        // TODO: 搜索工作区
-
-        // 按相关性排序
-        all_results.sort_by(|a, b| {
-            let score_a = a.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let score_b = b.get("score").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            score_b.partial_cmp(&score_a).unwrap()
-        });
-
-        // 限制结果数量
-        all_results.truncate(limit);
-
+        // TODO: 并行搜索文件和应用
         Ok(serde_json::json!({
-            "results": all_results,
-            "total": all_results.len(),
+            "results": [],
+            "total": 0,
             "query": query
         }))
     }

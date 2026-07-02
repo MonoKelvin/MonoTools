@@ -64,7 +64,7 @@ impl SnapshotService {
             return Ok(std::path::PathBuf::from(dir));
         }
 
-        let appdata = dirs::next_data_dir()
+        let appdata = dirs::data_dir()
             .ok_or_else(|| anyhow::anyhow!("Could not determine data directory"))?;
 
         Ok(appdata.join("MonoTools"))

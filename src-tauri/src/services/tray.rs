@@ -1,16 +1,27 @@
 use tauri::AppHandle;
-use tauri:: tray::{TrayIconBuilder, TrayIconEvent, MouseButton, Menu, MenuItem};
+use tauri::Manager;
+use tauri::tray::{TrayIconBuilder, TrayIconEvent, MouseButton};
+use tauri::menu::{Menu, MenuItem};
 
 pub fn setup_tray(app: &tauri::App) -> anyhow::Result<()> {
+    let show = MenuItem::with_id(app, "show", "显示搜索框", true, None::<&str>)?;
+    let workspaces = MenuItem::with_id(app, "workspaces", "工作区管理", true, None::<&str>)?;
+    let plugins = MenuItem::with_id(app, "plugins", "插件管理", true, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "设置", true, None::<&str>)?;
+    let separator1 = MenuItem::with_id(app, "separator1", "", true, None::<&str>)?;
+    let about = MenuItem::with_id(app, "about", "关于 MonoTools", true, None::<&str>)?;
+    let separator2 = MenuItem::with_id(app, "separator2", "", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+
     let menu = Menu::with_items(app, &[
-        &MenuItem::with_id(app, "show", "显示搜索框")?,
-        &MenuItem::with_id(app, "workspaces", "工作区管理")?,
-        &MenuItem::with_id(app, "plugins", "插件管理")?,
-        &MenuItem::with_id(app, "settings", "设置")?,
-        &MenuItem::with_id(app, "separator1", "")?,
-        &MenuItem::with_id(app, "about", "关于 MonoTools")?,
-        &MenuItem::with_id(app, "separator2", "")?,
-        &MenuItem::with_id(app, "quit", "退出")?,
+        &show,
+        &workspaces,
+        &plugins,
+        &settings,
+        &separator1,
+        &about,
+        &separator2,
+        &quit,
     ])?;
 
     let _tray = TrayIconBuilder::new()

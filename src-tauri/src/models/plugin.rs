@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
@@ -73,5 +74,5 @@ pub struct PluginInfo {
     pub manifest: PluginManifest,
     pub enabled: bool,
     pub load_order: u32,
-    pub installed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub installed_at: Option<DateTime<Utc>>,
 }
