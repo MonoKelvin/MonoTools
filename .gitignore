@@ -1,0 +1,62 @@
+# Rust workspace
+src-tauri/target/
+**/target/
+
+# Node
+node_modules/
+.pnp.*
+.pnpm-store/
+
+# Frontend build output
+dist/
+dist-ssr/
+*.local
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+
+# System
+Thumbs.db
+
+# Tauri
+src-tauri/gen/schemas/
+
+# Local config
+.env
+.env.*
+!.env.example
+
+# Generated icons
+src-tauri/icons/*.png.bak
+
+# Cargo.lock (optional: remove if you want to track it)
+# Cargo.lock
+
+# Tauri
+src-tauri/gen/
+
+# Misc
+.DS_Store
+*.orig

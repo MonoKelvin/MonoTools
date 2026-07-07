@@ -1,0 +1,70 @@
+[package]
+name = "monotools"
+version = "0.1.0"
+description = "Lightweight launcher and startup manager"
+authors = ["MonoKelvin", "Claude Code"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "monotools_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "monotools"
+path = "src/main.rs"
+
+[[bin]]
+name = "monotools-cli"
+path = "src/cli_main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.1", features = [] }
+tauri-plugin-global-shortcut = "2.0"
+tauri-plugin-shell = "2.0"
+tauri-plugin-fs = "2.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+thiserror = "2"
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+async-trait = "0.1"
+walkdir = "2"
+dirs = "5"
+shell-words = "1"
+log = "0.4"
+env_logger = "0.11"
+parking_lot = "0.12"
+fuzzy-matcher = "0.3"
+glob-match = "0.2"
+clap = { version = "4.5", features = ["derive"] }
+anyhow = "1"
+
+# Windows only
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_System_Performance",
+] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Console",
+    "Win32_UI_Shell",
+    "Win32_System_Threading",
+] }
+
+[features]
+# this feature is used for production builds or when `devUrl` points to the filesystem
+# DO NOT REMOVE!!
+custom-protocol = ["tauri/custom-protocol"]

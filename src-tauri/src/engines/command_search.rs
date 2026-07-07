@@ -1,0 +1,68 @@
+//! 自定义命令搜索 - 与应用引擎并列
+use crate::models::{SearchAction, SearchCategory, SearchResult};
+use crate::repositories::{CommandRepo, StartupRepo};
+use std::sync::Arc;
+
+pub struct CommandSearchEngine {
+    pub command_repo: Arc<dyn CommandRepo>,
+    #[allow(dead_code)]
+    pub startup_repo: Arc<dyn StartupRepo>,
+}
+
+impl CommandSearchEngine {
+    pub fn new(command_repo: Arc<dyn CommandRepo>, startup_repo: Arc<dyn StartupRepo>) -> Self {
+        Self {
+            command_repo,
+            startup_repo,
+        }
+    }
+
+    pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
+        let q = query.to_lowercase();
+        if q.is_empty() {
+            return vec![];
+        }
+        let cmds = self.command_repo.list_enabled();
+        let mut results: Vec<SearchResult> = Vec::new();
+        for cmd in cmds {
+            let name_l = cmd.name.to_lowercase();
+            let kw_l = cmd.keyword.to_lowercase();
+            let mut score = 0.0;
+            if name_l == q {
+                score += 100.0;
+            } else if name_l.starts_with(&q) || kw_l.starts_with(&q) {
+                score += 80.0;
+            } else if name_l.contains(&q) || kw_l.contains(&q) {
+                score += 50.0;
+            }
+            if score == 0.0 {
+                continue;
+            }
+            // 频率加权
+            if let Some(last) = cmd.last_used_at {
+                let age = chrono::Utc::now().timestamp() - last;
+                if age < 3600 * 24 * 7 {
+                    score += 10.0;
+                }
+            }
+
+            results.push(SearchResult {
+                id: cmd.id.clone(),
+                title: cmd.name.clone(),
+                subtitle: cmd.command.clone() + " " + &cmd.args.join(" "),
+                icon: cmd.icon.clone(),
+                category: SearchCategory::Commands,
+                action: SearchAction::Run {
+                    command: cmd.command.clone(),
+                    args: cmd.args.clone(),
+                },
+                score,
+            });
+            if results.len() >= limit as usize {
+                break;
+            }
+        }
+        results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        results
+    }
+}

@@ -1,0 +1,76 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "MonoTools",
+  "version": "0.1.0",
+  "identifier": "com.monotools.app",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "pnpm build:frontend",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "search",
+        "title": "MonoTools",
+        "width": 720,
+        "height": 520,
+        "minWidth": 480,
+        "minHeight": 360,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "transparent": true,
+        "resizable": true,
+        "visible": false,
+        "center": true,
+        "titleBarStyle": "Overlay",
+        "shadow": false
+      },
+      {
+        "label": "main",
+        "title": "MonoTools",
+        "width": 960,
+        "height": 640,
+        "minWidth": 720,
+        "minHeight": 480,
+        "decorations": true,
+        "resizable": true,
+        "visible": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: data: https://asset.localhost; connect-src 'self' http://localhost:* ipc: http://ipc.localhost ws://localhost:*; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Productivity",
+    "shortDescription": "Lightweight launcher and startup manager",
+    "longDescription": "MonoTools is a lightweight system productivity tool focused on startup management and global search.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "wix": {
+        "language": ["zh-CN", "en-US"]
+      },
+      "nsis": {
+        "languages": ["SimpChinese", "English"]
+      }
+    }
+  },
+  "plugins": {
+    "global-shortcut": {
+      "all": false
+    }
+  }
+}
