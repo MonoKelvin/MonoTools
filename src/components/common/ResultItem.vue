@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
-import { FileText } from 'lucide-vue-next'
+import { FileText, FolderOpen, Terminal, Rocket } from 'lucide-vue-next'
 
 const props = defineProps<{
   result: SearchResult
@@ -15,10 +15,10 @@ const emit = defineEmits<{
 
 const IconComponent = computed(() => {
   const map: Record<string, typeof FileText> = {
-    apps: FileText,
+    apps: FolderOpen,
     files: FileText,
-    commands: FileText,
-    startup: FileText,
+    commands: Terminal,
+    startup: Rocket,
   }
   return map[props.result.category] || FileText
 })

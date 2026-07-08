@@ -41,11 +41,19 @@ pub mod app {
                         startup_repo.clone(),
                     ));
                     let file_roots = settings_repo.get().file_search_roots.clone();
-                    let file_search = Arc::new(FileSearchService::new(file_roots));
+                    let file_search = Arc::new(FileSearchService::new(file_roots.clone()));
                     if !file_roots.is_empty() {
                         let _ = file_search.build_index().await;
                     }
-                    startup_search.refresh().await?;
+                    // 启动后台增量更新（每 120 秒）
+                    if !file_roots.is_empty() {
+                        use crate::engines::start_update_loop;
+                        let fs_clone = file_search.clone();
+                        start_update_loop(
+                            move || fs_clone.update_index(),
+                            std::time::Duration::from_secs(120),
+                        );
+                    }
 
                     let hotkey = Arc::new(HotkeyService::new());
                     let app_for_window = app_handle.clone();

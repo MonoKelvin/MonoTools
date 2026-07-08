@@ -13,8 +13,6 @@ use crate::models::FileResult;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
 use walkdir::WalkDir;
 
 /// USN 记录
@@ -180,12 +178,4 @@ impl FileEngine for FallbackFileEngine {
 
 fn is_hidden(name: &std::ffi::OsStr) -> bool {
     name.to_string_lossy().starts_with('.')
-}
-
-/// 启动后台更新线程（每 N 秒尝试增量更新一次）
-pub fn start_update_loop(engine: Arc<dyn FileEngine>, interval: Duration) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(interval);
-        let _ = engine.update_index();
-    });
 }
