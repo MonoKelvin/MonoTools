@@ -52,6 +52,8 @@ src-tauri/gen/schemas/
 src-tauri/icons/*.png.bak
 
 # Lockfiles
+Cargo.lock
+pnpm-lock.yaml
 
 # Tauri
 src-tauri/gen/
