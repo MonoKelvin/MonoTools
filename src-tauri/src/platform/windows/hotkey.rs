@@ -3,8 +3,7 @@
 
 use crate::error::{AppError, Result};
 use parking_lot::Mutex;
-use std::sync::Arc;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 /// 已注册快捷键的句柄
 #[derive(Default)]
@@ -17,7 +16,7 @@ pub fn register_via_tauri<R: Runtime>(
     app: &AppHandle<R>,
     hotkey: &str,
 ) -> Result<()> {
-    use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut};
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     let manager = app.global_shortcut();
     let parsed = parse_hotkey_str(hotkey)?;

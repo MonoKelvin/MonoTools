@@ -8,7 +8,7 @@ use crate::repositories::*;
 use crate::services::hotkey::HotkeyService;
 use crate::services::window::WindowService;
 use std::sync::Arc;
-use tauri::{AppHandle, Runtime};
+use tauri::AppHandle;
 
 pub struct AppState {
     pub app: AppHandle,

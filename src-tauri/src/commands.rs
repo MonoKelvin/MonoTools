@@ -5,7 +5,7 @@ use crate::services::app_state::AppState;
 use crate::models::SearchAction;
 use crate::platform::windows::shell;
 use std::sync::Arc;
-use tauri::{Manager, State};
+use tauri::State;
 
 #[tauri::command]
 pub async fn search_cmd(

@@ -41,21 +41,22 @@ const emit = defineEmits<{
 .search-results {
   flex: 1;
   overflow-y: auto;
-  min-height: 200px;
-  padding: 6px;
+  min-height: 0;
+  padding: 4px 6px 6px;
 }
 .empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 60px 20px;
+  gap: 10px;
+  padding: 50px 20px;
   color: var(--text-tertiary);
   font-size: 13px;
 }
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border: 2px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;

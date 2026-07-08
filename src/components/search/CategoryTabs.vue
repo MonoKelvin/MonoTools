@@ -33,9 +33,10 @@ const tabs = [
 .category-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 2px;
+  padding: 6px 10px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .category-tab {
   padding: 4px 12px;
@@ -46,13 +47,18 @@ const tabs = [
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
+  font-weight: 500;
 }
 .category-tab:hover {
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
+:global(.theme-light) .category-tab:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
 .category-tab.is-active {
   background: var(--accent-subtle);
   color: var(--accent);
+  font-weight: 600;
 }
 </style>

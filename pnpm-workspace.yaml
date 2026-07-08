@@ -1,3 +1,7 @@
 packages:
   - .
   - src-tauri
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  vue-demi: true

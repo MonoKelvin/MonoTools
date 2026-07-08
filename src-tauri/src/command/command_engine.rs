@@ -1,6 +1,4 @@
 //! 命令引擎 - 提供给 Tauri Command 复用的统一入口
-use crate::command::command_trait::Command;
-use crate::command::{CommandContext, CommandOutput};
 use crate::command::command_registry::CommandRegistry;
 
 pub struct CommandEngine {

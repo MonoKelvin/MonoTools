@@ -5,6 +5,7 @@ description = "Lightweight launcher and startup manager"
 authors = ["MonoKelvin", "Claude Code"]
 edition = "2021"
 rust-version = "1.77"
+default-run = "monotools"
 
 [lib]
 name = "monotools_lib"
@@ -22,7 +23,7 @@ path = "src/cli_main.rs"
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.1", features = [] }
+tauri = { version = "2.1", features = ["tray-icon", "image-png"] }
 tauri-plugin-global-shortcut = "2.0"
 tauri-plugin-shell = "2.0"
 tauri-plugin-fs = "2.0"

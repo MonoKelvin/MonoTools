@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
 import { hotkeyApi } from '@/services'
+import { Palette, Keyboard, FolderSearch, Info } from 'lucide-vue-next'
 
 const settingsStore = useSettingsStore()
 const themeStore = useThemeStore()
@@ -48,12 +49,8 @@ function onRecordKey(e: KeyboardEvent) {
   message.value = `已识别：${newKey.value}`
 }
 
-tryRegister()
-
-async function tryRegister() {
-  try {
-    await hotkeyApi.register(settingsStore.settings.hotkey)
-  } catch {}
+function tryRegister() {
+  hotkeyApi.register(settingsStore.settings.hotkey).catch(() => {})
 }
 
 onMounted(async () => {
@@ -64,14 +61,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="settings-page">
-    <h1 class="page-title">设置</h1>
-    <p class="page-subtitle">个性化 MonoTools</p>
-
+  <div class="panel">
     <section class="card">
-      <h2>外观</h2>
+      <div class="card-header">
+        <Palette :size="16" :stroke-width="2" />
+        <h2>外观</h2>
+      </div>
       <div class="row">
-        <label>主题模式</label>
+        <label class="row-label">主题模式</label>
         <div class="theme-buttons">
           <button
             v-for="m in (['light', 'dark', 'auto'] as const)"
@@ -85,7 +82,7 @@ onMounted(async () => {
         </div>
       </div>
       <div class="row">
-        <label>强调色</label>
+        <label class="row-label">强调色</label>
         <input
           type="color"
           :value="themeStore.accent"
@@ -96,9 +93,12 @@ onMounted(async () => {
     </section>
 
     <section class="card">
-      <h2>全局快捷键</h2>
+      <div class="card-header">
+        <Keyboard :size="16" :stroke-width="2" />
+        <h2>全局快捷键</h2>
+      </div>
       <div class="row">
-        <label>当前快捷键</label>
+        <label class="row-label">当前快捷键</label>
         <div class="hotkey-display">{{ newKey || settingsStore.settings.hotkey }}</div>
         <button class="btn btn-ghost" @click="startRecord">
           {{ recording ? '按下新的组合键…' : '录制' }}
@@ -109,9 +109,12 @@ onMounted(async () => {
     </section>
 
     <section class="card">
-      <h2>文件搜索</h2>
+      <div class="card-header">
+        <FolderSearch :size="16" :stroke-width="2" />
+        <h2>文件搜索</h2>
+      </div>
       <div class="row">
-        <label>
+        <label class="row-label">
           <input
             type="checkbox"
             :checked="settingsStore.settings.fileSearchEnabled"
@@ -123,7 +126,10 @@ onMounted(async () => {
     </section>
 
     <section class="card">
-      <h2>关于</h2>
+      <div class="card-header">
+        <Info :size="16" :stroke-width="2" />
+        <h2>关于</h2>
+      </div>
       <p class="about">
         MonoTools v0.1.0<br />
         轻量级系统效率工具 · 启动项管理 + 全局搜索
@@ -133,36 +139,34 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.settings-page {
-  padding: 32px 40px;
-  height: 100%;
+.panel {
+  padding: 16px 20px;
   overflow-y: auto;
+  height: 100%;
   background: var(--bg-primary);
   color: var(--text-primary);
-}
-.page-title {
-  margin: 0;
-  font-size: 28px;
-}
-.page-subtitle {
-  margin: 4px 0 24px 0;
-  font-size: 13px;
-  color: var(--text-secondary);
 }
 .card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 20px 24px;
-  margin-bottom: 16px;
+  padding: 14px 18px;
+  margin-bottom: 10px;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--text-secondary);
 }
 .card h2 {
-  margin: 0 0 12px 0;
-  font-size: 14px;
+  margin: 0;
+  font-size: 13px;
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
 }
 .row {
   display: flex;
@@ -171,7 +175,7 @@ onMounted(async () => {
   gap: 16px;
   padding: 8px 0;
 }
-.row label {
+.row-label {
   flex: 1;
   font-size: 13px;
   color: var(--text-primary);
@@ -188,6 +192,11 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 999px;
   cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.theme-pill:hover {
+  border-color: var(--border-hover);
+  color: var(--text-primary);
 }
 .theme-pill.is-active {
   background: var(--accent);
@@ -195,31 +204,33 @@ onMounted(async () => {
   border-color: var(--accent);
 }
 .color-picker {
-  width: 56px;
-  height: 32px;
+  width: 48px;
+  height: 30px;
   border: 1px solid var(--border);
   background: transparent;
   border-radius: 6px;
   cursor: pointer;
+  padding: 2px;
 }
 .hotkey-display {
   flex: 1;
   text-align: center;
   font-family: var(--font-mono);
   font-size: 14px;
-  padding: 8px;
+  padding: 8px 12px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
+  color: var(--text-primary);
 }
 .hint {
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--accent);
   margin: 4px 0;
 }
 .about {
   font-size: 13px;
   color: var(--text-secondary);
-  line-height: 1.6;
+  line-height: 1.7;
 }
 </style>

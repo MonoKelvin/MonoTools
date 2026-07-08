@@ -12,7 +12,6 @@ pub mod app {
     use crate::models::Settings;
     use std::sync::Arc;
     use tauri::Manager;
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     pub fn run() {
         if std::env::var("RUST_LOG").is_err() {
@@ -41,9 +40,20 @@ pub mod app {
                         command_repo.clone(),
                         startup_repo.clone(),
                     ));
-                    let file_search = Arc::new(FileSearchService::new());
-                    let _ = file_search.build_index().await;
-                    startup_search.refresh().await?;
+                    let file_roots = settings_repo.get().file_search_roots.clone();
+                    let file_search = Arc::new(FileSearchService::new(file_roots.clone()));
+                    if !file_roots.is_empty() {
+                        let _ = file_search.build_index().await;
+                    }
+                    // 启动后台增量更新（每 120 秒）
+                    if !file_roots.is_empty() {
+                        use crate::engines::start_update_loop;
+                        let fs_clone = file_search.clone();
+                        start_update_loop(
+                            move || fs_clone.update_index(),
+                            std::time::Duration::from_secs(120),
+                        );
+                    }
 
                     let hotkey = Arc::new(HotkeyService::new());
                     let app_for_window = app_handle.clone();
@@ -66,18 +76,6 @@ pub mod app {
                 })?;
 
                 app.manage(state.clone());
-
-                // 后台文件索引
-                {
-                    let s = state.clone();
-                    std::thread::spawn(move || {
-                        tauri::async_runtime::block_on(async move {
-                            if let Err(e) = s.file_search.build_index().await {
-                                log::warn!("文件索引失败: {e}");
-                            }
-                        });
-                    });
-                }
 
                 // 注册快捷键
                 let app_handle_for_setup = app.handle().clone();
