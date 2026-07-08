@@ -5,16 +5,16 @@ import { ChevronUp, ChevronDown, CornerDownLeft } from "@lucide/vue"
 <template>
   <div class="action-bar">
     <div class="hints">
-      <span class="action-bar-item">
-        <span class="kbd-group">
-          <span class="kbd"><ChevronUp :size="11" :stroke-width="2.5" /></span>
-          <span class="kbd"><ChevronDown :size="11" :stroke-width="2.5" /></span>
+      <span class="hint">
+        <span class="hint-keys">
+          <span class="kbd"><ChevronUp :size="12" :stroke-width="2.5" /></span>
+          <span class="kbd"><ChevronDown :size="12" :stroke-width="2.5" /></span>
         </span>
-        <span class="action-label">导航</span>
+        <span class="hint-label">导航</span>
       </span>
-      <span class="action-bar-item">
-        <span class="kbd"><CornerDownLeft :size="11" :stroke-width="2.5" /></span>
-        <span class="action-label">打开</span>
+      <span class="hint">
+        <span class="kbd"><CornerDownLeft :size="12" :stroke-width="2.5" /></span>
+        <span class="hint-label">打开</span>
       </span>
     </div>
   </div>
@@ -25,30 +25,34 @@ import { ChevronUp, ChevronDown, CornerDownLeft } from "@lucide/vue"
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 8px 12px;
-  border-top: 1px solid var(--hairline);
-  background: transparent;
-  color: var(--text-ash);
-  font-size: 11px;
+  padding: var(--sp-3) var(--sp-6);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-raised);
   flex-shrink: 0;
 }
+
 .hints {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-5);
 }
-.action-bar-item {
+
+.hint {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: var(--sp-3);
 }
-.kbd-group {
+
+.hint-keys {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
-.action-label {
-  color: var(--text-mute);
-  font-size: 11px;
+
+.hint-label {
+  color: var(--text-quaternary);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  letter-spacing: 0.01em;
 }
 </style>

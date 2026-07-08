@@ -6,14 +6,6 @@ export interface Settings {
   accentColor: string
   fileSearchEnabled: boolean
   fileSearchRoots: string[]
-  defaultDelaySeconds: number
-  autoIndexOnStartup: boolean
   enabledCategories: string[]
-  customAppPaths: string[]
   pinToTop: boolean
-}
-
-export interface Appearance {
-  mode: ThemeMode
-  accent: string
 }

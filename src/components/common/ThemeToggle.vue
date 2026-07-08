@@ -2,7 +2,6 @@
 import { useThemeStore } from '@/stores/theme'
 
 const themeStore = useThemeStore()
-// Theme lock is dark-only; show a static indicator
 const label = '暗色'
 void themeStore
 </script>
@@ -29,12 +28,12 @@ void themeStore
 .theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 9px;
-  font-size: 12px;
-  color: var(--text-body);
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
   background: transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   cursor: default;
   font-weight: 500;
 }

@@ -26,7 +26,7 @@
 
 ### 1.1 产品定位
 
-MonoTools 是一款轻量级系统效率工具，聚焦于 **启动项管理** 和 **全局搜索** 两大核心能力。产品对标 [Raycast](https://www.raycast.com/)、[Alfred](https://www.alfredapp.com/)、[uTools](https://u.tools/)，但以更轻的架构和更快的搜索速度为目标。
+MonoTools 是一款轻量级系统效率工具，聚焦于 **全局搜索** 和 **自定义命令** 两大核心能力。产品对标 [Raycast](https://www.raycast.com/)、[Alfred](https://www.alfredapp.com/)、[uTools](https://u.tools/)，但以更轻的架构和更快的搜索速度为目标。
 
 ### 1.2 核心特性
 
@@ -34,7 +34,6 @@ MonoTools 是一款轻量级系统效率工具，聚焦于 **启动项管理** �
 |------|------|
 | **全局唤起** | 系统级快捷键（默认 `Alt+Space`）唤出搜索界面 |
 | **全局搜索** | 毫秒级搜索应用、文件、命令 |
-| **启动项管理** | 管理系统启动项、定时启动、延迟启动 |
 | **自定义命令** | 支持 Shell 脚本、URL Scheme、自定义逻辑 |
 | **主题切换** | 支持亮色/暗色/跟随系统，默认暗色 Raycast 风格 |
 | **插件系统** | 架构预留插件接口 |
@@ -70,19 +69,16 @@ MonoTools 是一款轻量级系统效率工具，聚焦于 **启动项管理** �
 #### 场景 3：执行自定义命令
 用户按下 `Alt+Space` → 输入自定义命令关键字 → 展示命令 → 回车执行。
 
-#### 场景 4：管理启动项
-用户打开启动项管理面板 → 查看所有启动项 → 启用/禁用/调整延迟时间 → 设置生效。
-
-#### 场景 5：后台 CLI 使用
+#### 场景 4：后台 CLI 使用
 在终端执行 `monotools search "keyword"` 或 `monotools launch "app"` 直接执行操作。
 
 ### 2.2 功能优先级
 
 | 优先级 | 功能 |
 |--------|------|
-| P0 (MVP) | 全局快捷键唤起、应用搜索、启动项管理、基础 UI |
+| P0 (MVP) | 全局快捷键唤起、应用搜索、基础 UI |
 | P1 | 文件搜索（NTFS）、自定义命令、主题切换、CLI |
-| P2 | 启动项延迟/定时、插件系统、设置面板 |
+| P2 | 插件系统、设置面板 |
 | P3 | 跨平台支持（macOS/Linux）、扩展市场 |
 
 ---
@@ -159,13 +155,11 @@ MonoTools/
 │   │   │   ├── window.rs         # 窗口管理服务
 │   │   │   ├── search.rs         # 搜索引擎协调
 │   │   │   ├── storage.rs        # SQLite 存储服务
-│   │   │   ├── startup.rs        # 启动项管理服务
 │   │   │   └── command.rs        # 命令注册表
 │   │   ├── commands/             # Tauri Commands (API)
 │   │   │   ├── mod.rs
 │   │   │   ├── hotkey_cmd.rs
 │   │   │   ├── search_cmd.rs
-│   │   │   ├── startup_cmd.rs
 │   │   │   ├── command_cmd.rs
 │   │   │   └── settings_cmd.rs
 │   │   ├── engines/              # 搜索引擎
@@ -175,13 +169,11 @@ MonoTools/
 │   │   ├── models/               # 数据模型
 │   │   │   ├── mod.rs
 │   │   │   ├── app_entry.rs
-│   │   │   ├── startup_item.rs
 │   │   │   ├── search_result.rs
 │   │   │   └── settings.rs
 │   │   ├── repositories/         # 数据访问层
 │   │   │   ├── mod.rs
 │   │   │   ├── settings_repo.rs
-│   │   │   ├── startup_repo.rs
 │   │   │   └── command_repo.rs
 │   │   ├── utils/                # 工具函数
 │   │   │   ├── mod.rs
@@ -196,8 +188,7 @@ MonoTools/
 │   │           ├── usn.rs
 │   │           └── shell.rs
 │   └── tests/                    # Rust 单元测试
-│       ├── search_tests.rs
-│       └── startup_tests.rs
+│       └── search_tests.rs
 ├── src/                          # ── Vue 3 Frontend ──
 │   ├── main.ts                   # 入口
 │   ├── App.vue                   # 根组件
@@ -218,20 +209,14 @@ MonoTools/
 │   │   │   ├── SearchResults.vue # 搜索结果列表
 │   │   │   ├── ActionBar.vue     # 底部操作栏
 │   │   │   └── CategoryTabs.vue  # 分类标签
-│   │   └── startup/              # 启动项管理
-│   │       ├── StartupList.vue   # 启动项列表
-│   │       ├── StartupItem.vue   # 单个启动项卡片
-│   │       └── AddStartupModal.vue
 │   ├── layouts/
 │   │   ├── MainLayout.vue        # 主布局
 │   │   └── CompactLayout.vue     # 紧凑布局（搜索覆盖层）
 │   ├── pages/
 │   │   ├── SearchPage.vue        # 搜索页面
-│   │   ├── StartupPage.vue       # 启动项管理页面
 │   │   └── SettingsPage.vue      # 设置页面
 │   ├── stores/                   # Pinia Stores
 │   │   ├── search.ts
-│   │   ├── startup.ts
 │   │   ├── settings.ts
 │   │   └── theme.ts
 │   ├── composables/              # 组合式函数
@@ -244,11 +229,9 @@ MonoTools/
 │   ├── services/                 # 前端 API 服务
 │   │   ├── tauri.ts              # Tauri API 封装
 │   │   ├── searchApi.ts
-│   │   ├── startupApi.ts
 │   │   └── commandApi.ts
 │   ├── types/                    # TypeScript 类型
 │   │   ├── search.ts
-│   │   ├── startup.ts
 │   │   ├── command.ts
 │   │   └── settings.ts
 │   └── utils/

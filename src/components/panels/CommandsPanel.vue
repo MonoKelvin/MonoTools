@@ -40,14 +40,8 @@ const submit = async () => {
   await load()
 }
 
-const runCmd = async (id: string) => {
-  await commandApi.run(id)
-}
-
-const remove = async (id: string) => {
-  await commandApi.remove(id)
-  await load()
-}
+const runCmd = async (id: string) => await commandApi.run(id)
+const remove = async (id: string) => { await commandApi.remove(id); await load() }
 
 onMounted(load)
 </script>
@@ -60,7 +54,7 @@ onMounted(load)
         <p class="panel-subtitle">通过关键字执行 Shell 命令或程序</p>
       </div>
       <button class="btn btn-primary" @click="showAdd = true">
-        <Plus :size="13" :stroke-width="2" />
+        <Plus :size="14" :stroke-width="2" />
         添加
       </button>
     </div>
@@ -68,7 +62,7 @@ onMounted(load)
     <ul v-if="items.length" class="command-list">
       <li v-for="cmd in items" :key="cmd.id" class="command-card">
         <div class="command-icon">
-          <Zap :size="14" :stroke-width="2" />
+          <Zap :size="16" :stroke-width="2" />
         </div>
         <div class="command-text">
           <div class="command-name">{{ cmd.name }}</div>
@@ -76,11 +70,11 @@ onMounted(load)
           <div class="command-cmd mono">{{ cmd.command + ' ' + cmd.args.join(' ') }}</div>
         </div>
         <button class="btn btn-ghost btn-sm" @click="runCmd(cmd.id)">
-          <Play :size="11" :stroke-width="2.5" />
+          <Play :size="12" :stroke-width="2.5" />
           运行
         </button>
-        <button class="btn-icon btn-sm" @click="remove(cmd.id)" title="删除">
-          <Trash2 :size="13" :stroke-width="2" />
+        <button class="btn-icon" @click="remove(cmd.id)" title="删除">
+          <Trash2 :size="14" :stroke-width="2" />
         </button>
       </li>
     </ul>
@@ -123,86 +117,37 @@ onMounted(load)
 
 <style scoped>
 .panel {
-  padding: 14px 16px;
+  padding: var(--sp-6);
   overflow-y: auto;
   height: 100%;
   background: var(--canvas);
-  color: var(--text-ink);
+  color: var(--text-primary);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--sp-4);
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: 12px;
-}
-.panel-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 600;
-  letter-spacing: -0.005em;
-  color: var(--text-ink);
-}
-.panel-subtitle {
-  margin: 3px 0 0 0;
-  font-size: 12px;
-  color: var(--text-mute);
-  font-weight: 400;
+  gap: var(--sp-6);
+  padding-bottom: var(--sp-3);
 }
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 12px;
-  border-radius: var(--radius-md);
-  font-size: 12px;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-.btn-sm {
-  padding: 4px 10px;
-  font-size: 11.5px;
-}
-.btn-primary {
-  background: var(--primary);
-  color: var(--on-primary);
+.panel-title {
+  margin: 0;
+  font-size: var(--text-lg);
   font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
 }
-.btn-primary:hover {
-  background: var(--primary-pressed);
-}
-.btn-ghost {
-  background: transparent;
-  color: var(--text-body);
-  border-color: var(--hairline);
-}
-.btn-ghost:hover {
-  background: var(--surface-elevated);
-  color: var(--on-dark);
-  border-color: var(--hairline-strong);
-}
-.btn-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 5px;
-  background: transparent;
-  color: var(--text-mute);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-.btn-icon:hover {
-  background: var(--surface-elevated);
-  color: var(--accent-red);
-  border-color: var(--hairline-strong);
+
+.panel-subtitle {
+  margin: var(--sp-2) 0 0 0;
+  font-size: var(--text-sm);
+  color: var(--text-quaternary);
+  font-weight: 400;
 }
 
 .command-list {
@@ -211,102 +156,133 @@ onMounted(load)
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2);
 }
+
 .command-card {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
   background: var(--surface);
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  transition: all var(--duration-fast) var(--ease-out);
+  transition: all var(--dur-fast) var(--ease-out);
 }
 .command-card:hover {
-  border-color: var(--hairline-strong);
+  border-color: var(--border-default);
+  background: var(--surface-overlay);
 }
+
 .command-icon {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-  border: 1px solid var(--hairline-soft);
-  color: var(--text-body);
+  border-radius: var(--radius-sm);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
   flex-shrink: 0;
 }
+
 .command-text {
   flex: 1;
   min-width: 0;
 }
+
 .command-name {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-ink);
-  line-height: 1.3;
+  font-size: var(--text-base);
+  font-weight: 500;
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
 }
+
 .command-keyword {
-  font-size: 11px;
-  color: var(--text-ash);
-  margin-top: 1px;
+  font-size: var(--text-sm);
+  color: var(--text-quaternary);
+  margin-top: var(--sp-1);
 }
+
 .command-cmd {
-  font-size: 11.5px;
-  color: var(--text-body);
-  margin-top: 2px;
+  font-size: var(--text-sm);
+  color: var(--text-tertiary);
+  margin-top: var(--sp-1);
 }
 
 .empty {
-  padding: 40px;
+  padding: var(--sp-12);
   text-align: center;
-  color: var(--text-ash);
-  font-size: 13px;
+  color: var(--text-quaternary);
+  font-size: var(--text-md);
 }
 
-.input {
-  width: 100%;
-  padding: 8px 12px;
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  color: var(--text-ink);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  outline: none;
-  transition: border-color var(--duration-fast) var(--ease-out);
-}
-.input:focus {
-  border-color: var(--hairline-strong);
-}
-
-.form-row {
-  margin-bottom: 12px;
-}
-.form-row label {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-mute);
-  margin-bottom: 4px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-.form-check .check-label {
+/* Button styles */
+.btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-6);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: 500;
   cursor: pointer;
-  font-size: 13px;
-  color: var(--text-ink);
+  border: 1px solid transparent;
+  transition: all var(--dur-fast) var(--ease-out);
+  line-height: 1.4;
+  font-family: var(--font-sans);
+}
+.btn-primary {
+  background: var(--accent);
+  color: var(--canvas);
+  font-weight: 600;
+  border-color: var(--accent);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+.btn-ghost:hover {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+.btn-sm {
+  padding: var(--sp-2) var(--sp-5);
+  font-size: var(--text-xs);
 }
 
+.btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-2);
+  background: transparent;
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+.btn-icon:hover {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+/* Modal */
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--surface-overlay);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 100;
@@ -314,26 +290,72 @@ onMounted(load)
   align-items: center;
   justify-content: center;
 }
+
 .modal-card {
-  width: 440px;
+  width: 460px;
   max-width: 90vw;
-  background: var(--surface-elevated);
-  border: 1px solid var(--hairline);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
-  padding: 22px 22px 18px;
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+  padding: var(--sp-8);
+  transition: transform var(--dur-normal) var(--ease-out);
 }
+
 .modal-title {
-  margin: 0 0 16px 0;
-  font-size: 15px;
+  font-size: var(--text-base);
   font-weight: 600;
-  color: var(--text-ink);
-  letter-spacing: 0.005em;
+  color: var(--text-primary);
+  margin: 0 0 var(--sp-6) 0;
+  letter-spacing: -0.01em;
 }
+
+.form-row {
+  margin-bottom: var(--sp-6);
+}
+.form-row label {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-tertiary);
+  margin-bottom: var(--sp-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-md);
+  outline: none;
+  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+}
+.input:focus {
+  border-color: var(--border-active);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+}
+.input::placeholder {
+  color: var(--text-quaternary);
+}
+
+.check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  cursor: pointer;
+  font-size: var(--text-md);
+  color: var(--text-secondary);
+}
+
 .modal-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 18px;
+  gap: var(--sp-3);
+  margin-top: var(--sp-8);
 }
 </style>

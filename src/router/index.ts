@@ -8,5 +8,17 @@ export const router = createRouter({
       name: 'search',
       component: () => import('@/pages/SearchPage.vue'),
     },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/pages/SearchPage.vue'),
+      meta: { isPanel: true },
+    },
+    {
+      path: '/commands',
+      name: 'commands',
+      component: () => import('@/pages/SearchPage.vue'),
+      meta: { isPanel: true },
+    },
   ],
 })

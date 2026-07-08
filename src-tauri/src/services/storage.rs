@@ -1,4 +1,4 @@
-//! SQLite 存储服务 - 持久化设置、命令、启动项、统计、历史
+//! SQLite 存储服务 - 持久化设置、命令、统计、历史
 use crate::error::{AppError, Result};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
@@ -54,18 +54,6 @@ impl StorageService {
                 run_as_admin INTEGER DEFAULT 0,
                 created_at INTEGER,
                 last_used_at INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS startup_items (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                command TEXT NOT NULL,
-                args TEXT,
-                working_dir TEXT,
-                enabled INTEGER DEFAULT 1,
-                delay_seconds INTEGER DEFAULT 0,
-                run_as_admin INTEGER DEFAULT 0,
-                source TEXT NOT NULL DEFAULT 'Custom',
-                created_at INTEGER
             );
             CREATE TABLE IF NOT EXISTS app_stats (
                 app_path TEXT PRIMARY KEY,

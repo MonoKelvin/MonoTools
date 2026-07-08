@@ -10,10 +10,7 @@ export const useSettingsStore = defineStore('settings', () => {
     accentColor: '#ffffff',
     fileSearchEnabled: true,
     fileSearchRoots: [],
-    defaultDelaySeconds: 0,
-    autoIndexOnStartup: true,
     enabledCategories: ['apps', 'files', 'commands'],
-    customAppPaths: [],
     pinToTop: true,
   })
 

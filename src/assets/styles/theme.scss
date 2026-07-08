@@ -1,49 +1,44 @@
-// Raycast-inspired dark design tokens.
-// Reference: docs/UI_DESIGN-raycast.md
-// 单调深色体系。无 light 模式。
+// MonoTools Design System — Raycast-inspired, premium minimalist.
+// All colors, spacing, and type are CSS variables for easy theme switching.
 
 :root {
-  /* ---------- Surface ladder (4-step) ---------- */
-  --canvas: #07080a;
-  --surface: #0d0d0d;
-  --surface-elevated: #101111;
-  --surface-card: #121212;
+  --canvas: #111111;
+  --surface: #1a1a1a;
+  --surface-raised: #202020;
+  --surface-overlay: #262626;
 
-  /* ---------- Text scale (ink → body → mute → ash → stone) ---------- */
-  --text-ink: #f4f4f6;
-  --text-body: #cdcdcd;
-  --text-mute: #9c9c9d;
-  --text-ash: #6a6b6c;
-  --text-stone: #434345;
+  // ========== Text hierarchy ==========
+  --text-primary: #ededed;
+  --text-secondary: #989898;
+  --text-tertiary: #636363;
+  --text-quaternary: #3a3a3a;
 
-  /* ---------- On-dark (interactive states) ---------- */
-  --on-dark: #ffffff;
-  --on-dark-mute: rgba(255, 255, 255, 0.72);
-  --on-dark-disabled: rgba(255, 255, 255, 0.4);
+  // ========== Borders ==========
+  --border-subtle: rgba(255, 255, 255, 0.05);
+  --border-default: rgba(255, 255, 255, 0.09);
+  --border-hover: rgba(255, 255, 255, 0.15);
+  --border-active: rgba(255, 255, 255, 0.22);
 
-  /* ---------- Hairline borders ---------- */
-  --hairline: #242728;
-  --hairline-soft: rgba(255, 255, 255, 0.08);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
+  // ========== Interactive ==========
+  --interactive-hover: var(--surface-overlay);
+  --interactive-active: var(--surface-raised);
 
-  /* ---------- Brand / action ---------- */
-  --primary: #ffffff;
-  --primary-pressed: #e8e8e8;
-  --on-primary: #000000;
+  // ========== Brand accent ==========
+  --accent: #ffffff;
+  --accent-hover: #e6e6e6;
 
-  /* ---------- Category accents (used sparingly inside illustrations only) ---------- */
-  --accent-blue: #57c1ff;
-  --accent-red: #ff6161;
-  --accent-green: #59d499;
-  --accent-yellow: #ffc533;
+  // ========== Category colors ==========
+  --color-apps: #57c1ff;
+  --color-files: #ffc533;
+  --color-commands: #59d499;
 
-  /* ---------- Semantic ---------- */
-  --success: #59d499;
-  --warning: #ffc533;
-  --danger: #ff6161;
-  --info: #57c1ff;
+  // ========== Semantic ==========
+  --color-danger: #ff5f57;
+  --color-danger-bg: rgba(255, 95, 87, 0.12);
+  --color-success: #59d499;
+  --color-warning: #ffc533;
 
-  /* ---------- Radii ---------- */
+  // ========== Radii ==========
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
@@ -51,77 +46,110 @@
   --radius-xl: 16px;
   --radius-full: 9999px;
 
-  /* ---------- Spacing ---------- */
-  --space-xxs: 2px;
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 12px;
-  --space-lg: 16px;
-  --space-xl: 24px;
-  --space-xxl: 32px;
+  // ========== Spacing scale (4px base) ==========
+  --sp-1: 2px;
+  --sp-2: 4px;
+  --sp-3: 8px;
+  --sp-4: 10px;
+  --sp-5: 12px;
+  --sp-6: 16px;
+  --sp-7: 20px;
+  --sp-8: 24px;
+  --sp-10: 32px;
+  --sp-12: 40px;
 
-  /* ---------- Type ---------- */
-  --font-sans: 'Inter', 'Inter Fallback', 'Source Han Sans SC', 'Source Han Sans',
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', SF Mono, Cascadia Code, Menlo, monospace;
+  // ========== Type scale ==========
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
 
-  /* ---------- Motion ---------- */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+
+  // ========== Motion ==========
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --duration-fast: 120ms;
-  --duration-normal: 180ms;
-  --duration-slow: 280ms;
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-normal: 200ms;
+  --dur-slow: 300ms;
 
-  /* ---------- Glass surfaces ---------- */
-  --glass-bg: rgba(13, 13, 13, 0.78);
-  --glass-border: var(--hairline);
+  // ========== Glass ==========
+  --glass-bg: rgba(17, 17, 17, 0.75);
+  --glass-border: rgba(255, 255, 255, 0.06);
   --glass-blur: blur(40px) saturate(180%);
 
-  /* ---------- Legacy aliases（保留以兼容旧组件迁移期） ---------- */
+  // ========== Semantic aliases for Raycast compatibility ==========
+  --surface-elevated: var(--surface-raised);
+  --surface-card: var(--surface-overlay);
+  --text-ink: var(--text-primary);
+  --text-body: var(--text-secondary);
+  --text-mute: var(--text-tertiary);
+  --text-ash: var(--text-quaternary);
+  --text-stone: var(--text-quaternary);
+  --hairline: var(--border-subtle);
+  --hairline-soft: var(--border-default);
+  --hairline-strong: var(--border-hover);
+  --on-dark: var(--accent);
+  --primary: var(--accent);
+  --primary-pressed: var(--accent-hover);
   --bg-primary: var(--canvas);
   --bg-secondary: var(--surface);
-  --bg-tertiary: var(--surface-elevated);
+  --bg-tertiary: var(--surface-raised);
   --bg-overlay: var(--glass-bg);
-  --text-primary: var(--text-ink);
-  --text-secondary: var(--text-body);
-  --text-tertiary: var(--text-mute);
-  --border: var(--hairline-soft);
-  --border-hover: var(--hairline-strong);
+  --border: var(--border-default);
+  --border-hover: var(--border-hover);
   --font-family: var(--font-sans);
 }
 
-/* Raycast 是 dark-only。.theme-light 视觉上等同于 .theme-dark */
+// ========== Light theme ==========
 :root.theme-light {
-  --canvas: #07080a;
-  --surface: #0d0d0d;
-  --surface-elevated: #101111;
-  --surface-card: #121212;
-  --text-ink: #f4f4f6;
-  --text-body: #cdcdcd;
-  --text-mute: #9c9c9d;
-  --text-ash: #6a6b6c;
-  --text-stone: #434345;
-  --hairline: #242728;
-  --hairline-soft: rgba(255, 255, 255, 0.08);
-  --hairline-strong: rgba(255, 255, 255, 0.16);
-  --glass-bg: rgba(13, 13, 13, 0.78);
+  --canvas: #f2f2f2;
+  --surface: #ffffff;
+  --surface-raised: #f7f7f7;
+  --surface-overlay: #efefef;
+
+  --text-primary: #1a1a1a;
+  --text-secondary: #525252;
+  --text-tertiary: #737373;
+  --text-quaternary: #a3a3a3;
+
+  --border-subtle: rgba(0, 0, 0, 0.05);
+  --border-default: rgba(0, 0, 0, 0.09);
+  --border-hover: rgba(0, 0, 0, 0.15);
+  --border-active: rgba(0, 0, 0, 0.22);
+
+  --interactive-hover: rgba(0, 0, 0, 0.04);
+  --interactive-active: rgba(0, 0, 0, 0.08);
+
+  --accent: #1a1a1a;
+  --accent-hover: #404040;
+
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(0, 0, 0, 0.06);
 }
 
+// ========== Global reset ==========
 * {
   box-sizing: border-box;
-}
-
-html,
-body,
-#app {
   margin: 0;
   padding: 0;
+}
+
+html, body, #app {
   width: 100%;
   height: 100%;
-  background: transparent;
-  color: var(--text-ink);
+  background: var(--canvas);
+  color: var(--text-primary);
   font-family: var(--font-sans);
-  font-feature-settings: 'calt', 'kern', 'liga', 'ss03';
+  font-size: var(--text-md);
+  line-height: var(--leading-normal);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -132,60 +160,60 @@ body {
   user-select: none;
 }
 
-input,
-textarea {
+input, textarea {
   user-select: text;
 }
 
+// ========== Selection ==========
+::selection {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+// ========== Focus ring ==========
+:focus-visible {
+  outline: 1.5px solid rgba(255, 255, 255, 0.2);
+  outline-offset: 2px;
+}
+
+// ========== Scrollbar ==========
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--hairline);
-  border-radius: 4px;
+  background: var(--border-default);
+  border-radius: var(--radius-full);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--hairline-strong);
+  background: var(--border-hover);
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-// -------- 通用过渡 --------
+// ========== Transitions ==========
+.fade-enter-active, .fade-leave-active {
+  transition: opacity var(--dur-normal) var(--ease-out);
+}
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity var(--duration-normal) var(--ease-out);
+.slide-up-enter-active, .slide-up-leave-active {
+  transition: all var(--dur-normal) var(--ease-out);
 }
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.slide-up-enter-active,
-.slide-up-leave-active {
-  transition: all var(--duration-normal) var(--ease-out);
-}
-.slide-up-enter-from,
-.slide-up-leave-to {
+.slide-up-enter-from, .slide-up-leave-to {
   opacity: 0;
   transform: translateY(8px);
 }
 
-.scale-enter-active,
-.scale-leave-active {
-  transition: opacity var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+.scale-enter-active, .scale-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
-.scale-enter-from,
-.scale-leave-to {
+.scale-enter-from, .scale-leave-to {
   opacity: 0;
   transform: scale(0.97);
 }
 
-// -------- 实用类 --------
-
+// ========== Utility classes ==========
 .glass {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -193,30 +221,6 @@ textarea {
   border: 1px solid var(--glass-border);
 }
 
-.muted {
-  color: var(--text-body);
-}
-.dim {
-  color: var(--text-mute);
-}
-.ash {
-  color: var(--text-ash);
-}
-
-.mono {
-  font-family: var(--font-mono);
-}
-
-.kbd {
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 6px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-body);
-  background: linear-gradient(180deg, var(--surface-card), var(--surface));
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  height: 20px;
-}
+.muted { color: var(--text-secondary); }
+.dim { color: var(--text-tertiary); }
+.mono { font-family: var(--font-mono); }

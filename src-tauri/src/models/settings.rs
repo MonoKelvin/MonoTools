@@ -24,16 +24,10 @@ pub struct Settings {
     pub theme: ThemeMode,
     /// 强调色（hex）
     pub accent_color: String,
-    /// 用户自定义启动应用路径列表
-    pub custom_app_paths: Vec<PathBuf>,
     /// 是否启用 USN 文件搜索
     pub file_search_enabled: bool,
     /// 文件搜索收录目录
     pub file_search_roots: Vec<PathBuf>,
-    /// 启动延迟基础值
-    pub default_delay_seconds: u32,
-    /// 启动时是否自动索引
-    pub auto_index_on_startup: bool,
     /// 同时搜索的类别
     pub enabled_categories: Vec<String>,
     /// 窗口是否始终置顶
@@ -51,16 +45,12 @@ impl Default for Settings {
             hotkey: "Alt+Space".into(),
             theme: ThemeMode::Dark,
             accent_color: "#ffffff".into(),
-            custom_app_paths: vec![],
             file_search_enabled: true,
             file_search_roots: vec![],
-            default_delay_seconds: 0,
-            auto_index_on_startup: true,
             enabled_categories: vec![
                 "apps".into(),
                 "files".into(),
                 "commands".into(),
-                "startup".into(),
             ],
             pin_to_top: true,
         }
@@ -98,16 +88,6 @@ impl Settings {
             "fileSearchEnabled" | "file_search_enabled" => {
                 if let Some(b) = value.as_bool() {
                     self.file_search_enabled = b;
-                }
-            }
-            "defaultDelaySeconds" | "default_delay_seconds" => {
-                if let Some(n) = value.as_u64() {
-                    self.default_delay_seconds = n as u32;
-                }
-            }
-            "autoIndexOnStartup" | "auto_index_on_startup" => {
-                if let Some(b) = value.as_bool() {
-                    self.auto_index_on_startup = b;
                 }
             }
             "pinToTop" | "pin_to_top" => {

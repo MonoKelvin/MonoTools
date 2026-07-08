@@ -99,8 +99,6 @@ cd src-tauri && cargo build --bin monotools-cli
 # 使用示例
 monotools-cli search "chrome"
 monotools-cli launch "C:\Program Files\..."
-monotools-cli startup list
-monotools-cli startup toggle <id>
 ```
 
 ---
@@ -120,7 +118,6 @@ monotools-cli startup toggle <id>
 | 全局搜索 | 应用、文件、自定义命令聚合搜索 |
 | 应用搜索 | 索引开始菜单、注册表、桌面快捷方式 |
 | 文件搜索 | NTFS USN Journal 高速索引 |
-| 自启管理 | 管理 Windows 自启动项 |
 
 ### CLI 命令
 
@@ -130,12 +127,6 @@ monotools-cli search "chrome"
 
 # 启动应用
 monotools-cli launch "C:\Program Files\..."
-
-# 列出自启项
-monotools-cli startup list
-
-# 切换自启项状态
-monotools-cli startup toggle <id>
 ```
 
 ---
@@ -152,12 +143,10 @@ MTools/
 │   ├── assets/                   # 字体、全局样式
 │   ├── components/               # 组件
 │   │   ├── common/               # 公共组件
-│   │   ├── search/               # 搜索相关
-│   │   └── startup/              # 自启管理
+│   │   └── search/               # 搜索相关
 │   ├── pages/                    # 页面
 │   │   ├── SearchPage.vue        # 搜索页
 │   │   ├── CommandsPage.vue      # 自定义命令页
-│   │   ├── StartupPage.vue       # 自启管理页
 │   │   └── SettingsPage.vue      # 设置页
 │   ├── router/                   # 路由配置
 │   ├── services/                 # Tauri IPC 封装
@@ -175,21 +164,18 @@ MTools/
 │       ├── engines/              # 搜索引擎
 │       │   ├── app_search.rs     # 应用搜索
 │       │   ├── file_search.rs    # 文件搜索
-│       │   ├── command_search.rs # 命令搜索
-│       │   └── startup_search.rs # 自启搜索
+│       │   └── command_search.rs # 命令搜索
 │       ├── models/               # 数据模型
 │       ├── repositories/         # 数据访问层
 │       ├── services/             # 业务逻辑
 │       │   ├── hotkey.rs         # 全局热键
 │       │   ├── window.rs         # 窗口控制
 │       │   ├── search.rs         # 搜索服务
-│       │   ├── startup.rs        # 自启管理
 │       │   └── storage.rs        # SQLite 存储
 │       └── platform/windows/     # Windows 平台特定
 │           ├── hotkey.rs         # RegisterHotKey
 │           ├── registry.rs       # 注册表读写
 │           ├── shell.rs          # Shell 执行
-│           ├── startup_folder.rs # 启动文件夹
 │           └── usn.rs            # USN Journal
 ├── public/                       # 静态资源
 │   └── logo/                     # 应用图标

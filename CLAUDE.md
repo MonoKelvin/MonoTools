@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**MonoTools** is a lightweight Windows desktop launcher and system productivity tool (Raycast/Linear-inspired). It runs silently in the system tray and is invoked via `Alt + Space` to show a Spotlight-style search overlay. Core capabilities: application launcher, NTFS USN Journal file search, custom commands, and startup item management.
+**MonoTools** is a lightweight Windows desktop launcher and system productivity tool (Raycast/Linear-inspired). It runs silently in the system tray and is invoked via `Alt + Space` to show a Spotlight-style search overlay. Core capabilities: application launcher, NTFS USN Journal file search, and custom commands.
 
 Two binaries share the same library: `monotools` (GUI via Tauri) and `monotools-cli` (standalone CLI).
 
@@ -39,11 +39,11 @@ pnpm cli                  # Run CLI binary (e.g., "pnpm cli search chrome")
 ### Frontend (`src/`)
 
 - **Entry**: `src/main.ts` — Vue app + PrimeVue (Aura) + Pinia + Router
-- **Router**: 4 hash-mode routes: `/` (SearchPage), `/startup` (StartupPage), `/commands` (CommandsPage), `/settings` (SettingsPage)
-- **API layer**: `src/services/api.ts` — typed wrappers for all Tauri IPC commands, subdivided by domain (searchApi, startupApi, commandApi, settingsApi, etc.)
+- **Router**: 3 hash-mode routes: `/` (SearchPage), `/commands` (CommandsPage), `/settings` (SettingsPage)
+- **API layer**: `src/services/api.ts` — typed wrappers for all Tauri IPC commands, subdivided by domain (searchApi, commandApi, settingsApi, etc.)
 - **Mock backend**: `src/services/tauri.ts` — provides mock data when running in browser (not Tauri context)
-- **Stores**: 4 Pinia stores — `theme`, `settings`, `search`, `startup`
-- **Components**: Shared (`SearchInput`, `ResultItem`, `ThemeToggle`) and page-specific (`CategoryTabs`, `SearchResults`, `ActionBar`, `AddStartupModal`)
+- **Stores**: 3 Pinia stores — `theme`, `settings`, `search`
+- **Components**: Shared (`SearchInput`, `ResultItem`, `ThemeToggle`) and page-specific (`CategoryTabs`, `SearchResults`, `ActionBar`)
 
 ### Backend (`src-tauri/src/`)
 
@@ -53,10 +53,10 @@ pnpm cli                  # Run CLI binary (e.g., "pnpm cli search chrome")
 - **`app.rs`**: Tauri `Builder` chain — creates `AppState` (central DI container), registers hotkeys, sets up `invoke_handler` with all IPC commands
 - **`commands.rs`**: All `#[tauri::command]` functions — the Tauri IPC bridge to frontend
 - **Command pattern** (`command/`): Trait-based system serving both CLI and internal dispatch. Each subcommand implements `Command` trait, registered in `CommandRegistry`, dispatched by `CommandEngine`
-- **Services** (`services/`): `AppState` (shared state), `HotkeyService`, `WindowService`, `SearchEngine`, `StartupManager`, `StorageService` (SQLite), `DelayLauncher`
-- **Search engines** (`engines/`): 4 parallel engines — `AppSearchEngine` (Start Menu/desktop), `FileSearchService` (USN Journal / fallback walkdir), `CommandSearchEngine`, `StartupSearchService`
+- **Services** (`services/`): `AppState` (shared state), `HotkeyService`, `WindowService`, `SearchEngine`, `StorageService` (SQLite), `DelayLauncher`
+- **Search engines** (`engines/`): 3 parallel engines — `AppSearchEngine` (Start Menu/desktop), `FileSearchService` (USN Journal / fallback walkdir), `CommandSearchEngine`
 - **Repositories** (`repositories/`): Trait-based data access with in-memory implementations. Works with both CLI and Tauri
-- **Platform** (`platform/windows/`): Windows-specific code — `registry.rs` (reg.exe wrapper), `usn.rs` (file indexing), `shell.rs` (launch), `startup_folder.rs`, `hotkey.rs`
+- **Platform** (`platform/windows/`): Windows-specific code — `registry.rs` (reg.exe wrapper), `usn.rs` (file indexing), `shell.rs` (launch), `hotkey.rs`
 
 ### Data Flow (Search Example)
 

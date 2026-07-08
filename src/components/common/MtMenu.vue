@@ -10,7 +10,6 @@ export interface MtMenuItem {
   danger?: boolean
   disabled?: boolean
   divider?: boolean
-  /** Custom slot slot name to render after the label */
   custom?: string
 }
 
@@ -18,17 +17,12 @@ const props = withDefaults(
   defineProps<{
     items: MtMenuItem[]
     modelValue: boolean
-    /** Anchor point in pixels relative to viewport, defaults to mouse position. */
     x?: number
     y?: number
     anchor?: 'pointer' | 'top-left' | 'center'
-    /** Min width of the panel. */
     minWidth?: number
   }>(),
-  {
-    anchor: 'pointer',
-    minWidth: 220,
-  },
+  { anchor: 'pointer', minWidth: 220 },
 )
 
 const emit = defineEmits<{
@@ -46,7 +40,6 @@ function positionPanel() {
   const vh = window.innerHeight
   const rect = el.getBoundingClientRect()
   const width = rect.width || props.minWidth
-  const height = rect.height || 240
   const anchorX = props.x ?? 0
   const anchorY = props.y ?? 0
   let left = anchorX
@@ -62,9 +55,7 @@ function positionPanel() {
   translate.value = { x: left, y: top }
 }
 
-function close() {
-  emit('update:modelValue', false)
-}
+function close() { emit('update:modelValue', false) }
 
 function onItemClick(item: MtMenuItem) {
   if (item.disabled || item.divider) return
@@ -82,10 +73,7 @@ function onWindowPointer(event: MouseEvent) {
 
 function onKey(event: KeyboardEvent) {
   if (!visible.value) return
-  if (event.key === 'Escape') {
-    event.preventDefault()
-    close()
-  }
+  if (event.key === 'Escape') { event.preventDefault(); close() }
 }
 
 onMounted(async () => {
@@ -122,11 +110,7 @@ onBeforeUnmount(() => {
             :key="item.key ?? `i${idx}`"
             :class="[
               'mt-menu__row',
-              {
-                'mt-menu__row--divider': item.divider,
-                'mt-menu__row--danger': item.danger,
-                'mt-menu__row--disabled': item.disabled,
-              },
+              { 'mt-menu__row--divider': item.divider, 'mt-menu__row--danger': item.danger, 'mt-menu__row--disabled': item.disabled },
             ]"
             role="menuitem"
             @click="onItemClick(item)"
@@ -135,17 +119,9 @@ onBeforeUnmount(() => {
               <span class="mt-menu__divider" />
             </template>
             <template v-else>
-              <component
-                :is="item.icon"
-                v-if="item.icon"
-                class="mt-menu__icon"
-                :size="14"
-                :stroke-width="2"
-              />
+              <component :is="item.icon" v-if="item.icon" class="mt-menu__icon" :size="14" :stroke-width="2" />
               <span class="mt-menu__label">{{ item.label }}</span>
-              <span v-if="item.shortcut" class="mt-menu__shortcut">
-                {{ item.shortcut }}
-              </span>
+              <span v-if="item.shortcut" class="mt-menu__shortcut">{{ item.shortcut }}</span>
               <slot v-if="item.custom" :name="item.custom" />
             </template>
           </li>
@@ -162,17 +138,17 @@ onBeforeUnmount(() => {
   left: 0;
   z-index: 9999;
   border-radius: var(--radius-lg);
-  padding: 4px;
-  background: rgba(28, 28, 32, 0.62);
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: var(--sp-1);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.15),
     0 8px 24px rgba(0, 0, 0, 0.3),
     0 0 48px rgba(0, 0, 0, 0.22);
   user-select: none;
-  animation: mt-menu-in var(--duration-fast) var(--ease-out);
+  animation: mt-menu-in var(--dur-fast) var(--ease-out);
   transform-origin: var(--mt-menu-origin, top left);
 }
 
@@ -187,15 +163,15 @@ onBeforeUnmount(() => {
 .mt-menu__row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-md);
-  font-size: 12.5px;
+  font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--text-ink);
+  color: var(--text-primary);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 
 .mt-menu__row + .mt-menu__row {
@@ -203,23 +179,23 @@ onBeforeUnmount(() => {
 }
 
 .mt-menu__row:hover:not(.mt-menu__row--divider):not(.mt-menu__row--disabled) {
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--interactive-hover);
 }
 
 .mt-menu__row--disabled {
-  color: var(--text-stone);
+  color: var(--text-quaternary);
   cursor: default;
 }
 
 .mt-menu__row--danger {
-  color: var(--accent-danger, #ff6464);
+  color: var(--color-danger);
 }
 .mt-menu__row--danger:hover {
-  background: rgba(255, 80, 80, 0.12);
+  background: var(--color-danger-bg);
 }
 
 .mt-menu__icon {
-  color: var(--text-body);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 .mt-menu__row--danger .mt-menu__icon {
@@ -234,27 +210,27 @@ onBeforeUnmount(() => {
 
 .mt-menu__shortcut {
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-mute);
-  background: var(--surface-card);
-  border: 1px solid var(--hairline-soft);
+  font-size: var(--text-xs);
+  color: var(--text-tertiary);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-xs);
   padding: 1px 6px;
-  line-height: 16px;
+  line-height: 1.6;
   height: 18px;
 }
 
 .mt-menu__divider {
   display: block;
   height: 1px;
-  background: var(--hairline);
-  margin: 4px 6px;
+  background: var(--border-subtle);
+  margin: var(--sp-1) var(--sp-2);
 }
 
 .mt-menu-enter-active,
 .mt-menu-leave-active {
-  transition: opacity var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
+  transition: opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 .mt-menu-enter-from,
 .mt-menu-leave-to {

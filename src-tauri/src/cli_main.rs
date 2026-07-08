@@ -2,8 +2,6 @@
 //! 用法示例：
 //!   monotools-cli search "chrome"
 //!   monotools-cli launch "C:\\Program Files\\..."
-//!   monotools-cli startup list
-//!   monotools-cli startup toggle <id>
 //!   monotools-cli --help
 
 use clap::{Parser, Subcommand};
@@ -41,11 +39,6 @@ enum Commands {
         /// 路径
         path: String,
     },
-    /// 启动项管理
-    Startup {
-        #[command(subcommand)]
-        action: StartupAction,
-    },
     /// 自定义命令管理
     Command {
         #[command(subcommand)]
@@ -62,27 +55,6 @@ enum Commands {
     Help,
     /// 输出版本
     Version,
-}
-
-#[derive(Subcommand, Debug)]
-enum StartupAction {
-    /// 列出所有启动项
-    List,
-    /// 启用启动项
-    Enable { id: String },
-    /// 禁用启动项
-    Disable { id: String },
-    /// 添加自定义启动项
-    Add {
-        name: String,
-        command: String,
-        #[arg(long)]
-        args: Vec<String>,
-        #[arg(long, default_value_t = 0)]
-        delay: u32,
-    },
-    /// 删除启动项
-    Remove { id: String },
 }
 
 #[derive(Subcommand, Debug)]
@@ -143,7 +115,6 @@ fn cmd_name(s: &Commands) -> &'static str {
         Commands::Search { .. } => "search",
         Commands::Launch { .. } => "launch",
         Commands::Open { .. } => "open",
-        Commands::Startup { .. } => "startup",
         Commands::Command { .. } => "command",
         Commands::Config { .. } => "config",
         Commands::Help => "help",
@@ -165,33 +136,6 @@ fn build_input_string(cli: &Cli) -> String {
         Commands::Open { path } => {
             parts.push(quote(path));
         }
-        Commands::Startup { action } => match action {
-            StartupAction::List => parts.push("list".into()),
-            StartupAction::Enable { id } => {
-                parts.push("enable".into());
-                parts.push(id.clone());
-            }
-            StartupAction::Disable { id } => {
-                parts.push("disable".into());
-                parts.push(id.clone());
-            }
-            StartupAction::Add { name, command, args, delay } => {
-                parts.push("add".into());
-                parts.push(quote(name));
-                parts.push(quote(command));
-                if !args.is_empty() {
-                    parts.push("--args".into());
-                    parts.push(args.join(" "));
-                }
-                if *delay > 0 {
-                    parts.push(format!("--delay {}", delay));
-                }
-            }
-            StartupAction::Remove { id } => {
-                parts.push("remove".into());
-                parts.push(id.clone());
-            }
-        },
         Commands::Command { action } => match action {
             CommandAction::List => parts.push("list".into()),
             CommandAction::Run { id } => {
@@ -242,9 +186,8 @@ fn print_output(out: &CommandOutput) {
                             .map(|s| format!(" ({})", s))
                             .unwrap_or_default();
                         let name = map
-                            .get("name")
+                            .get("title")
                             .and_then(|v| v.as_str())
-                            .or_else(|| map.get("title").and_then(|v| v.as_str()))
                             .unwrap_or("(no name)");
                         println!("  {}{}", name, id_str);
                     } else {

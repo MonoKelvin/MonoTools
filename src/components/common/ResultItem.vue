@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
-import { FileText, FolderOpen, Terminal } from "@lucide/vue"
+import { FolderOpen, FileText, Terminal } from "@lucide/vue"
 
 const props = defineProps<{
   result: SearchResult
@@ -14,7 +14,7 @@ const emit = defineEmits<{
 }>()
 
 const IconComponent = computed(() => {
-  const map: Record<string, typeof FileText> = {
+  const map: Record<string, typeof FolderOpen> = {
     apps: FolderOpen,
     files: FileText,
     commands: Terminal,
@@ -27,16 +27,17 @@ const IconComponent = computed(() => {
   <div
     :class="['result-item', { 'is-active': active }]"
     @click="emit('select', result)"
+    @mouseenter="$emit('mouseover', index)"
   >
     <div class="result-icon">
-      <component :is="IconComponent" :size="16" :stroke-width="2" />
+      <component :is="IconComponent" :size="18" :stroke-width="2" />
     </div>
     <div class="result-text">
       <div class="result-title">{{ result.title }}</div>
-      <div class="result-subtitle">{{ result.subtitle }}</div>
+      <div v-if="result.subtitle" class="result-subtitle">{{ result.subtitle }}</div>
     </div>
     <div class="result-action">
-      <span class="action-hint">⏎</span>
+      <span class="action-key">&#x23CE;</span>
     </div>
   </div>
 </template>
@@ -45,37 +46,41 @@ const IconComponent = computed(() => {
 .result-item {
   display: flex;
   align-items: center;
-  padding: 6px 10px;
-  border-radius: var(--radius-sm);
-  gap: 10px;
+  padding: var(--sp-3) var(--sp-4);
+  gap: var(--sp-3);
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: background var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
   user-select: none;
+  margin: var(--sp-1);
 }
 .result-item:hover {
-  background: var(--hairline-soft);
+  background: var(--interactive-hover);
+  transform: translateY(-1px);
 }
 .result-item.is-active {
-  background: var(--surface-card);
+  background: var(--interactive-active);
+  transform: translateY(-1px);
 }
 
 .result-icon {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--radius-md);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-body);
-  background: var(--surface-elevated);
-  border: 1px solid var(--hairline-soft);
-  transition: all var(--duration-fast) var(--ease-out);
+  color: var(--text-tertiary);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-subtle);
+  transition: all var(--dur-fast) var(--ease-out);
 }
 .result-item.is-active .result-icon {
-  background: var(--surface);
-  color: var(--on-dark);
-  border-color: var(--hairline);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+  background: var(--surface-raised);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.05);
 }
 
 .result-text {
@@ -84,51 +89,46 @@ const IconComponent = computed(() => {
 }
 
 .result-title {
-  font-size: 13px;
+  font-size: var(--text-base);
   font-weight: 500;
-  color: var(--text-ink);
+  color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  line-height: 1.3;
-  letter-spacing: 0.01em;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.01em;
 }
 
 .result-subtitle {
-  font-size: 11px;
-  color: var(--text-ash);
-  margin-top: 1px;
+  font-size: var(--text-sm);
+  color: var(--text-quaternary);
+  margin-top: var(--sp-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 400;
 }
 .result-item.is-active .result-subtitle {
-  color: var(--text-mute);
+  color: var(--text-tertiary);
 }
 
 .result-action {
-  margin-left: auto;
   flex-shrink: 0;
 }
 
-.action-hint {
+.action-key {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  padding: 0 5px;
+  min-width: 28px;
+  padding: 0 var(--sp-2);
   font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 20px;
-  height: 20px;
-  color: var(--text-mute);
-  background: linear-gradient(180deg, var(--surface-card), var(--surface));
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-xs);
-  transition: all var(--duration-fast) var(--ease-out);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-quaternary);
+  transition: color var(--dur-fast) var(--ease-out);
 }
-.result-item.is-active .action-hint {
-  color: var(--text-body);
+.result-item.is-active .action-key {
+  color: var(--text-tertiary);
 }
 </style>

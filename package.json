@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "MonoTools - 轻量级系统效率工具（启动项管理 + 全局搜索）",
+  "description": "MonoTools - 轻量级系统效率工具（全局搜索 + 自定义命令）",
   "author": "MonoKelvin",
   "scripts": {
     "dev": "tauri dev",

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Search } from "@lucide/vue"
 import { useSearchStore } from '@/stores/search'
 import { useSettingsStore } from '@/stores/settings'
 import { hotkeyApi, windowApi } from '@/services'
 import { isTauri } from '@/services/env'
+import { useRouter } from 'vue-router'
 
 import SearchInput from '@/components/common/SearchInput.vue'
 import CategoryTabs from '@/components/search/CategoryTabs.vue'
@@ -15,17 +16,7 @@ import CommandsPanel from '@/components/panels/CommandsPanel.vue'
 
 const search = useSearchStore()
 const settings = useSettingsStore()
-
-type Panel = 'search' | 'settings' | 'commands'
-const currentPanel = ref<Panel>('search')
-
-const showPanel = (panel: Panel) => {
-  currentPanel.value = panel
-}
-
-const goSearch = () => {
-  currentPanel.value = 'search'
-}
+const router = useRouter()
 
 const inputRef = ref<InstanceType<typeof SearchInput> | null>(null)
 const containerRef = ref<HTMLElement | null>(null)
@@ -33,52 +24,59 @@ let resizeObserver: ResizeObserver | null = null
 let pendingHeight = 0
 let resyncTimer: number | null = null
 
+const WINDOW_FIXED_WIDTH = 680
+
+const fixWindowWidth = async () => {
+  if (!isTauri) return
+  try {
+    const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+    const win = WebviewWindow.getCurrent()
+    const currentSize = await win.innerSize()
+    if (Math.abs(currentSize.width - WINDOW_FIXED_WIDTH) > 1) {
+      await win.setSize({ width: WINDOW_FIXED_WIDTH, height: currentSize.height })
+    }
+  } catch { /* fallback */ }
+}
+
 const syncWindowHeight = () => {
   if (!isTauri) return
   if (!containerRef.value) return
-  const rect = (containerRef.value as HTMLElement).getBoundingClientRect()
+  const rect = containerRef.value.getBoundingClientRect()
   const h = Math.round(rect.height)
   if (Math.abs(h - pendingHeight) < 2) return
   pendingHeight = h
   if (resyncTimer) window.clearTimeout(resyncTimer)
-  resyncTimer = window.setTimeout(() => {
-    windowApi.setHeight(h)
-  }, 50)
+  resyncTimer = window.setTimeout(() => windowApi.setHeight(h), 50)
 }
 
-const onEnter = async () => {
-  await search.executeSelected()
-}
+const onEnter = async () => { await search.executeSelected() }
 const onUp = () => search.selectPrev()
 const onDown = () => search.selectNext()
 const onEscape = () => {
   search.hide()
-  if (currentPanel.value !== 'search') {
-    goSearch()
-  }
 }
+
+// 不要在blur时隐藏窗口，用户点击其他地方不应该自动关闭
+// const handleBlur = () => {
+//   // 窗口失去焦点时隐藏
+//   search.hide()
+// }
 
 const onSelect = (item: any) => search.executeItem(item)
-const onHover = (idx: number) => {
-  search.selectedIndex = idx
-}
-
+const onHover = (idx: number) => { search.selectedIndex = idx }
 const onQueryChange = (val: string) => search.setQuery(val)
-
 const onCategorySelect = (cat: any) => search.setCategory(cat)
 
 const tryRegisterHotkey = async () => {
   if (!isTauri) return
-  try {
-    await hotkeyApi.register(settings.settings.hotkey)
-  } catch (err) {
-    console.warn('注册热键失败', err)
-  }
+  try { await hotkeyApi.register(settings.settings.hotkey) }
+  catch { /* ignore */ }
 }
 
 onMounted(async () => {
   await settings.load()
   await tryRegisterHotkey()
+  await fixWindowWidth()
   await nextTick()
   if (containerRef.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(syncWindowHeight)
@@ -88,86 +86,50 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
+  if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
 })
 
-watch(currentPanel, () => {
-  nextTick(syncWindowHeight)
-})
-
-watch(
-  () => search.filteredResults.length,
-  () => nextTick(syncWindowHeight),
-)
+// Watch router changes to sync window height
+watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
 </script>
 
 <template>
-  <div class="app-viewport">
-    <!-- ========== 搜索视图 ========== -->
-    <Transition name="fade" mode="out-in">
-      <div
-        v-if="currentPanel === 'search'"
-        key="search"
-        class="search-view"
+  <div class="app-viewport" data-tauri-drag-region>
+    <!-- 搜索界面 - 只有一个统一的面板 -->
+    <div class="search-container" ref="containerRef">
+      <SearchInput
+        ref="inputRef"
+        :model-value="search.query"
+        @update:model-value="onQueryChange"
+        @enter="onEnter"
+        @arrow-down="onDown"
+        @arrow-up="onUp"
+        @escape="onEscape"
+        autofocus
+      />
+      <CategoryTabs
+        :active="search.activeCategory"
+        @select="onCategorySelect"
+      />
+      <SearchResults
+        :results="search.filteredResults"
+        :loading="search.loading"
+        :selected-index="search.selectedIndex"
+        @select="onSelect"
+        @hover="onHover"
       >
-        <div
-          ref="containerRef"
-          class="search-container"
-        >
-          <SearchInput
-            ref="inputRef"
-            :model-value="search.query"
-            @update:model-value="onQueryChange"
-            @enter="onEnter"
-            @arrow-down="onDown"
-            @arrow-up="onUp"
-            @escape="onEscape"
-            autofocus
-          />
-          <CategoryTabs
-            :active="search.activeCategory"
-            @select="onCategorySelect"
-          />
-          <SearchResults
-            :results="search.filteredResults"
-            :loading="search.loading"
-            :selected-index="search.selectedIndex"
-            @select="onSelect"
-            @hover="onHover"
-          >
-            <template #empty>
-              <div class="empty-state">
-                <Search class="empty-icon" :size="26" :stroke-width="1.6" />
-                <span v-if="!search.query" class="empty-text">输入关键字开始搜索</span>
-                <span v-else class="empty-text">没有找到结果，试试别的关键字</span>
-              </div>
-            </template>
-          </SearchResults>
-          <ActionBar />
-        </div>
-      </div>
-
-      <!-- ========== 功能面板 ========== -->
-      <div v-else key="panel" class="panel-view">
-        <div class="panel-container" data-tauri-drag-region>
-          <div class="panel-header-bar">
-            <button class="panel-back-btn" @click="goSearch">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-              返回搜索
-            </button>
-            <h2 class="panel-header-title">
-              <template v-if="currentPanel === 'settings'">设置</template>
-              <template v-else-if="currentPanel === 'commands'">命令管理</template>
-            </h2>
+        <template #empty>
+          <div class="empty-state">
+            <Search class="empty-icon" :size="28" :stroke-width="1.5" />
+            <span v-if="!search.query" class="empty-text">
+              输入关键字搜索应用、文件、命令
+            </span>
+            <span v-else class="empty-text">没有找到结果</span>
           </div>
-          <SettingsPanel v-if="currentPanel === 'settings'" />
-          <CommandsPanel v-else-if="currentPanel === 'commands'" />
-        </div>
-      </div>
-    </Transition>
+        </template>
+      </SearchResults>
+      <ActionBar />
+    </div>
   </div>
 </template>
 
@@ -177,124 +139,47 @@ watch(
   height: 100%;
   position: relative;
   overflow: hidden;
-}
-
-/* ========== 搜索视图 ========== */
-.search-view {
-  width: 100%;
-  height: 100%;
   display: flex;
-  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background: var(--canvas);
 }
 
 .search-container {
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 0;
+  border: none;
   box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.55),
-    0 1px 0 rgba(255, 255, 255, 0.02) inset;
+    0 4px 6px rgba(0, 0, 0, 0.1),
+    0 10px 30px rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
   overflow: hidden;
-  transition: height var(--duration-slow) var(--ease-out);
-  min-height: 200px;
+  transition: height var(--dur-normal) var(--ease-out);
 }
 
-/* ========== 功能面板视图 ========== */
-.panel-view {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  z-index: 5;
-}
+/* ========== Empty state ========== */
 
-.panel-container {
-  width: 100%;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: 0;
-  box-shadow:
-    0 12px 48px rgba(0, 0, 0, 0.55);
-  overflow: hidden;
-  min-height: 0;
-}
-
-.panel-header-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--hairline);
-  background: transparent;
-  flex-shrink: 0;
-}
-
-.panel-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-body);
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-.panel-back-btn:hover {
-  background: var(--surface-elevated);
-  color: var(--on-dark);
-  border-color: var(--hairline-strong);
-}
-
-.panel-header-title {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-ink);
-  letter-spacing: 0.005em;
-}
-
-/* ========== 空状态 ========== */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 40px 20px;
+  gap: var(--sp-4);
+  padding: var(--sp-12) var(--sp-6);
   flex: 1;
 }
 .empty-icon {
-  color: var(--text-mute);
-  opacity: 0.7;
+  color: var(--text-quaternary);
+  opacity: 0.5;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 .empty-text {
-  color: var(--text-ash);
-  font-size: 13px;
-  letter-spacing: 0.005em;
-}
-
-/* ========== 过渡动画 ========== */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity var(--duration-normal) var(--ease-out),
-    transform var(--duration-normal) var(--ease-out);
-}
-.fade-enter-from {
-  opacity: 0;
-  transform: translateY(4px);
-}
-.fade-leave-to {
-  opacity: 0;
-  transform: translateY(-4px);
+  color: var(--text-tertiary);
+  font-size: var(--text-md);
+  letter-spacing: 0.01em;
+  font-weight: 400;
 }
 </style>

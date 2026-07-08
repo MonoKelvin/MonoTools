@@ -1,7 +1,5 @@
 <script setup lang="ts">
-import ResultItem from '@/components/common/ResultItem.vue'
 import type { SearchResult } from '@/types/search'
-import { Search } from '@lucide/vue'
 
 defineProps<{
   results: SearchResult[]
@@ -9,19 +7,22 @@ defineProps<{
   selectedIndex: number
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   (e: 'select', item: SearchResult): void
   (e: 'hover', index: number): void
 }>()
 </script>
 
 <template>
-  <div class="search-results-wrapper" data-tauri-drag-region v-if="results.length || loading">
-    <div v-if="loading" class="empty">
+  <div class="results-wrapper" data-tauri-drag-region>
+    <!-- Loading -->
+    <div v-if="loading" class="loading-state">
       <div class="spinner"></div>
-      <span class="dim">搜索中...</span>
+      <span class="loading-text">搜索中...</span>
     </div>
-    <div v-else class="search-results">
+
+    <!-- Results -->
+    <div v-else-if="results.length" class="results-list">
       <ResultItem
         v-for="(item, idx) in results"
         :key="item.id"
@@ -32,49 +33,62 @@ const emit = defineEmits<{
         @mouseover="emit('hover', idx)"
       />
     </div>
-  </div>
-  <div v-else-if="$slots.empty" class="empty" data-tauri-drag-region>
-    <slot name="empty" />
+
+    <!-- Empty state -->
+    <div v-else-if="$slots.empty" class="empty-state" data-tauri-drag-region>
+      <slot name="empty" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.search-results-wrapper {
+.results-wrapper {
   flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-
-.search-results {
-  flex: 1;
   overflow-y: auto;
-  min-height: 0;
-  padding: 4px 6px 6px;
 }
 
-.empty {
+.results-list {
   display: flex;
   flex-direction: column;
+  padding: var(--sp-1);
+  gap: var(--sp-1);
+}
+
+.loading-state {
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 40px 20px;
-  color: var(--text-mute);
-  font-size: 13px;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-5);
   flex: 1;
 }
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--hairline);
-  border-top-color: var(--on-dark);
+  border: 2.5px solid var(--border-default);
+  border-top-color: var(--text-secondary);
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
+  animation: spin 0.7s linear infinite;
 }
+.loading-text {
+  color: var(--text-tertiary);
+  font-size: var(--text-sm);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-4);
+  padding: var(--sp-8) var(--sp-5);
+  flex: 1;
+}
+
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 </style>

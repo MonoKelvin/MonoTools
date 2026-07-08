@@ -232,6 +232,11 @@ pub async fn set_pin_top(
         .map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window("search") {
         let _ = w.set_always_on_top(value);
+        // 置顶时立即显示并聚焦窗口
+        if value {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
     }
     Ok(())
 }

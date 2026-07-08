@@ -1,14 +1,13 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, computed } from 'vue'
 import { Search, X } from "@lucide/vue"
 
 const props = withDefaults(
   defineProps<{
     modelValue: string
     placeholder?: string
-    autofocus?: boolean
   }>(),
-  { placeholder: '搜索应用、文件、命令...', autofocus: false },
+  { placeholder: '搜索应用、文件、命令...' },
 )
 
 const emit = defineEmits<{
@@ -27,123 +26,218 @@ watch(() => props.modelValue, (v) => (localValue.value = v))
 watch(localValue, (v) => emit('update:modelValue', v))
 
 const onKeydown = (e: KeyboardEvent) => {
-  if (e.key === 'Enter') {
-    e.preventDefault()
-    emit('enter')
-  } else if (e.key === 'ArrowDown') {
-    e.preventDefault()
-    emit('arrowDown')
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault()
-    emit('arrowUp')
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    emit('escape')
+  if (e.key === 'Enter') { e.preventDefault(); emit('enter') }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); emit('arrowDown') }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); emit('arrowUp') }
+  else if (e.key === 'Escape') { e.preventDefault(); emit('escape') }
+}
+
+onMounted(() => {
+  inputRef.value?.focus()
+})
+
+// ========== Drag logic ==========
+
+function isOverText(input: HTMLInputElement, clientX: number): boolean {
+  const rect = input.getBoundingClientRect()
+  const frontBoundary = rect.left + rect.width * 0.2
+  if (clientX <= frontBoundary) return true
+
+  if (!input.value || input.value.length === 0) return false
+
+  const style = getComputedStyle(input)
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+
+  const paddingLeft = parseFloat(style.paddingLeft) || 0
+  const charCount = Math.min(4, input.value.length)
+  const prefixWidth = ctx.measureText(input.value.slice(0, charCount)).width
+  const suffixWidth = ctx.measureText(input.value.slice(-charCount)).width
+  const textWidth = ctx.measureText(input.value).width
+
+  const textAreaStart = rect.left + paddingLeft - prefixWidth
+  const textAreaEnd = rect.left + paddingLeft + textWidth + suffixWidth
+
+  return clientX >= textAreaStart && clientX <= textAreaEnd
+}
+
+async function handleWrapperMousedown(event: MouseEvent) {
+  const input = inputRef.value
+  if (!input) return
+
+  const overText = isOverText(input, event.clientX)
+
+  if (!overText) {
+    event.preventDefault()
+    try {
+      await invoke('start_dragging')
+    } catch (error) {
+      console.error('Failed to start dragging:', error)
+    }
   }
 }
 
-if (props.autofocus) {
-  setTimeout(() => inputRef.value?.focus(), 50)
+function handleWrapperMousemove(event: MouseEvent) {
+  const input = inputRef.value
+  if (!input) return
+
+  const overText = isOverText(input, event.clientX)
+  const cursor = overText ? 'text' : 'default'
+
+  const wrapper = event.currentTarget as HTMLElement
+  wrapper.style.cursor = cursor
+  input.style.cursor = cursor
 }
 
-const focusInput = () => inputRef.value?.focus()
-defineExpose({ focus: focusInput })
+function handleWrapperMouseleave() {
+  const input = inputRef.value
+  if (input) {
+    input.style.cursor = ''
+  }
+}
+
+function focus() {
+  inputRef.value?.focus()
+}
+
+function select() {
+  inputRef.value?.select()
+}
+
+const TEXT_FADE_KEY = 'monotools-text-fade-enabled'
+const textFadeEnabled = ref(localStorage.getItem(TEXT_FADE_KEY) !== 'false')
+const overflowRight = ref(false)
+const overflowLeft = ref(false)
+
+function updateOverflow() {
+  const input = inputRef.value
+  if (!input) return
+
+  overflowRight.value = input.scrollWidth > input.clientWidth
+  overflowLeft.value = input.scrollLeft > 1
+}
+
+const fadeClass = computed(() => {
+  if (!textFadeEnabled.value) return ''
+  const right = overflowRight.value
+  const left = overflowLeft.value
+  if (right && left) return 'mt-search-input-wrapper--fade-both'
+  if (right) return 'mt-search-input-wrapper--fade-right'
+  if (left) return 'mt-search-input-wrapper--fade-left'
+  return ''
+})
+
+watch(() => props.modelValue, async () => {
+  await nextTick()
+  updateOverflow()
+})
+
+defineExpose({ focus, select, fadeClass })
 </script>
 
 <template>
-  <!-- data-tauri-drag-region: background can drag; <input> is auto-excluded by Tauri -->
   <div
-    class="search-input-wrapper"
-    :class="{ 'is-focused': focused }"
-    data-tauri-drag-region
+    :class="['mt-search-input-wrapper', fadeClass]"
+    @mousedown="handleWrapperMousedown"
+    @mousemove="handleWrapperMousemove"
+    @mouseleave="handleWrapperMouseleave"
   >
-    <Search class="search-icon" :size="18" :stroke-width="2" />
     <input
       ref="inputRef"
-      v-model="localValue"
       type="text"
-      class="search-input"
+      :value="modelValue"
       :placeholder="placeholder"
-      spellcheck="false"
-      autocomplete="off"
-      autocorrect="off"
+      class="mt-search-input"
+      @input="(e) => emit('update:modelValue', (e.target as HTMLInputElement).value)"
       @keydown="onKeydown"
       @focus="focused = true"
       @blur="focused = false"
+      @change="updateOverflow"
     />
-    <Transition name="fade">
-      <button
-        v-if="localValue"
-        class="search-clear"
-        type="button"
-        @click="localValue = ''"
-        aria-label="清空"
-      >
-        <X :size="13" :stroke-width="2" />
-      </button>
-    </Transition>
   </div>
 </template>
 
 <style scoped>
-.search-input-wrapper {
-  display: flex;
-  align-items: center;
-  padding: 12px 14px;
-  gap: 10px;
-  background: transparent;
-  transition: background var(--duration-fast) var(--ease-out);
-  flex-shrink: 0;
-}
-
-.search-icon {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  color: var(--text-mute);
-  transition: color var(--duration-fast) var(--ease-out);
-}
-
-.search-input-wrapper.is-focused .search-icon {
-  color: var(--text-ink);
-}
-
-.search-input {
+.mt-search-input-wrapper {
   flex: 1;
   min-width: 0;
+  -webkit-app-region: no-drag;
+  overflow: hidden;
+  position: relative;
+}
+
+/* 右侧渐变遮罩 */
+.mt-search-input-wrapper--fade-right::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  background: linear-gradient(to right, transparent, var(--canvas) 80%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 左侧渐变遮罩 */
+.mt-search-input-wrapper--fade-left::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 40px;
+  background: linear-gradient(to left, transparent, var(--canvas) 80%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* 两侧渐变遮罩 */
+.mt-search-input-wrapper--fade-both::before,
+.mt-search-input-wrapper--fade-both::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.mt-search-input-wrapper--fade-both::before {
+  left: 0;
+  background: linear-gradient(to left, transparent, var(--canvas) 80%);
+}
+
+.mt-search-input-wrapper--fade-both::after {
+  right: 0;
+  background: linear-gradient(to right, transparent, var(--canvas) 80%);
+}
+
+/* 输入框 */
+.mt-search-input {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  font-family: var(--font-sans);
+  font-size: var(--text-xl);
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--text-primary);
   background: transparent;
   border: none;
   outline: none;
-  color: var(--text-ink);
-  font-size: 16px;
-  font-weight: 500;
-  font-family: var(--font-sans);
-  letter-spacing: 0.005em;
-  caret-color: var(--on-dark);
+  caret-color: var(--accent);
+  transition: all 0.12s var(--ease-out, ease);
 }
 
-.search-input::placeholder {
-  color: var(--text-ash);
-  font-weight: 400;
+.mt-search-input::placeholder {
+  color: var(--text-tertiary);
+  transition: all 0.12s var(--ease-out, ease);
 }
 
-.search-clear {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  border: none;
-  background: var(--surface-card);
-  color: var(--text-mute);
-  border-radius: var(--radius-xs);
-  cursor: pointer;
-  transition: all var(--duration-fast) var(--ease-out);
-}
-.search-clear:hover {
-  background: var(--surface-elevated);
-  color: var(--text-ink);
+.mt-search-input:focus::placeholder {
+  opacity: 0.5;
 }
 </style>

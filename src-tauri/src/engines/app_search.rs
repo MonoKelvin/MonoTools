@@ -47,10 +47,7 @@ impl AppSearchEngine {
             let p = PathBuf::from(userprofile).join("Desktop");
             Self::scan_dir(&p, &mut cache);
         }
-        // 自定义 path
-        for path in &self.settings.get().custom_app_paths {
-            Self::scan_dir(path, &mut cache);
-        }
+        // 自定义 path (removed in simplified mode)
 
         log::info!("App index: {} applications", cache.len());
         Ok(())

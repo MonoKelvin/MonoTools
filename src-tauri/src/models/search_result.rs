@@ -6,7 +6,6 @@ pub enum SearchCategory {
     Apps,
     Files,
     Commands,
-    Startup,
     All,
 }
 
