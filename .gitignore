@@ -51,8 +51,7 @@ src-tauri/gen/schemas/
 # Generated icons
 src-tauri/icons/*.png.bak
 
-# Cargo.lock (optional: remove if you want to track it)
-# Cargo.lock
+# Lockfiles
 
 # Tauri
 src-tauri/gen/
