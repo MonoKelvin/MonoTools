@@ -145,8 +145,9 @@ onBeforeUnmount(() => {
   border: 1px solid var(--glass-border);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.15),
-    0 8px 24px rgba(0, 0, 0, 0.3),
-    0 0 48px rgba(0, 0, 0, 0.22);
+    0 12px 40px rgba(0, 0, 0, 0.25),
+    0 24px 80px rgba(0, 0, 0, 0.15),
+    0 0 120px rgba(0, 0, 0, 0.1);
   user-select: none;
   animation: mt-menu-in var(--dur-fast) var(--ease-out);
   transform-origin: var(--mt-menu-origin, top left);
@@ -164,7 +165,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
   font-weight: 500;
@@ -172,6 +173,7 @@ onBeforeUnmount(() => {
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out);
+  min-height: 36px;
 }
 
 .mt-menu__row + .mt-menu__row {
