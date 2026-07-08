@@ -12,7 +12,7 @@
 use crate::error::{AppError, Result};
 use crate::models::FileResult;
 use parking_lot::Mutex;
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -22,7 +22,7 @@ struct MetaRow {
     path: String,
     name: String,
     ext: Option<String>,
-    size: u64,
+    size: i64,
     modified: i64,
     is_dir: i64,
 }
@@ -33,7 +33,7 @@ struct Record {
     path: PathBuf,
     name: String,
     extension: Option<String>,
-    size: u64,
+    size: i64,
     modified_at: i64,
     is_directory: bool,
 }
@@ -53,7 +53,7 @@ impl FileFts5Engine {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let conn = Connection::open(&db_path)?;
+        let conn = Connection::open_with_flags(&db_path, OpenFlags::default())?;
         Self::migrate(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -241,7 +241,7 @@ impl FileFts5Engine {
                         path_str,
                         rec.name,
                         rec.extension.unwrap_or_default(),
-                        rec.size,
+                        rec.size as i64,
                         rec.modified_at,
                         if rec.is_directory { 1 } else { 0 },
                     ],
@@ -365,8 +365,9 @@ impl FileFts5Engine {
     /// 获取索引文件总数
     pub fn total(&self) -> usize {
         let conn = self.db.lock();
-        conn.query_row("SELECT COUNT(*) FROM files_meta", [], |row| row.get(0))
-            .unwrap_or(0)
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM files_meta", [], |row| row.get(0))
+            .unwrap_or(0);
+        count as usize
     }
 }
 
@@ -378,7 +379,7 @@ fn build_record(path: PathBuf) -> Record {
     let metadata = std::fs::metadata(&path).ok();
     let (size, is_dir) = metadata
         .as_ref()
-        .map(|m| (m.len(), m.is_dir()))
+        .map(|m| (m.len() as i64, m.is_dir()))
         .unwrap_or((0, false));
     let modified = metadata
         .and_then(|m| m.modified().ok())

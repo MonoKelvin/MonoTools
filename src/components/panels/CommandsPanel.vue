@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { commandApi } from '@/services'
-import { Zap, Trash2, Plus, Play } from 'lucide-vue-next'
+import { Zap, Trash2, Plus, Play } from "@lucide/vue"
 import type { CustomCommand } from '@/types/command'
 
 const items = ref<CustomCommand[]>([])

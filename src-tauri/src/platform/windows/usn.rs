@@ -159,7 +159,7 @@ impl FileEngine for FallbackFileEngine {
                     path: r.full_path.clone(),
                     name: r.file_name.clone(),
                     extension: r.extension.clone(),
-                    size: r.file_size,
+                    size: r.file_size as i64,
                     modified_at: r.last_write_time,
                     is_directory: r.is_directory,
                 });

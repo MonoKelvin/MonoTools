@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Settings, TerminalSquare, Rocket, HelpCircle, ChevronUp, ChevronDown, CornerDownLeft } from 'lucide-vue-next'
+import { Settings, Terminal, Rocket, HelpCircle, ChevronUp, ChevronDown, CornerDownLeft } from "@lucide/vue"
 import ThemeToggle from '@/components/common/ThemeToggle.vue'
 import { hotkeyApi } from '@/services'
 
@@ -41,7 +41,7 @@ const goHelp = () => {
         <span>启动项</span>
       </button>
       <button class="action-btn" @click="goCommands" title="命令管理">
-        <TerminalSquare :size="13" :stroke-width="2" />
+        <Terminal :size="13" :stroke-width="2" />
         <span>命令</span>
       </button>
       <ThemeToggle />

@@ -8,7 +8,7 @@ pub struct FileResult {
     pub path: PathBuf,
     pub name: String,
     pub extension: Option<String>,
-    pub size: u64,
+    pub size: i64,
     pub modified_at: i64,
     pub is_directory: bool,
 }

@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useSettingsStore } from '@/stores/settings'
 import { useThemeStore } from '@/stores/theme'
 import { hotkeyApi } from '@/services'
-import { Palette, Keyboard, FolderSearch, Info } from 'lucide-vue-next'
+import { Palette, Keyboard, FolderSearch, Info } from "@lucide/vue"
 
 const settingsStore = useSettingsStore()
 const themeStore = useThemeStore()

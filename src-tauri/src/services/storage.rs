@@ -1,6 +1,6 @@
 //! SQLite 存储服务 - 持久化设置、命令、启动项、统计、历史
 use crate::error::{AppError, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -22,7 +22,7 @@ impl StorageService {
         std::fs::create_dir_all(&app_data)?;
         let db_path = app_data.join("monotools.db");
 
-        let conn = Connection::open(&db_path)?;
+        let conn = Connection::open_with_flags(&db_path, OpenFlags::default())?;
         let service = Self {
             conn: Arc::new(Mutex::new(conn)),
             path: db_path,

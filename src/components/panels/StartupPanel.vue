@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useStartupStore } from '@/stores/startup'
-import { Power, Trash2, RefreshCw, Plus, Search } from 'lucide-vue-next'
+import { Power, Trash2, RefreshCw, Plus, Search } from "@lucide/vue"
 import AddStartupModal from '@/components/startup/AddStartupModal.vue'
 
 const store = useStartupStore()

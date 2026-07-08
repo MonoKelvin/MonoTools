@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import { Search } from 'lucide-vue-next'
+import { Search } from "@lucide/vue"
 import { useSearchStore } from '@/stores/search'
 import { useSettingsStore } from '@/stores/settings'
 import { hotkeyApi } from '@/services'

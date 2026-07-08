@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
-import { FileText, FolderOpen, Terminal, Rocket } from 'lucide-vue-next'
+import { FileText, FolderOpen, Terminal, Rocket } from "@lucide/vue"
 
 const props = defineProps<{
   result: SearchResult

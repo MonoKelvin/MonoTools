@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
-import { Search } from 'lucide-vue-next'
+import { Search } from "@lucide/vue"
 
 const props = withDefaults(
   defineProps<{
