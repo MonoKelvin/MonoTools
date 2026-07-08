@@ -26,7 +26,8 @@
         "resizable": false,
         "visible": true,
         "center": true,
-        "backgroundColor": "#111111"
+        "backgroundColor": "#111111",
+        "shadow": true
       }
     ],
     "security": {

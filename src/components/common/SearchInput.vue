@@ -3,6 +3,8 @@ import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Search, X, Settings, Terminal, LogOut, Pin, Sun } from "@lucide/vue"
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/services/env'
+import MtMenu from './MtMenu.vue'
+import type { MtMenuItem } from './MtMenu.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -25,8 +27,6 @@ const inputRef = ref<HTMLInputElement | null>(null)
 const searchBarRef = ref<HTMLDivElement | null>(null)
 const localValue = ref(props.modelValue)
 const focused = ref(false)
-const showMenu = ref(false)
-const menuPos = ref({ x: 0, y: 0 })
 
 watch(() => props.modelValue, (v) => (localValue.value = v))
 watch(localValue, (v) => emit('update:modelValue', v))
@@ -44,13 +44,18 @@ onMounted(() => {
 
 // ========== 拖拽逻辑 ==========
 
+// 判断鼠标是否在文字区域内
 function isOverText(input: HTMLInputElement, clientX: number): boolean {
   const rect = input.getBoundingClientRect()
+
+  // 前 20% 安全区：始终允许光标定位到文字开头
   const frontBoundary = rect.left + rect.width * 0.2
   if (clientX <= frontBoundary) return true
 
+  // 没有文字时，其余区域可以拖拽
   if (!input.value || input.value.length === 0) return false
 
+  // 使用 canvas 测量文字实际渲染范围
   const style = getComputedStyle(input)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
@@ -62,30 +67,69 @@ function isOverText(input: HTMLInputElement, clientX: number): boolean {
   const suffixWidth = ctx.measureText(input.value.slice(-charCount)).width
   const textWidth = ctx.measureText(input.value).width
 
+  // 文字渲染范围（含前后 4 字符容差）
   const textAreaStart = rect.left + paddingLeft - prefixWidth
   const textAreaEnd = rect.left + paddingLeft + textWidth + suffixWidth
 
   return clientX >= textAreaStart && clientX <= textAreaEnd
 }
 
+// 整个搜索栏的 mousedown 处理
 async function handleSearchBarMousedown(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  // 点击输入框区域：不拖拽
-  if (target.closest('.search-input-wrapper')) {
-    return
-  }
+  console.log('Mouse down:', {
+    tag: target.tagName,
+    class: target.className,
+    isTauri,
+  })
 
-  // 点击 Logo 图标：触发右键菜单
+  // 点击 Logo 图标：不拖拽
   if (target.closest('.logo-area')) {
+    console.log('Clicked logo area')
     return
   }
 
-  // 点击其他区域：拖拽窗口
-  event.preventDefault()
+  // 点击清空按钮：不拖拽
+  if (target.closest('.search-clear')) {
+    console.log('Clicked clear button')
+    return
+  }
+
+  // 点击在输入框内：判断是否在文字区域
+  const input = inputRef.value
+  if (input && target.closest('.search-input-wrapper')) {
+    const overText = isOverText(input, event.clientX)
+
+    console.log('Clicked input area:', { overText, value: input.value })
+
+    if (overText) {
+      // 在文字区域：不拖拽，允许光标定位和文本选择
+      console.log('Over text, not dragging')
+      return
+    } else {
+      // 在输入框的空白区域：拖拽窗口
+      console.log('Input blank area, start dragging')
+      // 不 preventDefault，让浏览器默认行为处理
+      if (isTauri) {
+        try {
+          await invoke('start_dragging')
+          console.log('Dragging started successfully')
+        } catch (error) {
+          console.error('Failed to start dragging:', error)
+        }
+      }
+      return
+    }
+  }
+
+  // 点击在其他区域（搜索图标、输入框外的空白）：拖拽窗口
+  console.log('Other area, start dragging')
+  // 不 preventDefault
   if (isTauri) {
     try {
       await invoke('start_dragging')
+      console.log('Dragging started successfully')
     } catch (error) {
       console.error('Failed to start dragging:', error)
     }
@@ -129,30 +173,19 @@ const menuItems: MenuItem[] = [
   { key: 'quit', label: '退出', icon: LogOut, danger: true },
 ]
 
+const showLogoMenu = ref(false)
+const logoMenuPos = ref({ x: 0, y: 0 })
+
 function onLogoClick(event: MouseEvent) {
   event.preventDefault()
   event.stopPropagation()
 
-  // 计算菜单位置，限制在窗口内
   const logoRect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const menuWidth = 220
-  const menuHeight = 200
-
-  let x = logoRect.left
-  let y = logoRect.bottom + 4
-
-  // 防止菜单超出窗口右边界
-  if (x + menuWidth > window.innerWidth) {
-    x = window.innerWidth - menuWidth - 8
+  logoMenuPos.value = {
+    x: logoRect.left,
+    y: logoRect.bottom + 6
   }
-
-  // 防止菜单超出窗口下边界
-  if (y + menuHeight > window.innerHeight) {
-    y = logoRect.top - menuHeight - 4
-  }
-
-  menuPos.value = { x, y }
-  showMenu.value = true
+  showLogoMenu.value = true
 }
 
 function onLogoContextMenu(event: MouseEvent) {
@@ -165,41 +198,24 @@ function toggleTheme() {
   emit('contextmenu', new MouseEvent('contextmenu'))
 }
 
-function onMenuSelect(key: MenuKey) {
-  showMenu.value = false
-  switch (key) {
-    case 'settings':
-      emit('contextmenu', new CustomEvent('nav-to-settings'))
-      break
-    case 'commands':
-      emit('contextmenu', new CustomEvent('nav-to-commands'))
-      break
-    case 'theme':
-      toggleTheme()
-      break
-    case 'quit':
-      if (isTauri) invoke('quit_app').catch((e) => console.error('quit failed:', e))
-      break
+function onMenuSelect(item: MtMenuItem) {
+  showLogoMenu.value = false
+  if (item.key) {
+    switch (item.key as MenuKey) {
+      case 'settings':
+        emit('contextmenu', new CustomEvent('nav-to-settings'))
+        break
+      case 'commands':
+        emit('contextmenu', new CustomEvent('nav-to-commands'))
+        break
+      case 'theme':
+        toggleTheme()
+        break
+      case 'quit':
+        if (isTauri) invoke('quit_app').catch((e) => console.error('quit failed:', e))
+        break
+    }
   }
-}
-
-// 点击外部关闭菜单
-function handleClickOutside(event: MouseEvent) {
-  if (showMenu.value && !(event.target as HTMLElement).closest('.logo-menu')) {
-    showMenu.value = false
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('mousedown', handleClickOutside)
-})
-
-onBeforeUnmount(() => {
-  document.removeEventListener('mousedown', handleClickOutside)
-})
-
-function focus() {
-  inputRef.value?.focus()
 }
 
 defineExpose({ focus })
@@ -213,6 +229,7 @@ defineExpose({ focus })
     @mousedown="handleSearchBarMousedown"
     @mousemove="handleSearchBarMousemove"
     @mouseleave="handleSearchBarMouseleave"
+    data-tauri-drag-region
   >
     <!-- 搜索图标 -->
     <div class="search-icon" aria-hidden="true">
@@ -263,29 +280,22 @@ defineExpose({ focus })
       />
     </div>
 
-    <!-- Logo 右键菜单 -->
-    <Teleport to="body">
-      <Transition name="menu-fade">
-        <div
-          v-if="showMenu"
-          class="logo-menu-container"
-          :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }"
-        >
-          <div class="logo-menu">
-            <button
-              v-for="item in menuItems"
-              :key="item.key"
-              class="menu-item"
-              :class="{ 'menu-item--danger': item.danger }"
-              @click="onMenuSelect(item.key)"
-            >
-              <component :is="item.icon" :size="16" :stroke-width="2" />
-              <span class="menu-label">{{ item.label }}</span>
-            </button>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
+    <!-- Logo 右键菜单 (使用 MtMenu 组件) -->
+    <MtMenu
+      v-if="showLogoMenu"
+      :items="menuItems.map(item => ({
+        key: item.key,
+        label: item.label,
+        icon: item.icon,
+        danger: item.danger
+      }))"
+      v-model="showLogoMenu"
+      :x="logoMenuPos.x"
+      :y="logoMenuPos.y"
+      :anchor="'pointer'"
+      :min-width="180"
+      @select="onMenuSelect"
+    />
   </div>
 </template>
 
@@ -300,7 +310,6 @@ defineExpose({ focus })
   user-select: none;
   height: 52px;
   background: transparent;
-  -webkit-app-region: drag;
 }
 
 /* 搜索图标 */
@@ -312,10 +321,10 @@ defineExpose({ focus })
   width: 18px;
   height: 18px;
   color: var(--text-secondary);
-  pointer-events: none;
   z-index: 1;
   opacity: 0.8;
   transition: all 0.12s var(--ease-out, ease);
+  pointer-events: none;
 }
 
 .search-bar.is-focused .search-icon {
@@ -419,116 +428,5 @@ defineExpose({ focus })
   transition: all 0.12s var(--ease-out, ease);
 }
 
-/* Logo 菜单容器 */
-.logo-menu-container {
-  position: fixed;
-  z-index: 9999;
-  pointer-events: none;
-  max-width: 320px;
-  max-height: 400px;
-  overflow: hidden;
-}
-
-/* Logo 菜单 */
-.logo-menu {
-  min-width: 220px;
-  padding: var(--sp-2);
-  background: rgba(35, 35, 35, 0.85);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
-  backdrop-filter: blur(40px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.15),
-    0 8px 24px rgba(0, 0, 0, 0.3),
-    0 0 48px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  overflow-y: auto;
-  max-height: 400px;
-  pointer-events: auto;
-}
-
-/* 菜单项 */
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  width: 100%;
-  padding: var(--sp-2) var(--sp-3);
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: 400;
-  line-height: 1.4;
-  cursor: pointer;
-  transition: background-color 0.12s var(--ease-out, ease);
-  text-align: left;
-  white-space: nowrap;
-}
-
-.menu-item:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.menu-item:active:not(:disabled) {
-  background: rgba(255, 255, 255, 0.12);
-  transform: scale(0.98);
-}
-
-.menu-item svg {
-  flex-shrink: 0;
-  width: 16px;
-  height: 16px;
-  color: var(--text-secondary);
-  transition: color 0.12s var(--ease-out, ease);
-}
-
-.menu-item:hover svg {
-  color: var(--text-primary);
-}
-
-.menu-item--danger .menu-label {
-  color: #ff5f57;
-}
-
-.menu-item--danger:hover {
-  background: rgba(255, 95, 87, 0.15);
-}
-
-.menu-item--danger:active {
-  background: rgba(255, 95, 87, 0.2);
-}
-
-.menu-label {
-  flex: 1;
-  color: var(--text-primary);
-  font-weight: 400;
-}
-
 /* 过渡动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.12s var(--ease-out, ease);
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.menu-fade-enter-active,
-.menu-fade-leave-active {
-  transition: opacity 0.12s var(--ease-out, ease), transform 0.12s var(--ease-out, ease);
-}
-
-.menu-fade-enter-from,
-.menu-fade-leave-to {
-  opacity: 0;
-  transform: scale(0.95) translateY(-4px);
-}
 </style>

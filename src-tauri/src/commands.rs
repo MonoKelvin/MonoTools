@@ -260,9 +260,14 @@ pub async fn set_window_height(
 /// 应用层提供的"开始拖拽窗口"命令——前端 header 空白区域会触发。
 #[tauri::command]
 pub async fn start_dragging(window: tauri::WebviewWindow) -> Result<(), String> {
+    println!("[DEBUG] start_dragging called");
     window
         .start_dragging()
-        .map_err(|e| format!("Failed to start dragging: {e}"))?;
+        .map_err(|e| {
+            println!("[ERROR] Failed to start dragging: {}", e);
+            format!("Failed to start dragging: {e}")
+        })?;
+    println!("[DEBUG] Dragging started successfully");
     Ok(())
 }
 

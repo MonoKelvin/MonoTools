@@ -22,7 +22,7 @@ const props = withDefaults(
     anchor?: 'pointer' | 'top-left' | 'center'
     minWidth?: number
   }>(),
-  { anchor: 'pointer', minWidth: 220 },
+  { anchor: 'pointer', minWidth: 150 },
 )
 
 const emit = defineEmits<{
@@ -31,7 +31,6 @@ const emit = defineEmits<{
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
-const translate = ref({ x: 0, y: 0 })
 
 function positionPanel() {
   if (!rootRef.value) return
@@ -40,10 +39,12 @@ function positionPanel() {
   const vh = window.innerHeight
   const rect = el.getBoundingClientRect()
   const width = rect.width || props.minWidth
+  const height = rect.height
   const anchorX = props.x ?? 0
   const anchorY = props.y ?? 0
   let left = anchorX
   let top = anchorY
+
   if (props.anchor === 'center') {
     left = (vw - width) / 2
     top = (vh - height) / 2
@@ -52,7 +53,10 @@ function positionPanel() {
   if (top + height > vh - 8) top = vh - height - 8
   if (left < 8) left = 8
   if (top < 8) top = 8
-  translate.value = { x: left, y: top }
+
+  // 使用 CSS 变量传递位置，避免与动画的 transform 冲突
+  el.style.setProperty('--menu-x', `${left}px`)
+  el.style.setProperty('--menu-y', `${top}px`)
 }
 
 function close() { emit('update:modelValue', false) }
@@ -77,6 +81,8 @@ function onKey(event: KeyboardEvent) {
 }
 
 onMounted(async () => {
+  // 延迟定位，确保 DOM 完全渲染
+  await nextTick()
   await nextTick()
   positionPanel()
   window.addEventListener('mousedown', onWindowPointer, true)
@@ -93,18 +99,15 @@ onBeforeUnmount(() => {
 
 <template>
   <Teleport to="body">
-    <Transition name="mt-menu" appear>
+    <Transition name="mt-menu">
       <div
         v-if="visible"
         ref="rootRef"
         class="mt-menu"
-        :style="{
-          transform: `translate(${translate.x}px, ${translate.y}px)`,
-          minWidth: `${minWidth}px`,
-        }"
         role="menu"
       >
-        <ul class="mt-menu__list">
+        <div class="mt-menu__content">
+          <ul class="mt-menu__list">
           <li
             v-for="(item, idx) in items"
             :key="item.key ?? `i${idx}`"
@@ -126,6 +129,7 @@ onBeforeUnmount(() => {
             </template>
           </li>
         </ul>
+        </div>
       </div>
     </Transition>
   </Teleport>
@@ -134,23 +138,25 @@ onBeforeUnmount(() => {
 <style scoped>
 .mt-menu {
   position: fixed;
-  top: 0;
-  left: 0;
+  left: var(--menu-x, 0);
+  top: var(--menu-y, 0);
   z-index: 9999;
+  min-width: v-bind('`${minWidth}px`');
+}
+
+.mt-menu__content {
+  --mt-menu-blur: 48px;
+  --mt-menu-bg: rgb(17 17 17 / 0.78);
+
+  pointer-events: auto;
   border-radius: var(--radius-lg);
   padding: var(--sp-1);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: var(--mt-menu-bg);
+  backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
   border: 1px solid var(--glass-border);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.15),
-    0 12px 40px rgba(0, 0, 0, 0.25),
-    0 24px 80px rgba(0, 0, 0, 0.15),
-    0 0 120px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   user-select: none;
-  animation: mt-menu-in var(--dur-fast) var(--ease-out);
-  transform-origin: var(--mt-menu-origin, top left);
 }
 
 .mt-menu__list {
@@ -164,10 +170,10 @@ onBeforeUnmount(() => {
 .mt-menu__row {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
@@ -229,25 +235,33 @@ onBeforeUnmount(() => {
   margin: var(--sp-1) var(--sp-2);
 }
 
-.mt-menu-enter-active,
-.mt-menu-leave-active {
-  transition: opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
-}
-.mt-menu-enter-from,
-.mt-menu-leave-to {
-  opacity: 0;
-  transform: translate(v-bind('translate.x + 8')px, v-bind('translate.y + 4')px) scale(0.98);
+/* ========== 动画 ========== */
+
+.mt-menu-enter-active .mt-menu__content,
+.mt-menu-leave-active .mt-menu__content {
+  transition: transform var(--dur-fast) cubic-bezier(0.34, 1.12, 0.64, 1);
 }
 
-@keyframes mt-menu-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px) scale(0.98);
+.mt-menu-leave-active .mt-menu__content {
+  transition-duration: 0.16s;
+  transition-timing-function: var(--ease-out);
+}
+
+.mt-menu-enter-from .mt-menu__content,
+.mt-menu-leave-to .mt-menu__content {
+  transform: scale(0.94) translateY(-0.25rem);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-menu-enter-active .mt-menu__content,
+  .mt-menu-leave-active .mt-menu__content {
+    transition: none;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+
+  .mt-menu-enter-from .mt-menu__content,
+  .mt-menu-leave-to .mt-menu__content {
+    transform: none;
   }
 }
+
 </style>
