@@ -7,25 +7,7 @@ export const searchApi = {
     return call<SearchResult[]>('search', { query, options })
   },
   execute(item: SearchResult): Promise<void> {
-    return call<void>('execute_search_result', { item })
-  },
-}
-
-export const startupApi = {
-  list() {
-    return call<unknown[]>('list_startup_items', {})
-  },
-  toggle(id: string, enabled: boolean) {
-    return call<void>('toggle_startup_item', { id, enabled })
-  },
-  add(item: unknown) {
-    return call<string>('add_startup_item', { item })
-  },
-  remove(id: string) {
-    return call<void>('remove_startup_item', { id })
-  },
-  update(item: unknown) {
-    return call<void>('update_startup_item', { item })
+    return call<void>('execute_result', { item })
   },
 }
 
@@ -82,12 +64,24 @@ export const themeApi = {
 
 export const windowApi = {
   show() {
-    return call<void>('show_search_window', {})
+    return call<void>('show_window', {})
   },
   hide() {
-    return call<void>('hide_search_window', {})
+    return call<void>('hide_window', {})
   },
   toggle() {
-    return call<void>('toggle_search_window', {})
+    return call<void>('toggle_window', {})
+  },
+  setHeight(height: number) {
+    return call<void>('set_window_height', { height })
+  },
+}
+
+export const pinTopApi = {
+  get() {
+    return call<boolean>('get_pin_top', {})
+  },
+  set(value: boolean) {
+    return call<void>('set_pin_top', { value })
   },
 }

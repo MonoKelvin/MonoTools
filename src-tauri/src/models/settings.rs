@@ -36,6 +36,13 @@ pub struct Settings {
     pub auto_index_on_startup: bool,
     /// 同时搜索的类别
     pub enabled_categories: Vec<String>,
+    /// 窗口是否始终置顶
+    #[serde(default = "default_pin_to_top")]
+    pub pin_to_top: bool,
+}
+
+fn default_pin_to_top() -> bool {
+    true
 }
 
 impl Default for Settings {
@@ -43,7 +50,7 @@ impl Default for Settings {
         Self {
             hotkey: "Alt+Space".into(),
             theme: ThemeMode::Dark,
-            accent_color: "#ff6b6b".into(),
+            accent_color: "#ffffff".into(),
             custom_app_paths: vec![],
             file_search_enabled: true,
             file_search_roots: vec![],
@@ -55,6 +62,7 @@ impl Default for Settings {
                 "commands".into(),
                 "startup".into(),
             ],
+            pin_to_top: true,
         }
     }
 }
@@ -100,6 +108,11 @@ impl Settings {
             "autoIndexOnStartup" | "auto_index_on_startup" => {
                 if let Some(b) = value.as_bool() {
                     self.auto_index_on_startup = b;
+                }
+            }
+            "pinToTop" | "pin_to_top" => {
+                if let Some(b) = value.as_bool() {
+                    self.pin_to_top = b;
                 }
             }
             _ => {

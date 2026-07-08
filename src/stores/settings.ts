@@ -1,19 +1,20 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import type { Settings } from '@/types/settings'
-import { settingsApi } from '@/services/settingsApi'
+import { settingsApi } from '@/services'
 
 export const useSettingsStore = defineStore('settings', () => {
   const settings = ref<Settings>({
     hotkey: 'Alt+Space',
     theme: 'dark',
-    accentColor: '#ff6b6b',
+    accentColor: '#ffffff',
     fileSearchEnabled: true,
     fileSearchRoots: [],
     defaultDelaySeconds: 0,
     autoIndexOnStartup: true,
-    enabledCategories: ['apps', 'files', 'commands', 'startup'],
+    enabledCategories: ['apps', 'files', 'commands'],
     customAppPaths: [],
+    pinToTop: true,
   })
 
   async function load() {

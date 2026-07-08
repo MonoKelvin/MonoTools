@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ResultItem from '@/components/common/ResultItem.vue'
 import type { SearchResult } from '@/types/search'
+import { Search } from '@lucide/vue'
 
 defineProps<{
   results: SearchResult[]
@@ -15,12 +16,12 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="search-results" v-if="results.length || loading">
+  <div class="search-results-wrapper" data-tauri-drag-region v-if="results.length || loading">
     <div v-if="loading" class="empty">
       <div class="spinner"></div>
-      <span>搜索中...</span>
+      <span class="dim">搜索中...</span>
     </div>
-    <template v-else>
+    <div v-else class="search-results">
       <ResultItem
         v-for="(item, idx) in results"
         :key="item.id"
@@ -30,35 +31,44 @@ const emit = defineEmits<{
         @select="emit('select', $event)"
         @mouseover="emit('hover', idx)"
       />
-    </template>
+    </div>
   </div>
-  <div v-else-if="$slots.empty" class="empty">
+  <div v-else-if="$slots.empty" class="empty" data-tauri-drag-region>
     <slot name="empty" />
   </div>
 </template>
 
 <style scoped>
+.search-results-wrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .search-results {
   flex: 1;
   overflow-y: auto;
   min-height: 0;
   padding: 4px 6px 6px;
 }
+
 .empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 50px 20px;
-  color: var(--text-tertiary);
+  padding: 40px 20px;
+  color: var(--text-mute);
   font-size: 13px;
+  flex: 1;
 }
 .spinner {
   width: 18px;
   height: 18px;
-  border: 2px solid var(--border);
-  border-top-color: var(--accent);
+  border: 2px solid var(--hairline);
+  border-top-color: var(--on-dark);
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }

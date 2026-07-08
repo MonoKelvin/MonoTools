@@ -24,16 +24,10 @@
         "skipTaskbar": true,
         "transparent": true,
         "resizable": false,
-        "visible": false,
+        "visible": true,
         "center": true
       }
     ],
-    "trayIcon": {
-      "id": "monotools",
-      "iconPath": "icons/tray.png",
-      "iconAsTemplate": true,
-      "showMenuOnLeftClick": false
-    },
     "security": {
       "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }

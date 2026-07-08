@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import type { SearchResult, SearchOptions, SearchCategory } from '@/types/search'
 import { searchApi } from '@/services/searchApi'
 
-export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands' | 'startup'
+export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 
 const DEBOUNCE_MS = 60
 

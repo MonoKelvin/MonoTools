@@ -1,1 +1,10 @@
-export { searchApi, startupApi, commandApi, settingsApi, hotkeyApi, themeApi, windowApi } from './api'
+export {
+  searchApi,
+  commandApi,
+  settingsApi,
+  hotkeyApi,
+  themeApi,
+  windowApi,
+  pinTopApi,
+} from './api'
+export { isTauri } from './env'

@@ -15,7 +15,7 @@ pub mod utils;
 pub mod commands;
 
 pub use error::{AppError, Result};
-pub use types::{AppEntry, FileResult, SearchResult, StartupItem};
+pub use types::{AppEntry, FileResult, SearchResult};
 
 /// 启动 Tauri GUI 应用
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

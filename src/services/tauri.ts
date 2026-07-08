@@ -49,8 +49,6 @@ async function mockBackend<T>(cmd: string, args?: Record<string, unknown>): Prom
     case 'set_setting':
       mockSet(args?.key as string, args?.value)
       return true as T
-    case 'list_startup_items':
-      return [] as T
     case 'list_commands':
       return [] as T
     case 'show_search_window':

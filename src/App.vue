@@ -1,5 +1,5 @@
 <template>
-  <div :class="['app-root', themeClass]">
+  <div :class="['app-root', themeClass]" data-tauri-drag-region>
     <router-view />
   </div>
 </template>
@@ -10,10 +10,10 @@ import { useThemeStore } from '@/stores/theme'
 
 const themeStore = useThemeStore()
 
-const themeClass = computed(() => ({
-  'theme-dark': themeStore.mode === 'dark',
-  'theme-light': themeStore.mode === 'light',
-}))
+// Raycast 是 dark-only；保留 css class 但实际总是 dark
+const themeClass = computed(() => 'theme-dark')
+
+const _ = themeStore
 
 onMounted(async () => {
   await themeStore.applyTheme()
@@ -26,5 +26,17 @@ onMounted(async () => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--canvas);
+  color: var(--text-ink);
+  font-family: var(--font-sans);
+  -webkit-user-select: none;
+  user-select: none;
+  overflow: hidden;
+}
+
+.app-root :deep(input),
+.app-root :deep(textarea) {
+  -webkit-user-select: text;
+  user-select: text;
 }
 </style>

@@ -21,9 +21,6 @@ pub enum AppError {
     #[error("Hotkey already registered: {0}")]
     HotkeyAlreadyRegistered(String),
 
-    #[error("Startup item not found: {0}")]
-    StartupItemNotFound(String),
-
     #[error("Search error: {0}")]
     Search(String),
 

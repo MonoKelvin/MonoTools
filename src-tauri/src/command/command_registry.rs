@@ -55,7 +55,6 @@ pub async fn dispatch(input: &str, ctx: &CommandContext) -> crate::error::Result
     reg.register_boxed(Box::new(crate::command::cmd_search::SearchCommand));
     reg.register_boxed(Box::new(crate::command::cmd_launch::LaunchCommand));
     reg.register_boxed(Box::new(crate::command::cmd_open::OpenCommand));
-    reg.register_boxed(Box::new(crate::command::cmd_startup::StartupCommand));
     reg.register_boxed(Box::new(crate::command::cmd_command::CustomCommandHandler));
     reg.register_boxed(Box::new(crate::command::cmd_config::ConfigCommand));
     reg.register_boxed(Box::new(crate::command::cmd_help::HelpCommand));

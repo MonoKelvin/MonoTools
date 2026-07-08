@@ -1,11 +1,13 @@
 //! Tauri IPC Commands - 前端 ↔ 后端
 
-use crate::models::{CustomCommand, NewStartupItem, SearchResult, Settings, StartupItem};
+use crate::models::{CustomCommand, SearchResult, Settings};
 use crate::services::app_state::AppState;
 use crate::models::SearchAction;
 use crate::platform::windows::shell;
 use std::sync::Arc;
-use tauri::State;
+use tauri::{LogicalSize, Manager, State};
+
+const WINDOW_DEFAULT_WIDTH: f64 = 680.0;
 
 #[tauri::command]
 pub async fn search_cmd(
@@ -17,7 +19,6 @@ pub async fn search_cmd(
     results.extend(state.app_search.search(&query, limit));
     results.extend(state.file_search.search(&query, limit));
     results.extend(state.command_search.search(&query, limit));
-    results.extend(state.startup_search.search(&query, limit));
     results.sort_by(|a, b| {
         b.score
             .partial_cmp(&a.score)
@@ -38,7 +39,6 @@ pub async fn execute_result(
     if let SearchAction::Launch(path) = &item.action {
         state.stats_repo.record_launch(path, &item.title, chrono::Utc::now().timestamp());
     }
-    // 通过 web_window_handle 获取底层窗口并隐藏
     if let Some(h) = state.window.handle_for("search") {
         h.hide();
     }
@@ -96,75 +96,6 @@ pub async fn get_current_hotkey(state: State<'_, Arc<AppState>>) -> Result<Strin
 }
 
 #[tauri::command]
-pub async fn list_startup(state: State<'_, Arc<AppState>>) -> Result<Vec<StartupItem>, String> {
-    Ok(state.startup_search.list())
-}
-
-#[tauri::command]
-pub async fn toggle_startup(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-    enabled: bool,
-) -> Result<(), String> {
-    let items = state.startup_search.list();
-    if let Some(item) = items.into_iter().find(|i| i.id == id) {
-        let result = match item.source {
-            crate::models::StartupSource::RegistryRun => {
-                if enabled {
-                    crate::platform::windows::registry::write_run_key(false, &item.name, &item.command)
-                } else {
-                    crate::platform::windows::registry::write_run_key(
-                        false,
-                        &format!(".{}_disabled", item.name),
-                        "",
-                    )
-                }
-            }
-            _ => Ok(()),
-        };
-        if let Err(e) = result {
-            return Err(e.to_string());
-        }
-        state
-            .startup_repo
-            .update(
-                &id,
-                &StartupItem {
-                    enabled,
-                    ..item.clone()
-                },
-            )
-            .map_err(|e| e.to_string())?;
-        let _ = state.startup_search.refresh().await;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn add_startup(
-    state: State<'_, Arc<AppState>>,
-    item: NewStartupItem,
-) -> Result<String, String> {
-    use crate::services::startup::StartupManager;
-    let mgr = StartupManager::new(state.startup_repo.clone());
-    let id = mgr.add(item).await.map_err(|e| e.to_string())?;
-    state.startup_search.refresh().await.map_err(|e| e.to_string())?;
-    Ok(id)
-}
-
-#[tauri::command]
-pub async fn remove_startup(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<(), String> {
-    use crate::services::startup::StartupManager;
-    let mgr = StartupManager::new(state.startup_repo.clone());
-    mgr.remove(&id).await.map_err(|e| e.to_string())?;
-    state.startup_search.refresh().await.map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
 pub async fn add_command(
     state: State<'_, Arc<AppState>>,
     cmd: CustomCommand,
@@ -188,10 +119,7 @@ pub async fn remove_command(
 }
 
 #[tauri::command]
-pub async fn run_command(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<(), String> {
+pub async fn run_command(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
     use crate::platform::windows;
     let Some(cmd) = state.command_repo.get(&id) else {
         return Err("Command not found".into());
@@ -248,9 +176,7 @@ pub async fn set_all_settings(
 }
 
 #[tauri::command]
-pub async fn get_appearance(
-    state: State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
+pub async fn get_appearance(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
     let s = state.settings_repo.get();
     Ok(serde_json::json!({
         "mode": s.theme,
@@ -276,7 +202,7 @@ pub async fn set_appearance(
     let accent = appearance
         .get("accent")
         .and_then(|v| v.as_str())
-        .unwrap_or("#ff6b6b")
+        .unwrap_or("#ffffff")
         .to_string();
     let res = state
         .settings_repo
@@ -285,4 +211,59 @@ pub async fn set_appearance(
             s.accent_color = accent;
         }));
     res.map(|_| ()).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_pin_top(state: State<'_, Arc<AppState>>) -> Result<bool, String> {
+    Ok(state.settings_repo.get().pin_to_top)
+}
+
+#[tauri::command]
+pub async fn set_pin_top(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+    value: bool,
+) -> Result<(), String> {
+    state
+        .settings_repo
+        .update(Box::new(move |s| {
+            s.pin_to_top = value;
+        }))
+        .map_err(|e| e.to_string())?;
+    if let Some(w) = app.get_webview_window("search") {
+        let _ = w.set_always_on_top(value);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_window_height(
+    app: tauri::AppHandle,
+    height: u32,
+) -> Result<(), String> {
+    let Some(w) = app.get_webview_window("search") else {
+        return Ok(());
+    };
+    if height < 180 || height > 900 {
+        return Ok(());
+    }
+    // 只改高度，宽度固定来自配置，永远不重新读取当前 width
+    let _ = w.set_size(LogicalSize::new(WINDOW_DEFAULT_WIDTH, height as f64));
+    Ok(())
+}
+
+/// 应用层提供的"开始拖拽窗口"命令——前端 header 空白区域会触发。
+#[tauri::command]
+pub async fn start_dragging(window: tauri::WebviewWindow) -> Result<(), String> {
+    window
+        .start_dragging()
+        .map_err(|e| format!("Failed to start dragging: {e}"))?;
+    Ok(())
+}
+
+/// 退出整个应用（被 menu 关闭 / Quit 等调用）。
+#[tauri::command]
+pub async fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
 }

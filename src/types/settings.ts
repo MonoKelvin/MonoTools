@@ -10,6 +10,7 @@ export interface Settings {
   autoIndexOnStartup: boolean
   enabledCategories: string[]
   customAppPaths: string[]
+  pinToTop: boolean
 }
 
 export interface Appearance {

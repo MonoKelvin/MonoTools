@@ -83,19 +83,6 @@ impl Command for SearchCommand {
                     })
                 }),
         );
-        results.extend(
-            ctx.startup_search
-                .search(&query, limit)
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "title": r.title,
-                        "subtitle": r.subtitle,
-                        "category": r.category,
-                        "score": r.score,
-                    })
-                }),
-        );
 
         let mut arr = results;
         arr.sort_by(|a, b| {

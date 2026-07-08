@@ -1,10 +1,10 @@
 <script setup lang="ts">
 defineProps<{
-  active: 'all' | 'apps' | 'files' | 'commands' | 'startup'
+  active: 'all' | 'apps' | 'files' | 'commands'
 }>()
 
 const emit = defineEmits<{
-  (e: 'select', c: 'all' | 'apps' | 'files' | 'commands' | 'startup'): void
+  (e: 'select', c: 'all' | 'apps' | 'files' | 'commands'): void
 }>()
 
 const tabs = [
@@ -12,12 +12,11 @@ const tabs = [
   { id: 'apps', label: '应用' },
   { id: 'files', label: '文件' },
   { id: 'commands', label: '命令' },
-  { id: 'startup', label: '启动项' },
 ] as const
 </script>
 
 <template>
-  <div class="category-tabs">
+  <div class="category-tabs" data-tauri-drag-region>
     <button
       v-for="t in tabs"
       :key="t.id"
@@ -34,31 +33,30 @@ const tabs = [
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+  border-top: 1px solid var(--hairline);
+  border-bottom: 1px solid var(--hairline);
+  background: transparent;
   flex-shrink: 0;
 }
 .category-tab {
-  padding: 4px 12px;
+  padding: 4px 10px;
   font-size: 12px;
-  color: var(--text-secondary);
+  font-weight: 500;
+  color: var(--text-body);
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-full);
   cursor: pointer;
   transition: all var(--duration-fast) var(--ease-out);
-  font-weight: 500;
+  letter-spacing: 0.01em;
 }
 .category-tab:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
-}
-:global(.theme-light) .category-tab:hover {
-  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-ink);
+  background: var(--hairline-soft);
 }
 .category-tab.is-active {
-  background: var(--accent-subtle);
-  color: var(--accent);
-  font-weight: 600;
+  background: var(--surface-elevated);
+  color: var(--on-dark);
 }
 </style>

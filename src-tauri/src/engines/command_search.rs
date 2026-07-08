@@ -1,20 +1,15 @@
 //! 自定义命令搜索 - 与应用引擎并列
 use crate::models::{SearchAction, SearchCategory, SearchResult};
-use crate::repositories::{CommandRepo, StartupRepo};
+use crate::repositories::CommandRepo;
 use std::sync::Arc;
 
 pub struct CommandSearchEngine {
     pub command_repo: Arc<dyn CommandRepo>,
-    #[allow(dead_code)]
-    pub startup_repo: Arc<dyn StartupRepo>,
 }
 
 impl CommandSearchEngine {
-    pub fn new(command_repo: Arc<dyn CommandRepo>, startup_repo: Arc<dyn StartupRepo>) -> Self {
-        Self {
-            command_repo,
-            startup_repo,
-        }
+    pub fn new(command_repo: Arc<dyn CommandRepo>) -> Self {
+        Self { command_repo }
     }
 
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {

@@ -21,10 +21,6 @@ pub mod stub {
         Ok(())
     }
 
-    pub fn list_startup_folder() -> Result<Vec<(String, String)>> {
-        Ok(vec![])
-    }
-
     pub async fn read_usn_journal() -> Result<()> {
         Err(AppError::Other("USN Journal 仅支持 Windows".into()))
     }

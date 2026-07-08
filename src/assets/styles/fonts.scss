@@ -1,4 +1,7 @@
-// 思源黑体（Noto Sans CJK / Source Han Sans）字体导入
+// Inter (Google Fonts) + Source Han Sans (本地) 中文回退
+// Raycast 品牌字体：Inter with stylistic set ss03
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 @font-face {
   font-family: 'Source Han Sans';
   src: url('../fonts/思源黑体-Regular.otf') format('opentype');

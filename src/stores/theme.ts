@@ -6,8 +6,9 @@ import { settingsApi } from '@/services/settingsApi'
 const THEME_KEY = 'theme'
 
 export const useThemeStore = defineStore('theme', () => {
+  // Raycast 是 dark-only。保留 mode 字段以兼容设置存储，但 UI 永远渲染 dark。
   const mode = ref<ThemeMode>('dark')
-  const accent = ref('#ff6b6b')
+  const accent = ref('#ffffff')
 
   async function init() {
     try {
@@ -30,14 +31,8 @@ export const useThemeStore = defineStore('theme', () => {
   function updateClass() {
     const html = document.documentElement
     html.classList.remove('theme-dark', 'theme-light')
-    if (mode.value === 'auto') {
-      const system = window.matchMedia('(prefers-color-scheme: dark)').matches
-      html.classList.add(system ? 'theme-dark' : 'theme-light')
-      html.style.colorScheme = system ? 'dark' : 'light'
-    } else {
-      html.classList.add(`theme-${mode.value}`)
-      html.style.colorScheme = mode.value === 'dark' ? 'dark' : 'light'
-    }
+    html.classList.add('theme-dark')
+    html.style.colorScheme = 'dark'
     document.documentElement.style.setProperty('--accent', accent.value)
   }
 
@@ -55,9 +50,7 @@ export const useThemeStore = defineStore('theme', () => {
 
   function listenSystemTheme() {
     if (!window.matchMedia) return
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const fn = () => mode.value === 'auto' && updateClass()
-    mq.addEventListener?.('change', fn)
+    // dark-only: no-op listener, but keep the contract stable
   }
 
   return { mode, accent, init, applyTheme, setMode, setAccent }

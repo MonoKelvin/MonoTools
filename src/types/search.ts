@@ -1,4 +1,4 @@
-export type SearchCategory = 'apps' | 'files' | 'commands' | 'startup'
+export type SearchCategory = 'apps' | 'files' | 'commands'
 
 export interface SearchOptions {
   categories: SearchCategory[]

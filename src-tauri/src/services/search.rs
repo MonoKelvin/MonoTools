@@ -2,7 +2,6 @@
 use crate::engines::app_search::AppSearchEngine;
 use crate::engines::command_search::CommandSearchEngine;
 use crate::engines::file_search::FileSearchService;
-use crate::engines::startup_search::StartupSearchService;
 use crate::models::{SearchAction, SearchResult};
 use std::sync::Arc;
 
@@ -10,7 +9,6 @@ pub struct SearchEngine {
     pub apps: Arc<AppSearchEngine>,
     pub files: Arc<FileSearchService>,
     pub commands: Arc<CommandSearchEngine>,
-    pub startups: Arc<StartupSearchService>,
 }
 
 impl SearchEngine {
@@ -18,13 +16,11 @@ impl SearchEngine {
         apps: Arc<AppSearchEngine>,
         files: Arc<FileSearchService>,
         commands: Arc<CommandSearchEngine>,
-        startups: Arc<StartupSearchService>,
     ) -> Self {
         Self {
             apps,
             files,
             commands,
-            startups,
         }
     }
 
@@ -34,7 +30,6 @@ impl SearchEngine {
         combined.extend(self.apps.search(query, limit));
         combined.extend(self.files.search(query, limit));
         combined.extend(self.commands.search(query, limit));
-        combined.extend(self.startups.search(query, limit));
 
         combined.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         combined.truncate(limit as usize);

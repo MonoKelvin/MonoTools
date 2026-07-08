@@ -1,5 +1,3 @@
-import type { StartupItem } from './startup'
-
 export interface CustomCommand {
   id: string
   name: string
@@ -29,5 +27,3 @@ export interface AppStat {
   lastLaunched: number
   name: string
 }
-
-export type { StartupItem }
