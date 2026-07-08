@@ -67,6 +67,11 @@ const onHover = (idx: number) => { search.selectedIndex = idx }
 const onQueryChange = (val: string) => search.setQuery(val)
 const onCategorySelect = (cat: any) => search.setCategory(cat)
 
+const onLogoContextMenu = (event: MouseEvent) => {
+  // Logo 右键菜单事件处理
+  console.log('Logo context menu triggered')
+}
+
 const tryRegisterHotkey = async () => {
   if (!isTauri) return
   try { await hotkeyApi.register(settings.settings.hotkey) }
@@ -105,6 +110,7 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
         @arrow-down="onDown"
         @arrow-up="onUp"
         @escape="onEscape"
+        @contextmenu="onLogoContextMenu"
         autofocus
       />
       <CategoryTabs
