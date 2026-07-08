@@ -2,7 +2,7 @@
 use crate::error::Result;
 use crate::models::{AppEntry, SearchAction, SearchResult};
 use crate::repositories::{
-    InMemorySettingsRepo, SettingsRepo,
+    SettingsRepo,
 };
 use crate::utils::path::is_executable;
 use crate::platform::windows::shell::resolve_shortcut;

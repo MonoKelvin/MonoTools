@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref } from 'vue'
 import { commandApi } from '@/services'
+import { Zap, Trash2, Plus, Play } from 'lucide-vue-next'
 import type { CustomCommand } from '@/types/command'
 
 const items = ref<CustomCommand[]>([])
@@ -52,27 +53,35 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="commands-page">
-    <header class="page-header">
+  <div class="panel">
+    <div class="panel-header">
       <div>
-        <h1 class="page-title">自定义命令</h1>
-        <p class="page-subtitle">通过关键字执行 Shell 命令或程序</p>
+        <h1 class="panel-title">自定义命令</h1>
+        <p class="panel-subtitle">通过关键字执行 Shell 命令或程序</p>
       </div>
-      <button class="btn btn-primary" @click="showAdd = true">+ 添加</button>
-    </header>
+      <button class="btn btn-primary" @click="showAdd = true">
+        <Plus :size="14" :stroke-width="2" />
+        添加
+      </button>
+    </div>
 
     <ul v-if="items.length" class="command-list">
       <li v-for="cmd in items" :key="cmd.id" class="command-card">
-        <span class="command-icon">⚡</span>
+        <div class="command-icon">
+          <Zap :size="16" :stroke-width="2.5" />
+        </div>
         <div style="flex:1; min-width:0">
           <div class="command-name">{{ cmd.name }}</div>
           <div class="command-keyword mono">{{ cmd.keyword }}</div>
-          <div class="command-cmd mono">
-            {{ cmd.command + ' ' + cmd.args.join(' ') }}
-          </div>
+          <div class="command-cmd mono">{{ cmd.command + ' ' + cmd.args.join(' ') }}</div>
         </div>
-        <button class="btn btn-ghost" @click="runCmd(cmd.id)">Run</button>
-        <button class="btn-icon" @click="remove(cmd.id)" title="删除">✕</button>
+        <button class="btn btn-ghost btn-sm" @click="runCmd(cmd.id)">
+          <Play :size="12" :stroke-width="2.5" />
+          运行
+        </button>
+        <button class="btn-icon btn-sm" @click="remove(cmd.id)" title="删除">
+          <Trash2 :size="14" :stroke-width="2" />
+        </button>
       </li>
     </ul>
 
@@ -98,9 +107,9 @@ onMounted(load)
           <input v-model="form.args" class="input" placeholder="status" />
         </div>
         <div class="form-row form-check">
-          <label>
+          <label class="check-label">
             <input v-model="form.runAsAdmin" type="checkbox" />
-            以管理员权限运行
+            <span>以管理员权限运行</span>
           </label>
         </div>
         <div class="modal-actions">
@@ -113,26 +122,29 @@ onMounted(load)
 </template>
 
 <style scoped>
-.commands-page {
-  padding: 32px 40px;
-  height: 100%;
+.panel {
+  padding: 16px 20px;
   overflow-y: auto;
+  height: 100%;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
-.page-header {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
+  gap: 12px;
 }
-.page-title {
+.panel-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
-.page-subtitle {
-  margin: 4px 0 0 0;
-  font-size: 13px;
+.panel-subtitle {
+  margin: 3px 0 0 0;
+  font-size: 12px;
   color: var(--text-secondary);
 }
 .command-list {
@@ -141,16 +153,17 @@ onMounted(load)
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 .command-card {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
+  gap: 10px;
+  padding: 10px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .command-card:hover {
   border-color: var(--border-hover);
@@ -161,29 +174,32 @@ onMounted(load)
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  background: rgba(255, 200, 0, 0.15);
+  border-radius: var(--radius-sm);
+  background: rgba(252, 196, 25, 0.12);
   color: #fcc419;
-  font-size: 18px;
+  flex-shrink: 0;
 }
 .command-name {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.3;
 }
 .command-keyword {
   font-size: 11px;
   color: var(--text-tertiary);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .command-cmd {
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .empty {
-  padding: 60px;
+  padding: 40px;
   text-align: center;
   color: var(--text-tertiary);
+  font-size: 13px;
 }
 .form-row {
   margin-bottom: 12px;
@@ -194,19 +210,23 @@ onMounted(load)
   color: var(--text-secondary);
   margin-bottom: 4px;
 }
-.form-check label {
+.form-check .check-label {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
 }
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 24px;
+  margin-top: 20px;
 }
 .modal-title {
-  margin: 0 0 16px 0;
-  font-size: 20px;
+  margin: 0 0 14px 0;
+  font-size: 16px;
+  font-weight: 600;
 }
 </style>

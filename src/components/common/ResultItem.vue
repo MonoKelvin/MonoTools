@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
+import { FileText } from 'lucide-vue-next'
 
 const props = defineProps<{
   result: SearchResult
@@ -12,25 +13,14 @@ const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
 }>()
 
-const iconChar = computed(() => {
-  const m = props.result.title?.[0] || '?'
-  return m.toUpperCase()
-})
-
-const actionLabel = computed(() => {
-  const a = props.result.action
-  switch (a.type) {
-    case 'launch':
-      return '⏎ Open'
-    case 'open':
-      return '⏎ Open File'
-    case 'run':
-      return '⏎ Run'
-    case 'navigate':
-      return '⏎ Go'
-    default:
-      return ''
+const IconComponent = computed(() => {
+  const map: Record<string, typeof FileText> = {
+    apps: FileText,
+    files: FileText,
+    commands: FileText,
+    startup: FileText,
   }
+  return map[props.result.category] || FileText
 })
 
 const color = computed(() => {
@@ -55,13 +45,15 @@ const color = computed(() => {
     @click="emit('select', result)"
   >
     <div class="result-icon" :style="{ background: color }">
-      {{ iconChar }}
+      <component :is="IconComponent" :size="16" :stroke-width="2.5" />
     </div>
     <div style="flex: 1; min-width: 0">
       <div class="result-title">{{ result.title }}</div>
       <div class="result-subtitle">{{ result.subtitle }}</div>
     </div>
-    <div class="result-action">{{ actionLabel }}</div>
+    <div class="result-action">
+      <span class="action-hint">Enter</span>
+    </div>
   </div>
 </template>
 
@@ -69,20 +61,32 @@ const color = computed(() => {
 .result-item {
   display: flex;
   align-items: center;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-radius: var(--radius-sm);
   gap: 12px;
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-out);
+  transition: all var(--duration-fast) var(--ease-out);
   user-select: none;
 }
 .result-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.04);
+}
+:global(.theme-light) .result-item:hover {
+  background: rgba(0, 0, 0, 0.03);
 }
 .result-item.is-active {
-  background: var(--accent-subtle);
-  border-left: 2px solid var(--accent);
-  padding-left: 10px;
+  background: var(--accent);
+  color: white;
+}
+.result-item.is-active .result-subtitle {
+  color: rgba(255, 255, 255, 0.8);
+}
+.result-item.is-active .result-icon {
+  background: rgba(255, 255, 255, 0.2);
+}
+.result-item.is-active .action-hint {
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
 }
 .result-icon {
   flex-shrink: 0;
@@ -93,28 +97,41 @@ const color = computed(() => {
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 16px;
-  font-weight: 600;
+  transition: background var(--duration-fast) var(--ease-out);
 }
 .result-title {
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.3;
 }
 .result-subtitle {
   font-size: 11px;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .result-action {
   margin-left: auto;
-  font-size: 11px;
-  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.action-hint {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
   font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+:global(.theme-light) .action-hint {
+  background: rgba(0, 0, 0, 0.03);
 }
 </style>

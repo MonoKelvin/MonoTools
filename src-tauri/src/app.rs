@@ -12,7 +12,6 @@ pub mod app {
     use crate::models::Settings;
     use std::sync::Arc;
     use tauri::Manager;
-    use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
     pub fn run() {
         if std::env::var("RUST_LOG").is_err() {
@@ -41,8 +40,11 @@ pub mod app {
                         command_repo.clone(),
                         startup_repo.clone(),
                     ));
-                    let file_search = Arc::new(FileSearchService::new());
-                    let _ = file_search.build_index().await;
+                    let file_roots = settings_repo.get().file_search_roots.clone();
+                    let file_search = Arc::new(FileSearchService::new(file_roots));
+                    if !file_roots.is_empty() {
+                        let _ = file_search.build_index().await;
+                    }
                     startup_search.refresh().await?;
 
                     let hotkey = Arc::new(HotkeyService::new());
@@ -66,18 +68,6 @@ pub mod app {
                 })?;
 
                 app.manage(state.clone());
-
-                // 后台文件索引
-                {
-                    let s = state.clone();
-                    std::thread::spawn(move || {
-                        tauri::async_runtime::block_on(async move {
-                            if let Err(e) = s.file_search.build_index().await {
-                                log::warn!("文件索引失败: {e}");
-                            }
-                        });
-                    });
-                }
 
                 // 注册快捷键
                 let app_handle_for_setup = app.handle().clone();

@@ -8,7 +8,7 @@
 //! - `FallbackUsnJournal` — 基于 walkdir 扫描目录，作为兜底
 //! - `WinUsnJournal` — 调用 Win32 API（feature-gated）
 
-use crate::error::{AppError, Result};
+use crate::error::Result;
 use crate::models::FileResult;
 use parking_lot::RwLock;
 use std::collections::HashMap;

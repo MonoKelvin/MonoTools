@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { Search } from 'lucide-vue-next'
 
 const props = withDefaults(
   defineProps<{
@@ -7,7 +8,7 @@ const props = withDefaults(
     placeholder?: string
     autofocus?: boolean
   }>(),
-  { placeholder: 'Search apps, files, commands...', autofocus: false },
+  { placeholder: '搜索应用、文件、命令...', autofocus: false },
 )
 
 const emit = defineEmits<{
@@ -20,6 +21,7 @@ const emit = defineEmits<{
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const localValue = ref(props.modelValue)
+const focused = ref(false)
 
 watch(() => props.modelValue, (v) => (localValue.value = v))
 watch(localValue, (v) => emit('update:modelValue', v))
@@ -41,30 +43,16 @@ const onKeydown = (e: KeyboardEvent) => {
 }
 
 if (props.autofocus) {
-  setTimeout(() => inputRef.value?.focus(), 0)
+  setTimeout(() => inputRef.value?.focus(), 50)
 }
 
-const focused = ref(false)
 const focusInput = () => inputRef.value?.focus()
 defineExpose({ focus: focusInput })
 </script>
 
 <template>
-  <div class="search-input-wrapper">
-    <svg
-      class="search-icon"
-      width="18"
-      height="18"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <circle cx="11" cy="11" r="8" />
-      <path d="m21 21-4.3-4.3" />
-    </svg>
+  <div class="search-input-wrapper" :class="{ 'is-focused': focused }">
+    <Search class="search-icon" :size="18" :stroke-width="2" />
     <input
       ref="inputRef"
       v-model="localValue"
@@ -78,7 +66,9 @@ defineExpose({ focus: focusInput })
       @focus="focused = true"
       @blur="focused = false"
     />
-    <span class="kbd">ESC</span>
+    <Transition name="fade">
+      <kbd v-if="localValue" class="esc-key" @click="localValue = ''">ESC</kbd>
+    </Transition>
   </div>
 </template>
 
@@ -86,20 +76,33 @@ defineExpose({ focus: focusInput })
 .search-input-wrapper {
   display: flex;
   align-items: center;
-  padding: 14px 18px;
+  padding: 14px 20px;
   gap: 12px;
   border-bottom: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.02);
+  transition: background var(--duration-fast) var(--ease-out);
 }
 :global(.theme-light) .search-input-wrapper {
-  background: rgba(0, 0, 0, 0.02);
+  background: rgba(0, 0, 0, 0.015);
 }
+.search-input-wrapper.is-focused {
+  background: rgba(255, 255, 255, 0.04);
+}
+:global(.theme-light) .search-input-wrapper.is-focused {
+  background: rgba(0, 0, 0, 0.03);
+}
+
 .search-icon {
   flex-shrink: 0;
   width: 18px;
   height: 18px;
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast) var(--ease-out);
 }
+.search-input-wrapper.is-focused .search-icon {
+  color: var(--accent);
+}
+
 .search-input {
   flex: 1;
   background: transparent;
@@ -108,8 +111,35 @@ defineExpose({ focus: focusInput })
   color: var(--text-primary);
   font-size: 16px;
   font-family: var(--font-family);
+  letter-spacing: 0.01em;
 }
 .search-input::placeholder {
   color: var(--text-tertiary);
+}
+
+.esc-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+  line-height: 1.4;
+}
+:global(.theme-light) .esc-key {
+  background: rgba(0, 0, 0, 0.04);
+}
+.esc-key:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+:global(.theme-light) .esc-key:hover {
+  background: rgba(0, 0, 0, 0.07);
 }
 </style>

@@ -10,21 +10,23 @@ use std::sync::Arc;
 pub struct FileSearchService {
     pub engine: RwLock<Option<Arc<dyn FileEngine>>>,
     pub settings: Arc<dyn SettingsRepo>,
+    roots: Vec<PathBuf>,
 }
 
 impl FileSearchService {
-    pub fn new() -> Self {
+    pub fn new(roots: Vec<PathBuf>) -> Self {
         let settings: Arc<dyn SettingsRepo> = Arc::new(crate::repositories::InMemorySettingsRepo::new(
             crate::models::Settings::default(),
         ));
         Self {
             engine: RwLock::new(None),
             settings,
+            roots,
         }
     }
 
     pub async fn build_index(&self) -> Result<()> {
-        let roots: Vec<PathBuf> = self.settings.get().file_search_roots.clone();
+        let roots = self.roots.clone();
         let engine = Arc::new(FallbackFileEngine::new(roots));
         engine.build_index()?;
         *self.engine.write() = Some(engine);

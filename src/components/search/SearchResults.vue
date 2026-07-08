@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ResultItem from '@/components/common/ResultItem.vue'
 import type { SearchResult } from '@/types/search'
+import { FolderOpen, FileText, Terminal, Rocket } from 'lucide-vue-next'
 
 defineProps<{
   results: SearchResult[]
@@ -12,6 +13,20 @@ const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
   (e: 'hover', index: number): void
 }>()
+
+const categoryIcons: Record<string, typeof FolderOpen> = {
+  apps: FolderOpen,
+  files: FileText,
+  commands: Terminal,
+  startup: Rocket,
+}
+
+const categoryColors: Record<string, string> = {
+  apps: '#339af0',
+  files: '#51cf66',
+  commands: '#fcc419',
+  startup: '#ff6b6b',
+}
 </script>
 
 <template>
@@ -41,21 +56,22 @@ const emit = defineEmits<{
 .search-results {
   flex: 1;
   overflow-y: auto;
-  min-height: 200px;
-  padding: 6px;
+  min-height: 0;
+  padding: 4px 6px 6px;
 }
 .empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
-  padding: 60px 20px;
+  gap: 10px;
+  padding: 50px 20px;
   color: var(--text-tertiary);
   font-size: 13px;
 }
 .spinner {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border: 2px solid var(--border);
   border-top-color: var(--accent);
   border-radius: 50%;

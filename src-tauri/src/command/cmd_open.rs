@@ -15,7 +15,7 @@ impl Command for OpenCommand {
     async fn execute(
         &self,
         args: &[String],
-        ctx: &CommandContext,
+        _ctx: &CommandContext,
     ) -> crate::error::Result<CommandOutput> {
         if args.is_empty() {
             return Ok(CommandOutput::err("用法：open <path>"));

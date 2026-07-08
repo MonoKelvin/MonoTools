@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useStartupStore } from '@/stores/startup'
+import { Power, Trash2, RefreshCw, Plus, Search } from 'lucide-vue-next'
 import AddStartupModal from '@/components/startup/AddStartupModal.vue'
 
 const store = useStartupStore()
@@ -58,24 +59,32 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="startup-page">
-    <div class="page-header">
+  <div class="panel">
+    <div class="panel-header">
       <div>
-        <h1 class="page-title">启动项管理</h1>
-        <p class="page-subtitle">
+        <h1 class="panel-title">启动项管理</h1>
+        <p class="panel-subtitle">
           共 {{ headersCount.total }} 项 · 已启用 {{ headersCount.enabled }} ·
           已禁用 {{ headersCount.disabled }}
         </p>
       </div>
-      <div class="page-actions">
-        <input
-          v-model="keyword"
-          class="input"
-          placeholder="搜索启动项..."
-          style="width: 220px"
-        />
-        <button class="btn btn-ghost" @click="refresh">↻ 刷新</button>
-        <button class="btn btn-primary" @click="showAdd = true">+ 添加</button>
+      <div class="panel-actions">
+        <div class="search-mini">
+          <Search :size="13" :stroke-width="2" class="search-mini-icon" />
+          <input
+            v-model="keyword"
+            class="input input-mini"
+            placeholder="搜索启动项..."
+          />
+        </div>
+        <button class="btn btn-ghost" @click="refresh">
+          <RefreshCw :size="13" :stroke-width="2" />
+          刷新
+        </button>
+        <button class="btn btn-primary" @click="showAdd = true">
+          <Plus :size="13" :stroke-width="2" />
+          添加
+        </button>
       </div>
     </div>
 
@@ -120,11 +129,11 @@ onMounted(() => {
             <span v-if="item.runAsAdmin" class="badge">管理员</span>
           </div>
         </div>
-        <button class="btn btn-ghost" @click="onToggle(item)">
+        <button class="btn btn-ghost btn-sm" @click="onToggle(item)">
           {{ item.enabled ? '禁用' : '启用' }}
         </button>
-        <button class="btn-icon" @click="store.remove(item.id)" title="删除">
-          ✕
+        <button class="btn-icon btn-sm" @click="store.remove(item.id)" title="删除">
+          <Trash2 :size="14" :stroke-width="2" />
         </button>
       </li>
     </ul>
@@ -134,65 +143,87 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.startup-page {
-  padding: 32px 40px;
-  height: 100%;
+.panel {
+  padding: 16px 20px;
   overflow-y: auto;
+  height: 100%;
   background: var(--bg-primary);
   color: var(--text-primary);
 }
-.page-header {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  margin-bottom: 24px;
+  margin-bottom: 14px;
+  gap: 12px;
 }
-.page-title {
+.panel-title {
   margin: 0;
-  font-size: 28px;
+  font-size: 18px;
   font-weight: 600;
+  letter-spacing: 0.01em;
 }
-.page-subtitle {
-  margin: 4px 0 0 0;
-  font-size: 13px;
+.panel-subtitle {
+  margin: 3px 0 0 0;
+  font-size: 12px;
   color: var(--text-secondary);
 }
-.page-actions {
+.panel-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+  flex-shrink: 0;
+}
+.search-mini {
+  position: relative;
+}
+.search-mini-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+.input-mini {
+  width: 150px !important;
+  padding-left: 30px !important;
 }
 .filter-row {
   display: flex;
   gap: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 .filter-row .category-tab {
-  padding: 6px 12px;
+  padding: 5px 12px;
   font-size: 12px;
   color: var(--text-secondary);
   background: transparent;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .filter-row .category-tab:hover {
-  background: var(--border);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-primary);
 }
 .filter-row .category-tab.is-active {
   background: var(--accent-subtle);
   color: var(--accent);
   border-color: var(--accent);
+  font-weight: 600;
 }
 .empty {
   text-align: center;
-  padding: 60px;
+  padding: 40px;
   color: var(--text-tertiary);
+  font-size: 13px;
 }
 .startup-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -200,26 +231,44 @@ onMounted(() => {
 .startup-card {
   display: flex;
   align-items: center;
-  padding: 14px 18px;
+  padding: 10px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  gap: 12px;
-  transition: border var(--duration-fast) var(--ease-out);
+  gap: 10px;
+  transition: all var(--duration-fast) var(--ease-out);
 }
 .startup-card:hover {
   border-color: var(--border-hover);
+  background: rgba(255, 255, 255, 0.02);
+}
+:global(.theme-light) .startup-card:hover {
+  background: rgba(0, 0, 0, 0.01);
+}
+.startup-status {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.startup-status.is-enabled {
+  background: var(--success);
+  box-shadow: 0 0 6px rgba(81, 207, 102, 0.4);
+}
+.startup-status.is-disabled {
+  background: var(--text-tertiary);
 }
 .startup-name {
-  font-size: 14px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--text-primary);
+  line-height: 1.3;
 }
 .startup-cmd {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11.5px;
   color: var(--text-secondary);
-  margin-top: 4px;
+  margin-top: 3px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -227,14 +276,15 @@ onMounted(() => {
 .startup-meta {
   display: flex;
   gap: 6px;
-  margin-top: 8px;
+  margin-top: 6px;
 }
 .badge {
   display: inline-block;
-  padding: 2px 8px;
+  padding: 1px 7px;
   font-size: 10px;
   background: var(--bg-tertiary);
-  border-radius: 4px;
+  border-radius: 3px;
   color: var(--text-secondary);
+  line-height: 1.6;
 }
 </style>

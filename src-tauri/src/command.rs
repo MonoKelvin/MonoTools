@@ -32,7 +32,7 @@ use crate::engines::app_search::AppSearchEngine;
 use crate::engines::command_search::CommandSearchEngine;
 use crate::engines::file_search::FileSearchService;
 use crate::engines::startup_search::StartupSearchService;
-use crate::models::{CustomCommand, NewStartupItem, Settings};
+use crate::models::{Settings};
 use crate::repositories::*;
 use std::sync::Arc;
 
@@ -69,7 +69,7 @@ impl CommandContext {
             startup_repo.clone(),
         ));
 
-        let file_search = Arc::new(FileSearchService::new());
+        let file_search = Arc::new(FileSearchService::new(vec![]));
         let _ = file_search.build_index().await;
 
         Ok(Self {
