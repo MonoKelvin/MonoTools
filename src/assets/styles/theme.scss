@@ -1,98 +1,96 @@
-// MonoTools Design System — Raycast-inspired, premium minimalist.
-// All colors, spacing, and type are CSS variables for easy theme switching.
-
 :root {
-  --canvas: #111111;
-  --surface: #1a1a1a;
-  --surface-raised: #202020;
-  --surface-overlay: #262626;
+  --canvas: #0a0a0a;
+  --canvas-elevated: #0f0f0f;
+  --surface: #141414;
+  --surface-raised: #1a1a1a;
+  --surface-overlay: #212121;
+  --surface-hover: rgba(255, 255, 255, 0.04);
+  --surface-active: rgba(255, 255, 255, 0.08);
+  --interactive-hover: rgba(255, 255, 255, 0.08);
 
-  // ========== Text hierarchy ==========
-  --text-primary: #ededed;
-  --text-secondary: #989898;
-  --text-tertiary: #636363;
-  --text-quaternary: #3a3a3a;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+  --text-tertiary: #71717a;
+  --text-quaternary: #52525b;
 
-  // ========== Borders ==========
-  --border-subtle: rgba(255, 255, 255, 0.05);
-  --border-default: rgba(255, 255, 255, 0.09);
-  --border-hover: rgba(255, 255, 255, 0.15);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+  --border-default: rgba(255, 255, 255, 0.08);
+  --border-hover: rgba(255, 255, 255, 0.14);
   --border-active: rgba(255, 255, 255, 0.22);
 
-  // ========== Interactive ==========
-  --interactive-hover: var(--surface-overlay);
-  --interactive-active: var(--surface-raised);
+  --accent: #8b5cf6;
+  --accent-hover: #a78bfa;
+  --accent-active: #7c3aed;
+  --accent-glow: rgba(139, 92, 246, 0.3);
 
-  // ========== Brand accent ==========
-  --accent: #ffffff;
-  --accent-hover: #e6e6e6;
+  --color-apps: #3b82f6;
+  --color-files: #f59e0b;
+  --color-commands: #10b981;
 
-  // ========== Category colors ==========
-  --color-apps: #57c1ff;
-  --color-files: #ffc533;
-  --color-commands: #59d499;
+  --color-danger: #ef4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.12);
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-info: #3b82f6;
 
-  // ========== Semantic ==========
-  --color-danger: #ff5f57;
-  --color-danger-bg: rgba(255, 95, 87, 0.12);
-  --color-success: #59d499;
-  --color-warning: #ffc533;
-
-  // ========== Radii ==========
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 10px;
+  --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-full: 9999px;
 
-  // ========== Spacing scale (4px base) ==========
   --sp-1: 2px;
   --sp-2: 4px;
   --sp-3: 8px;
-  --sp-4: 10px;
-  --sp-5: 12px;
-  --sp-6: 16px;
-  --sp-7: 20px;
-  --sp-8: 24px;
-  --sp-10: 32px;
-  --sp-12: 40px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 20px;
+  --sp-7: 24px;
+  --sp-8: 28px;
+  --sp-9: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
 
-  // ========== Type scale ==========
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+  --font-sans: 'Source Han Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
     'PingFang SC', 'Microsoft YaHei', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
 
   --text-xs: 11px;
   --text-sm: 12px;
   --text-md: 13px;
   --text-base: 14px;
-  --text-lg: 17px;
-  --text-xl: 20px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
 
   --leading-tight: 1.25;
   --leading-normal: 1.5;
+  --leading-relaxed: 1.6;
 
-  // ========== Motion ==========
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --dur-fast: 120ms;
-  --dur-normal: 200ms;
-  --dur-slow: 300ms;
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --dur-fast: 100ms;
+  --dur-normal: 160ms;
+  --dur-slow: 240ms;
 
-  // ========== Glass ==========
-  --glass-bg: rgba(17, 17, 17, 0.75);
+  --glass-bg: rgba(10, 10, 10, 0.85);
   --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-blur: blur(40px) saturate(180%);
+  --glass-blur: blur(32px) saturate(180%);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 
-  // ========== Semantic aliases for Raycast compatibility ==========
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.6);
+
   --surface-elevated: var(--surface-raised);
   --surface-card: var(--surface-overlay);
   --text-ink: var(--text-primary);
   --text-body: var(--text-secondary);
   --text-mute: var(--text-tertiary);
   --text-ash: var(--text-quaternary);
-  --text-stone: var(--text-quaternary);
   --hairline: var(--border-subtle);
   --hairline-soft: var(--border-default);
   --hairline-strong: var(--border-hover);
@@ -108,34 +106,41 @@
   --font-family: var(--font-sans);
 }
 
-// ========== Light theme ==========
 :root.theme-light {
-  --canvas: #f2f2f2;
+  --canvas: #fafafa;
+  --canvas-elevated: #f5f5f5;
   --surface: #ffffff;
-  --surface-raised: #f7f7f7;
-  --surface-overlay: #efefef;
+  --surface-raised: #fafafa;
+  --surface-overlay: #f5f5f5;
+  --surface-hover: rgba(0, 0, 0, 0.03);
+  --surface-active: rgba(0, 0, 0, 0.06);
+  --interactive-hover: rgba(0, 0, 0, 0.06);
 
-  --text-primary: #1a1a1a;
-  --text-secondary: #525252;
-  --text-tertiary: #737373;
-  --text-quaternary: #a3a3a3;
+  --text-primary: #18181b;
+  --text-secondary: #52525b;
+  --text-tertiary: #71717a;
+  --text-quaternary: #a1a1aa;
 
-  --border-subtle: rgba(0, 0, 0, 0.05);
-  --border-default: rgba(0, 0, 0, 0.09);
-  --border-hover: rgba(0, 0, 0, 0.15);
+  --border-subtle: rgba(0, 0, 0, 0.04);
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-hover: rgba(0, 0, 0, 0.14);
   --border-active: rgba(0, 0, 0, 0.22);
 
-  --interactive-hover: rgba(0, 0, 0, 0.04);
-  --interactive-active: rgba(0, 0, 0, 0.08);
+  --accent: #7c3aed;
+  --accent-hover: #8b5cf6;
+  --accent-active: #6d28d9;
+  --accent-glow: rgba(124, 58, 237, 0.2);
 
-  --accent: #1a1a1a;
-  --accent-hover: #404040;
-
-  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-bg: rgba(255, 255, 255, 0.85);
   --glass-border: rgba(0, 0, 0, 0.06);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
 }
 
-// ========== Global reset ==========
 * {
   box-sizing: border-box;
   margin: 0;
@@ -153,9 +158,6 @@ html, body, #app {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-}
-
-body {
   overflow: hidden;
   user-select: none;
 }
@@ -164,33 +166,36 @@ input, textarea {
   user-select: text;
 }
 
-// ========== Selection ==========
 ::selection {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(139, 92, 246, 0.3);
+  color: var(--text-primary);
 }
 
-// ========== Focus ring ==========
 :focus-visible {
-  outline: 1.5px solid rgba(255, 255, 255, 0.2);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
-// ========== Scrollbar ==========
 ::-webkit-scrollbar {
-  width: 5px;
+  width: 6px;
+  height: 6px;
 }
+
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
   border-radius: var(--radius-full);
+  transition: background var(--dur-fast) var(--ease-out);
 }
+
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
 }
+
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 
-// ========== Transitions ==========
 .fade-enter-active, .fade-leave-active {
   transition: opacity var(--dur-normal) var(--ease-out);
 }
@@ -213,7 +218,16 @@ input, textarea {
   transform: scale(0.97);
 }
 
-// ========== Utility classes ==========
+.slide-in-right-enter-active,
+.slide-in-right-leave-active {
+  transition: all var(--dur-normal) var(--ease-out);
+}
+.slide-in-right-enter-from,
+.slide-in-right-leave-to {
+  opacity: 0;
+  transform: translateX(20px);
+}
+
 .glass {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
@@ -224,3 +238,5 @@ input, textarea {
 .muted { color: var(--text-secondary); }
 .dim { color: var(--text-tertiary); }
 .mono { font-family: var(--font-mono); }
+.bold { font-weight: 600; }
+.semibold { font-weight: 500; }

@@ -61,3 +61,7 @@ src-tauri/gen/
 # Misc
 .DS_Store
 *.orig
+
+# Test output
+src-tauri/tests/rust/output/
+src-tauri/tests/rust/data/

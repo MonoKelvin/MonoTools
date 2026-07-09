@@ -1,5 +1,5 @@
 //! 自定义命令搜索 - 与应用引擎并列
-use crate::models::{SearchAction, SearchCategory, SearchResult};
+use crate::models::{ResultType, SearchAction, SearchCategory, SearchResult};
 use crate::repositories::CommandRepo;
 use std::sync::Arc;
 
@@ -10,6 +10,10 @@ pub struct CommandSearchEngine {
 impl CommandSearchEngine {
     pub fn new(command_repo: Arc<dyn CommandRepo>) -> Self {
         Self { command_repo }
+    }
+
+    pub fn total(&self) -> usize {
+        self.command_repo.list_enabled().len()
     }
 
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
@@ -47,6 +51,7 @@ impl CommandSearchEngine {
                 subtitle: cmd.command.clone() + " " + &cmd.args.join(" "),
                 icon: cmd.icon.clone(),
                 category: SearchCategory::Commands,
+                result_type: ResultType::Command,
                 action: SearchAction::Run {
                     command: cmd.command.clone(),
                     args: cmd.args.clone(),

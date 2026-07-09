@@ -1,7 +1,11 @@
 //! MonoTools CLI 入口 - 在终端直接调用，无需 UI
+//! 
 //! 用法示例：
 //!   monotools-cli search "chrome"
-//!   monotools-cli launch "C:\\Program Files\\..."
+//!   monotools-cli launch "notepad"
+//!   monotools-cli open "C:\Users"
+//!   monotools-cli index build
+//!   monotools-cli stats
 //!   monotools-cli --help
 
 use clap::{Parser, Subcommand};
@@ -14,46 +18,40 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    /// 输出 JSON 格式
     #[arg(long, global = true)]
     json: bool,
 }
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    /// 搜索应用/文件/命令
     Search {
-        /// 搜索关键字
         query: String,
-        /// 最大结果数
         #[arg(long, default_value_t = 10)]
         limit: u32,
     },
-    /// 启动应用（按名称）
     Launch {
-        /// 应用名称
         name: String,
     },
-    /// 打开文件或目录
     Open {
-        /// 路径
         path: String,
     },
-    /// 自定义命令管理
     Command {
         #[command(subcommand)]
         action: CommandAction,
     },
-    /// 获取 / 设置偏好
     Config {
-        /// 设置 key（如 theme / hotkey）
         key: Option<String>,
-        /// 要写入的值（省略则读取当前值）
         value: Option<String>,
     },
-    /// 显示帮助
+    Index {
+        #[command(subcommand)]
+        action: IndexAction,
+    },
+    Stats {
+        #[arg(long)]
+        detail: bool,
+    },
     Help,
-    /// 输出版本
     Version,
 }
 
@@ -69,17 +67,23 @@ enum CommandAction {
     Remove { id: String },
 }
 
+#[derive(Subcommand, Debug)]
+enum IndexAction {
+    Build,
+    Update,
+    Stats,
+    AddRoot { path: String },
+    RemoveRoot { path: String },
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 初始化日志
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info");
     }
     env_logger::init();
 
     let cli = Cli::parse();
-
-    // 构造命令上下文（headless mode）
     let ctx = CommandContext::new_headless().await?;
     let input = build_input_string(&cli);
 
@@ -117,6 +121,8 @@ fn cmd_name(s: &Commands) -> &'static str {
         Commands::Open { .. } => "open",
         Commands::Command { .. } => "command",
         Commands::Config { .. } => "config",
+        Commands::Index { .. } => "index",
+        Commands::Stats { .. } => "stats",
         Commands::Help => "help",
         Commands::Version => "version",
     }
@@ -125,6 +131,7 @@ fn cmd_name(s: &Commands) -> &'static str {
 fn build_input_string(cli: &Cli) -> String {
     let mut parts: Vec<String> = Vec::new();
     parts.push(cmd_name(&cli.command).to_string());
+    
     match &cli.command {
         Commands::Search { query, limit } => {
             parts.push(format!("--limit {}", limit));
@@ -154,14 +161,35 @@ fn build_input_string(cli: &Cli) -> String {
             }
         },
         Commands::Config { key, value } => {
-            parts.push(key.clone().unwrap_or_default());
+            if let Some(k) = key {
+                parts.push(k.clone());
+            }
             if let Some(v) = value {
                 parts.push(quote(v));
+            }
+        }
+        Commands::Index { action } => match action {
+            IndexAction::Build => parts.push("build".into()),
+            IndexAction::Update => parts.push("update".into()),
+            IndexAction::Stats => parts.push("stats".into()),
+            IndexAction::AddRoot { path } => {
+                parts.push("add-root".into());
+                parts.push(quote(path));
+            }
+            IndexAction::RemoveRoot { path } => {
+                parts.push("remove-root".into());
+                parts.push(quote(path));
+            }
+        },
+        Commands::Stats { detail } => {
+            if *detail {
+                parts.push("detail".into());
             }
         }
         Commands::Help => parts.push("help".into()),
         Commands::Version => parts.push("version".into()),
     }
+    
     parts.join(" ")
 }
 
@@ -173,6 +201,7 @@ fn print_output(out: &CommandOutput) {
     } else {
         eprintln!("✗ {}", out.message);
     }
+    
     if let Some(data) = &out.data {
         match data {
             serde_json::Value::Array(arr) => {
@@ -180,18 +209,40 @@ fn print_output(out: &CommandOutput) {
                     if let Some(s) = item.as_str() {
                         println!("  {}", s);
                     } else if let Some(map) = item.as_object() {
-                        let id_str = map
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .map(|s| format!(" ({})", s))
-                            .unwrap_or_default();
-                        let name = map
-                            .get("title")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("(no name)");
-                        println!("  {}{}", name, id_str);
+                        let title = map.get("title").and_then(|v| v.as_str()).unwrap_or("(no name)");
+                        let subtitle = map.get("subtitle").and_then(|v| v.as_str());
+                        let score = map.get("score").and_then(|v| v.as_f64());
+                        
+                        let mut line = format!("  {}", title);
+                        if let Some(s) = subtitle {
+                            line.push_str(&format!(" - {}", s));
+                        }
+                        if let Some(sc) = score {
+                            line.push_str(&format!(" (score: {:.2})", sc));
+                        }
+                        println!("{}", line);
                     } else {
                         println!("  {}", item);
+                    }
+                }
+            }
+            serde_json::Value::Object(map) => {
+                for (k, v) in map {
+                    if let Some(s) = v.as_str() {
+                        println!("  {}: {}", k, s);
+                    } else if let Some(n) = v.as_number() {
+                        println!("  {}: {}", k, n);
+                    } else if let Some(arr) = v.as_array() {
+                        println!("  {}:", k);
+                        for item in arr {
+                            if let Some(s) = item.as_str() {
+                                println!("    - {}", s);
+                            } else {
+                                println!("    - {}", item);
+                            }
+                        }
+                    } else {
+                        println!("  {}: {}", k, v);
                     }
                 }
             }

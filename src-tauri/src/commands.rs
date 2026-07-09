@@ -14,17 +14,8 @@ pub async fn search_cmd(
     state: State<'_, Arc<AppState>>,
     query: String,
 ) -> Result<Vec<SearchResult>, String> {
-    let mut results: Vec<SearchResult> = Vec::new();
-    let limit = 20u32;
-    results.extend(state.app_search.search(&query, limit));
-    results.extend(state.file_search.search(&query, limit));
-    results.extend(state.command_search.search(&query, limit));
-    results.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    results.truncate(limit as usize);
+    let limit = if query.is_empty() { 50u32 } else { 20u32 };
+    let results = state.search_engine.search(&query, limit);
     Ok(results)
 }
 
@@ -263,9 +254,6 @@ pub async fn start_dragging(
     state: tauri::State<'_, Arc<AppState>>,
     window: tauri::WebviewWindow,
 ) -> Result<(), String> {
-    println!("[DEBUG] start_dragging called");
-
-    // 设置拖拽状态，防止拖拽期间失焦隐藏窗口
     if let Ok(mut dragging) = state.is_dragging.lock() {
         *dragging = true;
     }
@@ -276,10 +264,7 @@ pub async fn start_dragging(
             println!("[ERROR] Failed to start dragging: {}", e);
             format!("Failed to start dragging: {e}")
         })?;
-    println!("[DEBUG] Dragging started successfully");
 
-    // 注意：拖拽状态将在 500ms 后由前端的 set_dragging(false) 调用重置
-    // 这样可以在拖拽期间防止窗口失焦隐藏
     Ok(())
 }
 
@@ -291,7 +276,6 @@ pub async fn set_dragging(
 ) -> Result<(), String> {
     if let Ok(mut is_dragging) = state.is_dragging.lock() {
         *is_dragging = dragging;
-        println!("[DEBUG] Dragging state set to: {}", dragging);
     }
     Ok(())
 }

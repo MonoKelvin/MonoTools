@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import type { SearchResult } from '@/types/search'
+import ResultItem from '@/components/common/ResultItem.vue'
 
-defineProps<{
+interface Props {
   results: SearchResult[]
   loading?: boolean
   selectedIndex: number
-}>()
+}
+
+withDefaults(defineProps<Props>(), {
+  loading: false,
+})
 
 defineEmits<{
   (e: 'select', item: SearchResult): void
@@ -14,15 +19,13 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="results-wrapper" data-tauri-drag-region>
-    <!-- Loading -->
-    <div v-if="loading" class="loading-state">
-      <div class="spinner"></div>
-      <span class="loading-text">搜索中...</span>
+  <div class="search-results" data-tauri-drag-region>
+    <div v-if="loading" class="search-results__loading">
+      <div class="search-results__spinner"></div>
+      <span class="search-results__loading-text">搜索中...</span>
     </div>
 
-    <!-- Results -->
-    <div v-else-if="results.length" class="results-list">
+    <TransitionGroup v-else-if="results.length" name="list" tag="div" class="search-results__list">
       <ResultItem
         v-for="(item, idx) in results"
         :key="item.id"
@@ -32,17 +35,16 @@ defineEmits<{
         @select="emit('select', $event)"
         @mouseover="emit('hover', idx)"
       />
-    </div>
+    </TransitionGroup>
 
-    <!-- Empty state -->
-    <div v-else-if="$slots.empty" class="empty-state" data-tauri-drag-region>
+    <div v-else-if="$slots.empty" class="search-results__empty">
       <slot name="empty" />
     </div>
   </div>
 </template>
 
 <style scoped>
-.results-wrapper {
+.search-results {
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -50,45 +52,66 @@ defineEmits<{
   overflow-y: auto;
 }
 
-.results-list {
+.search-results__list {
   display: flex;
   flex-direction: column;
-  padding: var(--sp-1);
-  gap: var(--sp-1);
+  padding: var(--sp-2);
+  gap: 2px;
 }
 
-.loading-state {
+.search-results__loading {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
-  padding: var(--sp-8) var(--sp-5);
+  gap: var(--sp-4);
+  padding: var(--sp-10) var(--sp-5);
   flex: 1;
 }
-.spinner {
-  width: 18px;
-  height: 18px;
-  border: 2.5px solid var(--border-default);
-  border-top-color: var(--text-secondary);
+
+.search-results__spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--accent);
   border-radius: 50%;
-  animation: spin 0.7s linear infinite;
+  animation: search-results-spin 0.8s linear infinite;
 }
-.loading-text {
+
+.search-results__loading-text {
   color: var(--text-tertiary);
   font-size: var(--text-sm);
 }
 
-.empty-state {
+.search-results__empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: var(--sp-4);
-  padding: var(--sp-8) var(--sp-5);
+  padding: var(--sp-10) var(--sp-5);
   flex: 1;
 }
 
-@keyframes spin {
+.list-enter-active,
+.list-leave-active {
+  transition: all var(--dur-normal) var(--ease-out);
+}
+
+.list-enter-from {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(12px);
+}
+
+.list-move {
+  transition: transform var(--dur-normal) var(--ease-out);
+}
+
+@keyframes search-results-spin {
   to { transform: rotate(360deg); }
 }
 </style>

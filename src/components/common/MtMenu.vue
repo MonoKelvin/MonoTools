@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, computed, ref, nextTick } from 'vue'
+import { onBeforeUnmount, onMounted, computed, ref, nextTick, watch } from 'vue'
 import type { Component } from 'vue'
 
 export interface MtMenuItem {
@@ -31,19 +31,18 @@ const emit = defineEmits<{
 }>()
 
 const rootRef = ref<HTMLElement | null>(null)
+const activeIndex = ref(-1)
+const ignoreTarget = ref<EventTarget | null>(null)
 
-function positionPanel() {
-  if (!rootRef.value) return
-  const el = rootRef.value
+const visible = computed(() => props.modelValue)
+
+const menuStyle = computed(() => {
   const vw = window.innerWidth
   const vh = window.innerHeight
-  const rect = el.getBoundingClientRect()
-  const width = rect.width || props.minWidth
-  const height = rect.height
-  const anchorX = props.x ?? 0
-  const anchorY = props.y ?? 0
-  let left = anchorX
-  let top = anchorY
+  const width = props.minWidth
+  const height = 200
+  let left = props.x ?? 0
+  let top = props.y ?? 0
 
   if (props.anchor === 'center') {
     left = (vw - width) / 2
@@ -54,10 +53,8 @@ function positionPanel() {
   if (left < 8) left = 8
   if (top < 8) top = 8
 
-  // 使用 CSS 变量传递位置，避免与动画的 transform 冲突
-  el.style.setProperty('--menu-x', `${left}px`)
-  el.style.setProperty('--menu-y', `${top}px`)
-}
+  return { left: `${left}px`, top: `${top}px` }
+})
 
 function close() { emit('update:modelValue', false) }
 
@@ -67,33 +64,90 @@ function onItemClick(item: MtMenuItem) {
   close()
 }
 
-const visible = computed(() => props.modelValue)
-
 function onWindowPointer(event: MouseEvent) {
   if (!rootRef.value) return
   if (rootRef.value.contains(event.target as Node)) return
+  if (ignoreTarget.value === event.target) return
   close()
+}
+
+function getEnabledIndices(): number[] {
+  return props.items
+    .map((item, idx) => ({ item, idx }))
+    .filter(({ item }) => !item.disabled && !item.divider)
+    .map(({ idx }) => idx)
 }
 
 function onKey(event: KeyboardEvent) {
   if (!visible.value) return
-  if (event.key === 'Escape') { event.preventDefault(); close() }
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    close()
+    return
+  }
+
+  const enabledIndices = getEnabledIndices()
+  if (enabledIndices.length === 0) return
+
+  if (event.key === 'ArrowDown') {
+    event.preventDefault()
+    const currentIdx = enabledIndices.indexOf(activeIndex.value)
+    const nextIdx = currentIdx < 0 ? 0 : (currentIdx + 1) % enabledIndices.length
+    activeIndex.value = enabledIndices[nextIdx]
+    return
+  }
+
+  if (event.key === 'ArrowUp') {
+    event.preventDefault()
+    const currentIdx = enabledIndices.indexOf(activeIndex.value)
+    const prevIdx = currentIdx < 0 ? enabledIndices.length - 1 : (currentIdx - 1 + enabledIndices.length) % enabledIndices.length
+    activeIndex.value = enabledIndices[prevIdx]
+    return
+  }
+
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    if (activeIndex.value >= 0 && !props.items[activeIndex.value]?.disabled && !props.items[activeIndex.value]?.divider) {
+      onItemClick(props.items[activeIndex.value])
+    }
+    return
+  }
 }
 
-onMounted(async () => {
-  // 延迟定位，确保 DOM 完全渲染
-  await nextTick()
-  await nextTick()
-  positionPanel()
+function bindGlobal() {
   window.addEventListener('mousedown', onWindowPointer, true)
   window.addEventListener('contextmenu', onWindowPointer, true)
   window.addEventListener('keydown', onKey)
-})
+}
 
-onBeforeUnmount(() => {
+function unbindGlobal() {
   window.removeEventListener('mousedown', onWindowPointer, true)
   window.removeEventListener('contextmenu', onWindowPointer, true)
   window.removeEventListener('keydown', onKey)
+}
+
+watch(() => props.modelValue, (v) => {
+  if (v) {
+    activeIndex.value = -1
+    ignoreTarget.value = window.event?.target ?? null
+    nextTick(() => {
+      bindGlobal()
+      setTimeout(() => {
+        ignoreTarget.value = null
+      }, 100)
+    })
+  } else {
+    unbindGlobal()
+    ignoreTarget.value = null
+  }
+})
+
+onMounted(() => {
+})
+
+onBeforeUnmount(() => {
+  unbindGlobal()
 })
 </script>
 
@@ -105,6 +159,7 @@ onBeforeUnmount(() => {
         ref="rootRef"
         class="mt-menu"
         role="menu"
+        :style="menuStyle"
       >
         <div class="mt-menu__content">
           <ul class="mt-menu__list">
@@ -113,10 +168,17 @@ onBeforeUnmount(() => {
             :key="item.key ?? `i${idx}`"
             :class="[
               'mt-menu__row',
-              { 'mt-menu__row--divider': item.divider, 'mt-menu__row--danger': item.danger, 'mt-menu__row--disabled': item.disabled },
+              {
+                'mt-menu__row--divider': item.divider,
+                'mt-menu__row--danger': item.danger,
+                'mt-menu__row--disabled': item.disabled,
+                'mt-menu__row--active': !item.disabled && !item.divider && activeIndex === idx
+              },
             ]"
             role="menuitem"
+            tabindex="0"
             @click="onItemClick(item)"
+            @mouseenter="!item.disabled && !item.divider && (activeIndex = idx)"
           >
             <template v-if="item.divider">
               <span class="mt-menu__divider" />
@@ -138,8 +200,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .mt-menu {
   position: fixed;
-  left: var(--menu-x, 0);
-  top: var(--menu-y, 0);
   z-index: 9999;
   min-width: v-bind('`${minWidth}px`');
 }
@@ -150,7 +210,7 @@ onBeforeUnmount(() => {
 
   pointer-events: auto;
   border-radius: var(--radius-lg);
-  padding: var(--sp-1);
+  padding: var(--sp-2);
   background: var(--mt-menu-bg);
   backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
@@ -189,8 +249,11 @@ onBeforeUnmount(() => {
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
-  transition: background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
+  background: transparent;
+  transition:
+    background 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   min-height: 36px;
 }
 
@@ -210,14 +273,22 @@ onBeforeUnmount(() => {
 .mt-menu__row--danger {
   color: var(--color-danger);
 }
+
 .mt-menu__row--danger:hover {
   background: var(--color-danger-bg);
+}
+
+.mt-menu__row--active,
+.mt-menu__row--active:hover {
+  background: var(--interactive-hover);
+  outline: none;
 }
 
 .mt-menu__icon {
   color: var(--text-secondary);
   flex-shrink: 0;
 }
+
 .mt-menu__row--danger .mt-menu__icon {
   color: inherit;
 }
@@ -225,7 +296,6 @@ onBeforeUnmount(() => {
 .mt-menu__label {
   flex: 1;
   min-width: 0;
-  letter-spacing: 0.005em;
 }
 
 .mt-menu__shortcut {
@@ -238,6 +308,7 @@ onBeforeUnmount(() => {
   padding: 1px 6px;
   line-height: 1.6;
   height: 18px;
+  flex-shrink: 0;
 }
 
 .mt-menu__divider {
@@ -249,19 +320,30 @@ onBeforeUnmount(() => {
 
 /* ========== 动画 ========== */
 
-.mt-menu-enter-active .mt-menu__content,
-.mt-menu-leave-active .mt-menu__content {
-  transition: transform var(--dur-fast) cubic-bezier(0.34, 1.12, 0.64, 1);
+.mt-menu__content {
+  transform-origin: top center;
+}
+
+.mt-menu-enter-active .mt-menu__content {
+  transition:
+    transform 0.18s cubic-bezier(0.34, 1.12, 0.64, 1),
+    opacity 0.18s cubic-bezier(0.34, 1.12, 0.64, 1);
 }
 
 .mt-menu-leave-active .mt-menu__content {
-  transition-duration: 0.16s;
-  transition-timing-function: var(--ease-out);
+  transition:
+    transform 0.14s var(--ease-out),
+    opacity 0.14s var(--ease-out);
 }
 
-.mt-menu-enter-from .mt-menu__content,
+.mt-menu-enter-from .mt-menu__content {
+  transform: scale(0.92) translateY(-6px);
+  opacity: 0;
+}
+
 .mt-menu-leave-to .mt-menu__content {
-  transform: scale(0.94) translateY(-0.25rem);
+  transform: scale(0.96) translateY(-4px);
+  opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

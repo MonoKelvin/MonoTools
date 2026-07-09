@@ -39,6 +39,30 @@ fn default_pin_to_top() -> bool {
     true
 }
 
+fn default_search_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        let home_path = PathBuf::from(home);
+        let common_dirs = ["Desktop", "Documents", "Downloads", "Music", "Pictures", "Videos"];
+        for dir in common_dirs {
+            let path = home_path.join(dir);
+            if path.exists() {
+                roots.push(path);
+            }
+        }
+    }
+
+    if let Ok(app_data) = std::env::var("APPDATA") {
+        let path = PathBuf::from(app_data);
+        if path.exists() {
+            roots.push(path);
+        }
+    }
+
+    roots
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -46,7 +70,7 @@ impl Default for Settings {
             theme: ThemeMode::Dark,
             accent_color: "#ffffff".into(),
             file_search_enabled: true,
-            file_search_roots: vec![],
+            file_search_roots: default_search_roots(),
             enabled_categories: vec![
                 "apps".into(),
                 "files".into(),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import { Search, X, Settings, Terminal, LogOut, Pin, Sun } from "@lucide/vue"
+import { ref, watch, onMounted } from 'vue'
+import { Search, X, Settings, Terminal, LogOut, Sun } from "@lucide/vue"
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/services/env'
 import MtMenu from './MtMenu.vue'
@@ -20,16 +20,13 @@ const emit = defineEmits<{
   (e: 'arrowUp'): void
   (e: 'arrowDown'): void
   (e: 'escape'): void
-  (e: 'contextmenu', event: MouseEvent): void
+  (e: 'contextmenu', event: MouseEvent | CustomEvent): void
 }>()
 
 const inputRef = ref<HTMLInputElement | null>(null)
-const searchBarRef = ref<HTMLDivElement | null>(null)
-const localValue = ref(props.modelValue)
 const focused = ref(false)
 
-watch(() => props.modelValue, (v) => (localValue.value = v))
-watch(localValue, (v) => emit('update:modelValue', v))
+watch(() => props.modelValue, (v) => {})
 
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') { e.preventDefault(); emit('enter') }
@@ -42,110 +39,69 @@ onMounted(() => {
   inputRef.value?.focus()
 })
 
-// ========== 拖拽逻辑 ==========
-
-// 判断鼠标是否在文字区域内
 function isOverText(input: HTMLInputElement, clientX: number): boolean {
   const rect = input.getBoundingClientRect()
+  if (!input.value || input.value.length === 0) {
+    return clientX <= rect.left + rect.width * 0.4
+  }
 
-  // 前 20% 安全区：始终允许光标定位到文字开头
-  const frontBoundary = rect.left + rect.width * 0.2
-  if (clientX <= frontBoundary) return true
-
-  // 没有文字时，其余区域可以拖拽
-  if (!input.value || input.value.length === 0) return false
-
-  // 使用 canvas 测量文字实际渲染范围
   const style = getComputedStyle(input)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
   ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
 
   const paddingLeft = parseFloat(style.paddingLeft) || 0
-  const charCount = Math.min(4, input.value.length)
-  const prefixWidth = ctx.measureText(input.value.slice(0, charCount)).width
-  const suffixWidth = ctx.measureText(input.value.slice(-charCount)).width
+  const charWidth = ctx.measureText('m').width
+  const bufferWidth = charWidth * 4
   const textWidth = ctx.measureText(input.value).width
 
-  // 文字渲染范围（含前后 4 字符容差）
-  const textAreaStart = rect.left + paddingLeft - prefixWidth
-  const textAreaEnd = rect.left + paddingLeft + textWidth + suffixWidth
+  const textAreaStart = rect.left + paddingLeft - bufferWidth
+  const textAreaEnd = rect.left + paddingLeft + textWidth + bufferWidth
 
   return clientX >= textAreaStart && clientX <= textAreaEnd
 }
 
-// 整个搜索栏的 mousedown 处理
 async function handleSearchBarMousedown(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  console.log('Mouse down:', {
-    tag: target.tagName,
-    class: target.className,
-    isTauri,
-  })
-
-  // 点击 Logo 图标：不拖拽
   if (target.closest('.logo-area')) {
-    console.log('Clicked logo area')
     return
   }
 
-  // 点击清空按钮：不拖拽
+  if (showLogoMenu.value) {
+    showLogoMenu.value = false
+  }
+
   if (target.closest('.search-clear')) {
-    console.log('Clicked clear button')
     return
   }
 
-  // 点击在输入框内：判断是否在文字区域
   const input = inputRef.value
   if (input && target.closest('.search-input-wrapper')) {
     const overText = isOverText(input, event.clientX)
-
-    console.log('Clicked input area:', { overText, value: input.value })
-
     if (overText) {
-      // 在文字区域：不拖拽，允许光标定位和文本选择
-      console.log('Over text, not dragging')
       return
     } else {
-      // 在输入框的空白区域：拖拽窗口
-      console.log('Input blank area, start dragging')
-      // 阻止事件继续传播（避免触发 input blur 导致窗口隐藏）
       event.stopPropagation()
-      // 不 preventDefault，让浏览器默认行为处理
       if (isTauri) {
         try {
-          // 先设置拖拽状态，防止调用 start_dragging 时触发失焦隐藏
           await invoke('set_dragging', { dragging: true })
           await invoke('start_dragging')
-          console.log('Dragging started successfully')
-          // 500ms 后重置拖拽状态，让窗口可以正常失焦隐藏
           setTimeout(async () => {
             try {
               await invoke('set_dragging', { dragging: false })
-              console.log('Dragging state reset')
-            } catch (error) {
-              console.error('Failed to reset dragging state:', error)
-            }
+            } catch {}
           }, 500)
-        } catch (error) {
-          console.error('Failed to start dragging:', error)
-        }
+        } catch {}
       }
       return
     }
   }
 
-  // 点击在其他区域（搜索图标、输入框外的空白）：拖拽窗口
-  console.log('Other area, start dragging')
-  // 不 preventDefault
   if (isTauri) {
     try {
       await invoke('start_dragging')
-      console.log('Dragging started successfully')
-    } catch (error) {
-      console.error('Failed to start dragging:', error)
-    }
+    } catch {}
   }
 }
 
@@ -167,8 +123,6 @@ function handleSearchBarMouseleave() {
     input.style.cursor = ''
   }
 }
-
-// ========== Logo 菜单 ==========
 
 type MenuKey = 'settings' | 'commands' | 'theme' | 'quit'
 
@@ -193,10 +147,11 @@ function onLogoClick(event: MouseEvent) {
   event.preventDefault()
   event.stopPropagation()
 
-  const logoRect = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  const offsetX = 6
+  const offsetY = 6
   logoMenuPos.value = {
-    x: logoRect.left,
-    y: logoRect.bottom + 6
+    x: event.clientX + offsetX,
+    y: event.clientY + offsetY
   }
   showLogoMenu.value = true
 }
@@ -208,7 +163,7 @@ function onLogoContextMenu(event: MouseEvent) {
 }
 
 function toggleTheme() {
-  emit('contextmenu', new MouseEvent('contextmenu'))
+  emit('contextmenu', new CustomEvent('nav-to-theme'))
 }
 
 function onMenuSelect(item: MtMenuItem) {
@@ -225,77 +180,74 @@ function onMenuSelect(item: MtMenuItem) {
         toggleTheme()
         break
       case 'quit':
-        if (isTauri) invoke('quit_app').catch((e) => console.error('quit failed:', e))
+        if (isTauri) invoke('quit_app').catch(() => {})
         break
     }
   }
 }
 
-defineExpose({ focus })
+defineExpose({ focus: () => inputRef.value?.focus() })
 </script>
 
 <template>
   <div
-    ref="searchBarRef"
     class="search-bar"
-    :class="{ 'is-focused': focused }"
+    :class="{ 'search-bar--focused': focused }"
     @mousedown="handleSearchBarMousedown"
     @mousemove="handleSearchBarMousemove"
     @mouseleave="handleSearchBarMouseleave"
     data-tauri-drag-region
   >
-    <!-- 搜索图标 -->
-    <div class="search-icon" aria-hidden="true">
-      <Search :size="18" :stroke-width="2" />
+    <div class="search-bar__left">
+      <div class="search-bar__icon" aria-hidden="true">
+        <Search :size="18" :stroke-width="1.5" />
+      </div>
+
+      <div class="search-bar__input-wrapper">
+        <input
+          ref="inputRef"
+          type="text"
+          :value="modelValue"
+          :placeholder="placeholder"
+          class="search-bar__input"
+          @input="(e) => emit('update:modelValue', (e.target as HTMLInputElement).value)"
+          @keydown="onKeydown"
+          @focus="focused = true"
+          @blur="focused = false"
+        />
+      </div>
     </div>
 
-    <!-- 输入框 -->
-    <div class="search-input-wrapper">
-      <input
-        ref="inputRef"
-        type="text"
-        :value="modelValue"
-        :placeholder="placeholder"
-        class="search-input"
-        @input="(e) => emit('update:modelValue', (e.target as HTMLInputElement).value)"
-        @keydown="onKeydown"
-        @focus="focused = true"
-        @blur="focused = false"
-      />
-    </div>
+    <div class="search-bar__right">
+      <Transition name="fade">
+        <button
+          v-if="modelValue"
+          class="search-bar__clear"
+          type="button"
+          @mousedown.stop.prevent
+          @click.stop="emit('update:modelValue', '')"
+          aria-label="清空"
+        >
+          <X :size="14" :stroke-width="2" />
+        </button>
+      </Transition>
 
-    <!-- 清空按钮 -->
-    <Transition name="fade">
-      <button
-        v-if="modelValue"
-        class="search-clear"
-        type="button"
-        @mousedown.stop.prevent
-        @click.stop="emit('update:modelValue', '')"
-        aria-label="清空"
+      <div
+        class="search-bar__logo"
+        @mousedown.stop
+        @click.stop="onLogoClick"
+        @contextmenu.stop="onLogoContextMenu"
       >
-        <X :size="14" :stroke-width="2.5" />
-      </button>
-    </Transition>
-
-    <!-- Logo -->
-    <div
-      class="logo-area"
-      @mousedown.stop.prevent
-      @click.stop="onLogoClick"
-      @contextmenu.stop="onLogoContextMenu"
-    >
-      <img
-        src="/logo/logo-only.png"
-        alt="MonoTools"
-        class="logo-img"
-        draggable="false"
-      />
+        <img
+          src="/logo/logo-only.png"
+          alt="MonoTools"
+          class="search-bar__logo-img"
+          draggable="false"
+        />
+      </div>
     </div>
 
-    <!-- Logo 右键菜单 (使用 MtMenu 组件) -->
     <MtMenu
-      v-if="showLogoMenu"
       :items="menuItems.map(item => ({
         key: item.key,
         label: item.label,
@@ -316,49 +268,59 @@ defineExpose({ focus })
 .search-bar {
   display: flex;
   align-items: center;
-  padding: 0 var(--sp-6);
-  gap: var(--sp-3);
+  justify-content: space-between;
+  padding: 0 var(--sp-5);
+  height: 56px;
   flex-shrink: 0;
   position: relative;
   user-select: none;
-  height: 52px;
-  background: transparent;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border-subtle);
+  transition: all var(--dur-fast) var(--ease-out);
 }
 
-/* 搜索图标 */
-.search-icon {
-  flex-shrink: 0;
+.search-bar--focused {
+  background: var(--surface-raised);
+}
+
+.search-bar__left {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  color: var(--text-secondary);
-  z-index: 1;
-  opacity: 0.8;
-  transition: all 0.12s var(--ease-out, ease);
-  pointer-events: none;
+  gap: var(--sp-4);
+  flex: 1;
+  min-width: 0;
 }
 
-.search-bar.is-focused .search-icon {
+.search-bar__right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.search-bar__icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.search-bar--focused .search-bar__icon {
   color: var(--text-secondary);
   opacity: 1;
 }
 
-/* 输入框容器 */
-.search-input-wrapper {
+.search-bar__input-wrapper {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
 }
 
-/* 输入框 */
-.search-input {
+.search-bar__input {
   width: 100%;
-  height: 100%;
   padding: 0;
   font-family: var(--font-sans);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: 400;
   line-height: 1.4;
   color: var(--text-primary);
@@ -366,79 +328,78 @@ defineExpose({ focus })
   border: none;
   outline: none;
   caret-color: var(--accent);
-  transition: all 0.12s var(--ease-out, ease);
 }
 
-.search-input::placeholder {
-  color: var(--text-tertiary);
-  transition: all 0.12s var(--ease-out, ease);
+.search-bar__input::placeholder {
+  color: var(--text-quaternary);
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
 
-.search-input:focus::placeholder {
-  opacity: 0.5;
+.search-bar--focused .search-bar__input::placeholder {
+  opacity: 0.6;
 }
 
-/* 清空按钮 */
-.search-clear {
+.search-bar__clear {
   flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  border-radius: 4px;
-  cursor: pointer;
-  transition: all 0.12s var(--ease-out, ease);
-}
-
-.search-clear:hover {
-  background: var(--surface-overlay);
-  color: var(--text-primary);
-}
-
-/* Logo */
-.logo-area {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 24px;
   height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.search-bar__clear:hover {
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
+}
+
+.search-bar__logo {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   border-radius: var(--radius-sm);
-  transition: all 0.2s var(--ease-out, ease);
+  transition: all var(--dur-fast) var(--ease-out);
   -webkit-app-region: no-drag;
-  z-index: 10;
-  margin-left: var(--sp-3);
 }
 
-.logo-area:hover {
-  background: transparent;
+.search-bar__logo:hover {
+  background: var(--surface-overlay);
 }
 
-.logo-img {
+.search-bar__logo-img {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  filter: grayscale(100%) opacity(0.6);
-  transition: all 0.2s var(--ease-out, ease);
+  filter: grayscale(100%) opacity(0.5);
+  transition: all var(--dur-normal) var(--ease-out);
 }
 
-.logo-area:hover .logo-img {
-  filter: grayscale(0%) opacity(1)
-          drop-shadow(0 0 8px rgba(94, 106, 210, 0.6))
-          drop-shadow(0 0 16px rgba(94, 106, 210, 0.3));
+.search-bar__logo:hover .search-bar__logo-img {
+  filter: grayscale(0%) opacity(1);
   transform: scale(1.05);
 }
 
-.logo-area:active .logo-img {
+.search-bar__logo:active .search-bar__logo-img {
   transform: scale(0.95);
-  transition: all 0.12s var(--ease-out, ease);
 }
 
-/* 过渡动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

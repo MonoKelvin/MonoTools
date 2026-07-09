@@ -1,5 +1,19 @@
 export type SearchCategory = 'apps' | 'files' | 'commands'
 
+export type ResultType =
+  | 'system-app'
+  | 'user-app'
+  | 'uwp-app'
+  | 'directory'
+  | 'document'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'executable'
+  | 'archive'
+  | 'other-file'
+  | 'command'
+
 export interface SearchOptions {
   categories: SearchCategory[]
   maxResults: number
@@ -18,6 +32,7 @@ export interface SearchResult {
   subtitle: string
   icon: string | null
   category: SearchCategory
+  resultType: ResultType
   action: SearchAction
   score: number
 }

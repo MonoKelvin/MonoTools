@@ -2,9 +2,10 @@
 
 use crate::engines::app_search::AppSearchEngine;
 use crate::engines::command_search::CommandSearchEngine;
-use crate::engines::file_search::FileSearchService;
+use crate::engines::file_search::FileSearchEngine;
 use crate::repositories::*;
 use crate::services::hotkey::HotkeyService;
+use crate::services::search::SearchEngine;
 use crate::services::window::WindowService;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -18,11 +19,11 @@ pub struct AppState {
 
     pub app_search: Arc<AppSearchEngine>,
     pub command_search: Arc<CommandSearchEngine>,
-    pub file_search: Arc<FileSearchService>,
+    pub file_search: Arc<FileSearchEngine>,
+    pub search_engine: Arc<SearchEngine>,
 
     pub hotkey: Arc<HotkeyService>,
     pub window: Arc<WindowService>,
 
-    // 窗口拖拽状态，用于防止拖拽时失焦隐藏
     pub is_dragging: Arc<Mutex<bool>>,
 }

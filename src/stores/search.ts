@@ -32,10 +32,6 @@ export const useSearchStore = defineStore('search', () => {
   }
 
   async function runSearch(options?: Partial<SearchOptions>) {
-    if (!query.value.trim()) {
-      results.value = []
-      return
-    }
     loading.value = true
     try {
       results.value = await searchApi.search(query.value, options)

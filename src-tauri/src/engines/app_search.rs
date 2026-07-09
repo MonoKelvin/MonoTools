@@ -1,6 +1,6 @@
 //! 应用搜索引擎 - 索引安装的应用 + 启动项 + 启动文件夹
 use crate::error::Result;
-use crate::models::{AppEntry, SearchAction, SearchResult};
+use crate::models::{AppEntry, ResultType, SearchAction, SearchResult};
 use crate::repositories::{
     SettingsRepo,
 };
@@ -124,6 +124,7 @@ impl AppSearchEngine {
                     subtitle: a.path.to_string_lossy().to_string(),
                     icon: None,
                     category: crate::models::SearchCategory::Apps,
+                    result_type: app_type_of(&a.path),
                     action: SearchAction::Launch(a.path.to_string_lossy().to_string()),
                     score: 0.5,
                 })
@@ -166,6 +167,7 @@ impl AppSearchEngine {
                 subtitle: a.path.to_string_lossy().to_string(),
                 icon: None,
                 category: crate::models::SearchCategory::Apps,
+                result_type: app_type_of(&a.path),
                 action: SearchAction::Launch(a.path.to_string_lossy().to_string()),
                 score: s,
             })
@@ -205,4 +207,29 @@ fn category_of(path: &PathBuf, name: &str) -> String {
     } else {
         "Applications".into()
     }
+}
+
+fn app_type_of(path: &PathBuf) -> ResultType {
+    let p = path.to_string_lossy().to_lowercase();
+
+    if p.starts_with("c:\\windows\\") || p.starts_with("c:\\program files\\windowsapps\\") {
+        return ResultType::SystemApp;
+    }
+
+    if p.contains("windowsapps\\") {
+        return ResultType::UwpApp;
+    }
+
+    if p.starts_with("c:\\program files\\") || p.starts_with("c:\\program files (x86)\\") {
+        if p.contains("microsoft") && (p.contains("office") || p.contains("windows")) {
+            return ResultType::SystemApp;
+        }
+        return ResultType::UserApp;
+    }
+
+    if p.starts_with("c:\\users\\") {
+        return ResultType::UserApp;
+    }
+
+    ResultType::UserApp
 }

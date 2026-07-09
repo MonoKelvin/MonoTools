@@ -1,32 +1,38 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
-const props = withDefaults(defineProps<{
+interface Props {
   active: 'all' | 'apps' | 'files' | 'commands'
-}>(), {})
+}
+
+const props = withDefaults(defineProps<Props>(), {})
 
 const emit = defineEmits<{
   (e: 'select', c: 'all' | 'apps' | 'files' | 'commands'): void
 }>()
 
 const tabs = [
-  { id: 'all', label: '全部' },
-  { id: 'apps', label: '应用' },
-  { id: 'files', label: '文件' },
-  { id: 'commands', label: '命令' },
+  { id: 'all', label: '全部', icon: '' },
+  { id: 'apps', label: '应用', icon: '' },
+  { id: 'files', label: '文件', icon: '' },
+  { id: 'commands', label: '命令', icon: '' },
 ] as const
+
+const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
 </script>
 
 <template>
   <div class="category-tabs" data-tauri-drag-region>
-    <button
-      v-for="t in tabs"
-      :key="t.id"
-      :class="['category-tab', { 'is-active': active === t.id }]"
-      @click="emit('select', t.id)"
-    >
-      {{ t.label }}
-    </button>
+    <div class="category-tabs__list">
+      <button
+        v-for="t in tabs"
+        :key="t.id"
+        :class="['category-tabs__tab', { 'category-tabs__tab--active': active === t.id }]"
+        @click="emit('select', t.id)"
+      >
+        {{ t.label }}
+      </button>
+    </div>
   </div>
 </template>
 
@@ -34,46 +40,44 @@ const tabs = [
 .category-tabs {
   display: flex;
   align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-3) var(--sp-4);
-  border-top: 1px solid var(--border-subtle);
+  padding: var(--sp-3) var(--sp-5);
+  height: 48px;
+  background: var(--surface);
   border-bottom: 1px solid var(--border-subtle);
-  background: var(--surface-raised);
   flex-shrink: 0;
 }
 
-.category-tab {
-  padding: var(--sp-2) var(--sp-5);
+.category-tabs__list {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.category-tabs__tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-tertiary);
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease-out);
   letter-spacing: 0.02em;
-  line-height: 1.5;
-  position: relative;
-}
-.category-tab:hover {
-  color: var(--text-secondary);
-  background: var(--interactive-hover);
-}
-.category-tab.is-active {
-  color: var(--accent);
-  background: var(--interactive-active);
+  white-space: nowrap;
 }
 
-/* Active indicator line */
-.category-tab.is-active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: var(--accent);
-  border-radius: 2px 2px 0 0;
+.category-tabs__tab:hover {
+  color: var(--text-secondary);
+  background: var(--surface-hover);
+}
+
+.category-tabs__tab--active {
+  color: var(--text-primary);
+  background: var(--surface-overlay);
 }
 </style>

@@ -1,12 +1,29 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum SearchCategory {
     Apps,
     Files,
     Commands,
     All,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "lowercase")]
+pub enum ResultType {
+    SystemApp,
+    UserApp,
+    UwpApp,
+    Directory,
+    Document,
+    Image,
+    Video,
+    Audio,
+    Executable,
+    Archive,
+    OtherFile,
+    Command,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +64,7 @@ pub struct SearchResult {
     pub subtitle: String,
     pub icon: Option<String>,
     pub category: SearchCategory,
+    pub result_type: ResultType,
     pub action: SearchAction,
     pub score: f32,
 }

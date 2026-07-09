@@ -3,10 +3,11 @@
 pub mod app {
     use crate::services::app_state::AppState;
     use crate::services::hotkey::HotkeyService;
+    use crate::services::search::SearchEngine;
     use crate::services::window::WindowService;
     use crate::engines::app_search::AppSearchEngine;
     use crate::engines::command_search::CommandSearchEngine;
-    use crate::engines::file_search::FileSearchService;
+    use crate::engines::file_search::FileSearchEngine;
     use crate::repositories::*;
     use crate::models::Settings;
     use std::sync::{Arc, Mutex};
@@ -28,12 +29,10 @@ pub mod app {
                 // 失焦自动隐藏（Spotlight 体验）
                 if let WindowEvent::Focused(false) = event {
                     if window.label() == "search" {
-                        // 检查是否正在拖拽，如果是则不隐藏窗口
                         let app_handle = window.app_handle();
                         if let Some(state) = app_handle.try_state::<Arc<AppState>>() {
                             if let Ok(is_dragging) = state.is_dragging.lock() {
                                 if *is_dragging {
-                                    println!("[DEBUG] Window focus lost during dragging, skipping hide");
                                     return;
                                 }
                             }
@@ -73,7 +72,6 @@ pub mod app {
                     .menu(&tray_menu)
                     .show_menu_on_left_click(false)
                     .on_menu_event({
-                        let app = app_handle.clone();
                         let pin_item = pin_item.clone();
                         move |app_listener, event| {
                             let id = event.id.as_ref();
@@ -135,7 +133,7 @@ pub mod app {
                     app_search.refresh_index().await?;
                     let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
                     let file_roots = settings_repo.get().file_search_roots.clone();
-                    let file_search = Arc::new(FileSearchService::new(file_roots.clone()));
+                    let file_search = Arc::new(FileSearchEngine::new(file_roots.clone()).unwrap());
                     if !file_roots.is_empty() {
                         let _ = file_search.build_index().await;
                     }
@@ -148,6 +146,12 @@ pub mod app {
                             std::time::Duration::from_secs(120),
                         );
                     }
+
+                    let search_engine = Arc::new(SearchEngine::new(
+                        app_search.clone(),
+                        file_search.clone(),
+                        command_search.clone(),
+                    ));
 
                     let hotkey = Arc::new(HotkeyService::new());
                     let app_for_window = app_handle.clone();
@@ -162,6 +166,7 @@ pub mod app {
                         app_search,
                         command_search,
                         file_search,
+                        search_engine,
                         hotkey,
                         window,
                         is_dragging: Arc::new(Mutex::new(false)),

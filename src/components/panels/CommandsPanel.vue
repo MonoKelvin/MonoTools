@@ -3,6 +3,8 @@ import { onMounted, ref } from 'vue'
 import { commandApi } from '@/services'
 import { Zap, Trash2, Plus, Play } from "@lucide/vue"
 import type { CustomCommand } from '@/types/command'
+import MtCard from '@/components/common/MtCard.vue'
+import MtButton from '@/components/common/MtButton.vue'
 
 const items = ref<CustomCommand[]>([])
 const showAdd = ref(false)
@@ -47,95 +49,104 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="panel" data-tauri-drag-region>
-    <div class="panel-header">
+  <div class="commands-panel">
+    <div class="commands-panel__header">
       <div>
-        <h1 class="panel-title">自定义命令</h1>
-        <p class="panel-subtitle">通过关键字执行 Shell 命令或程序</p>
+        <h1 class="commands-panel__title">自定义命令</h1>
+        <p class="commands-panel__subtitle">通过关键字执行 Shell 命令或程序</p>
       </div>
-      <button class="btn btn-primary" @click="showAdd = true">
+      <MtButton variant="primary" @click="showAdd = true">
         <Plus :size="14" :stroke-width="2" />
         添加
-      </button>
+      </MtButton>
     </div>
 
-    <ul v-if="items.length" class="command-list">
-      <li v-for="cmd in items" :key="cmd.id" class="command-card">
-        <div class="command-icon">
+    <div v-if="items.length" class="commands-panel__list">
+      <MtCard v-for="cmd in items" :key="cmd.id" class="commands-panel__card">
+        <div class="commands-panel__card-icon">
           <Zap :size="16" :stroke-width="2" />
         </div>
-        <div class="command-text">
-          <div class="command-name">{{ cmd.name }}</div>
-          <div class="command-keyword mono">{{ cmd.keyword }}</div>
-          <div class="command-cmd mono">{{ cmd.command + ' ' + cmd.args.join(' ') }}</div>
+        <div class="commands-panel__card-content">
+          <div class="commands-panel__card-name">{{ cmd.name }}</div>
+          <div class="commands-panel__card-keyword mono">{{ cmd.keyword }}</div>
+          <div class="commands-panel__card-cmd mono">{{ cmd.command + ' ' + cmd.args.join(' ') }}</div>
         </div>
-        <button class="btn btn-ghost btn-sm" @click="runCmd(cmd.id)">
-          <Play :size="12" :stroke-width="2.5" />
-          运行
-        </button>
-        <button class="btn-icon" @click="remove(cmd.id)" title="删除">
-          <Trash2 :size="14" :stroke-width="2" />
-        </button>
-      </li>
-    </ul>
+        <div class="commands-panel__card-actions">
+          <MtButton variant="ghost" size="sm" @click="runCmd(cmd.id)">
+            <Play :size="12" :stroke-width="2.5" />
+            运行
+          </MtButton>
+          <button class="commands-panel__delete-btn" @click="remove(cmd.id)" title="删除">
+            <Trash2 :size="14" :stroke-width="2" />
+          </button>
+        </div>
+      </MtCard>
+    </div>
 
-    <div v-else class="empty">还没有自定义命令</div>
+    <div v-else class="commands-panel__empty">还没有自定义命令</div>
 
-    <div v-if="showAdd" class="modal-overlay" @click.self="showAdd = false">
-      <div class="modal-card">
-        <h2 class="modal-title">添加命令</h2>
-        <div class="form-row">
-          <label>显示名称</label>
-          <input v-model="form.name" class="input" placeholder="git status" />
-        </div>
-        <div class="form-row">
-          <label>搜索关键字</label>
-          <input v-model="form.keyword" class="input" placeholder="git" />
-        </div>
-        <div class="form-row">
-          <label>命令</label>
-          <input v-model="form.command" class="input" placeholder="git" />
-        </div>
-        <div class="form-row">
-          <label>参数</label>
-          <input v-model="form.args" class="input" placeholder="status" />
-        </div>
-        <div class="form-row form-check">
-          <label class="check-label">
-            <input v-model="form.runAsAdmin" type="checkbox" />
-            <span>以管理员权限运行</span>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button class="btn btn-ghost" @click="showAdd = false">取消</button>
-          <button class="btn btn-primary" @click="submit">添加</button>
+    <Transition name="scale">
+      <div v-if="showAdd" class="commands-panel__modal-overlay" @click.self="showAdd = false">
+        <div class="commands-panel__modal-card">
+          <h2 class="commands-panel__modal-title">添加命令</h2>
+
+          <div class="commands-panel__form-row">
+            <label>显示名称</label>
+            <input v-model="form.name" class="commands-panel__input" placeholder="git status" />
+          </div>
+
+          <div class="commands-panel__form-row">
+            <label>搜索关键字</label>
+            <input v-model="form.keyword" class="commands-panel__input" placeholder="git" />
+          </div>
+
+          <div class="commands-panel__form-row">
+            <label>命令</label>
+            <input v-model="form.command" class="commands-panel__input" placeholder="git" />
+          </div>
+
+          <div class="commands-panel__form-row">
+            <label>参数</label>
+            <input v-model="form.args" class="commands-panel__input" placeholder="status" />
+          </div>
+
+          <div class="commands-panel__form-row commands-panel__form-row--check">
+            <label class="commands-panel__check-label">
+              <input v-model="form.runAsAdmin" type="checkbox" />
+              <span>以管理员权限运行</span>
+            </label>
+          </div>
+
+          <div class="commands-panel__modal-actions">
+            <MtButton variant="ghost" @click="showAdd = false">取消</MtButton>
+            <MtButton variant="primary" @click="submit">添加</MtButton>
+          </div>
         </div>
       </div>
-    </div>
+    </Transition>
   </div>
 </template>
 
 <style scoped>
-.panel {
-  padding: var(--sp-6);
+.commands-panel {
+  padding: var(--sp-5);
   overflow-y: auto;
   height: 100%;
   background: var(--canvas);
-  color: var(--text-primary);
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
 }
 
-.panel-header {
+.commands-panel__header {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  gap: var(--sp-6);
-  padding-bottom: var(--sp-3);
+  gap: var(--sp-5);
+  padding-bottom: var(--sp-2);
 }
 
-.panel-title {
+.commands-panel__title {
   margin: 0;
   font-size: var(--text-lg);
   font-weight: 600;
@@ -143,146 +154,99 @@ onMounted(load)
   color: var(--text-primary);
 }
 
-.panel-subtitle {
-  margin: var(--sp-2) 0 0 0;
+.commands-panel__subtitle {
+  margin: var(--sp-1) 0 0 0;
   font-size: var(--text-sm);
   color: var(--text-quaternary);
-  font-weight: 400;
 }
 
-.command-list {
-  list-style: none;
-  padding: 0;
-  margin: 0;
+.commands-panel__list {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
 }
 
-.command-card {
+.commands-panel__card {
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  padding: var(--sp-4) var(--sp-5);
-  background: var(--surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  transition: all var(--dur-fast) var(--ease-out);
-}
-.command-card:hover {
-  border-color: var(--border-default);
-  background: var(--surface-overlay);
+  padding: var(--sp-4);
 }
 
-.command-icon {
-  width: 34px;
-  height: 34px;
+.commands-panel__card-icon {
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-sm);
-  background: var(--surface-overlay);
-  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
   color: var(--text-tertiary);
   flex-shrink: 0;
 }
 
-.command-text {
+.commands-panel__card-content {
   flex: 1;
   min-width: 0;
 }
 
-.command-name {
+.commands-panel__card-name {
   font-size: var(--text-base);
   font-weight: 500;
   color: var(--text-primary);
   line-height: var(--leading-tight);
 }
 
-.command-keyword {
-  font-size: var(--text-sm);
+.commands-panel__card-keyword {
+  font-size: var(--text-xs);
   color: var(--text-quaternary);
-  margin-top: var(--sp-1);
+  margin-top: 2px;
 }
 
-.command-cmd {
+.commands-panel__card-cmd {
   font-size: var(--text-sm);
   color: var(--text-tertiary);
-  margin-top: var(--sp-1);
+  margin-top: 2px;
 }
 
-.empty {
-  padding: var(--sp-12);
-  text-align: center;
-  color: var(--text-quaternary);
-  font-size: var(--text-md);
-}
-
-/* Button styles */
-.btn {
-  display: inline-flex;
+.commands-panel__card-actions {
+  display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-6);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all var(--dur-fast) var(--ease-out);
-  line-height: 1.4;
-  font-family: var(--font-sans);
-}
-.btn-primary {
-  background: var(--accent);
-  color: var(--canvas);
-  font-weight: 600;
-  border-color: var(--accent);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-.btn-primary:hover {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-.btn-ghost {
-  background: transparent;
-  color: var(--text-secondary);
-  border-color: var(--border-default);
-}
-.btn-ghost:hover {
-  background: var(--interactive-hover);
-  color: var(--text-primary);
-  border-color: var(--border-hover);
-}
-.btn-sm {
-  padding: var(--sp-2) var(--sp-5);
-  font-size: var(--text-xs);
+  gap: var(--sp-2);
+  flex-shrink: 0;
 }
 
-.btn-icon {
-  display: inline-flex;
+.commands-panel__delete-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--sp-2);
   background: transparent;
   color: var(--text-tertiary);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease-out);
 }
-.btn-icon:hover {
+
+.commands-panel__delete-btn:hover {
   background: var(--color-danger-bg);
   color: var(--color-danger);
   border-color: var(--color-danger);
 }
 
-/* Modal */
-.modal-overlay {
+.commands-panel__empty {
+  padding: var(--sp-10);
+  text-align: center;
+  color: var(--text-quaternary);
+  font-size: var(--text-base);
+}
+
+.commands-panel__modal-overlay {
   position: fixed;
   inset: 0;
-  background: var(--surface-overlay);
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   z-index: 100;
@@ -291,71 +255,92 @@ onMounted(load)
   justify-content: center;
 }
 
-.modal-card {
+.commands-panel__modal-card {
   width: 460px;
   max-width: 90vw;
-  background: var(--surface-raised);
+  background: var(--surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
-  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
-  padding: var(--sp-8);
-  transition: transform var(--dur-normal) var(--ease-out);
+  box-shadow: var(--shadow-xl);
+  padding: var(--sp-6);
 }
 
-.modal-title {
+.commands-panel__modal-title {
   font-size: var(--text-base);
   font-weight: 600;
   color: var(--text-primary);
-  margin: 0 0 var(--sp-6) 0;
+  margin: 0 0 var(--sp-5) 0;
   letter-spacing: -0.01em;
 }
 
-.form-row {
-  margin-bottom: var(--sp-6);
+.commands-panel__form-row {
+  margin-bottom: var(--sp-5);
 }
-.form-row label {
+
+.commands-panel__form-row label {
   display: block;
   font-size: var(--text-xs);
   font-weight: 500;
   color: var(--text-tertiary);
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-2);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 
-.input {
+.commands-panel__input {
   width: 100%;
-  padding: var(--sp-3) var(--sp-5);
-  background: var(--surface);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--surface-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   outline: none;
-  transition: border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
+  transition: all var(--dur-fast) var(--ease-out);
 }
-.input:focus {
-  border-color: var(--border-active);
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+
+.commands-panel__input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
-.input::placeholder {
+
+.commands-panel__input::placeholder {
   color: var(--text-quaternary);
 }
 
-.check-label {
+.commands-panel__form-row--check {
+  margin-top: var(--sp-2);
+}
+
+.commands-panel__check-label {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-3);
   cursor: pointer;
-  font-size: var(--text-md);
+  font-size: var(--text-base);
   color: var(--text-secondary);
 }
 
-.modal-actions {
+.commands-panel__modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: var(--sp-3);
-  margin-top: var(--sp-8);
+  margin-top: var(--sp-6);
+}
+
+.scale-enter-active,
+.scale-leave-active {
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.scale-enter-from,
+.scale-leave-to {
+  opacity: 0;
+}
+
+.scale-enter-from .commands-panel__modal-card,
+.scale-leave-to .commands-panel__modal-card {
+  transform: scale(0.95);
 }
 </style>
