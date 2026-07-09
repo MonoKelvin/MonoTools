@@ -110,11 +110,24 @@ async function handleSearchBarMousedown(event: MouseEvent) {
     } else {
       // 在输入框的空白区域：拖拽窗口
       console.log('Input blank area, start dragging')
+      // 阻止事件继续传播（避免触发 input blur 导致窗口隐藏）
+      event.stopPropagation()
       // 不 preventDefault，让浏览器默认行为处理
       if (isTauri) {
         try {
+          // 先设置拖拽状态，防止调用 start_dragging 时触发失焦隐藏
+          await invoke('set_dragging', { dragging: true })
           await invoke('start_dragging')
           console.log('Dragging started successfully')
+          // 500ms 后重置拖拽状态，让窗口可以正常失焦隐藏
+          setTimeout(async () => {
+            try {
+              await invoke('set_dragging', { dragging: false })
+              console.log('Dragging state reset')
+            } catch (error) {
+              console.error('Failed to reset dragging state:', error)
+            }
+          }, 500)
         } catch (error) {
           console.error('Failed to start dragging:', error)
         }
@@ -336,7 +349,6 @@ defineExpose({ focus })
 .search-input-wrapper {
   flex: 1;
   min-width: 0;
-  -webkit-app-region: no-drag;
   overflow: hidden;
 }
 

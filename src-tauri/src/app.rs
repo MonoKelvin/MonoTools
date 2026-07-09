@@ -9,7 +9,7 @@ pub mod app {
     use crate::engines::file_search::FileSearchService;
     use crate::repositories::*;
     use crate::models::Settings;
-    use std::sync::Arc;
+    use std::sync::{Arc, Mutex};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::menu::{CheckMenuItem, Menu, MenuItem};
     use tauri::{Manager, WindowEvent};
@@ -28,6 +28,16 @@ pub mod app {
                 // 失焦自动隐藏（Spotlight 体验）
                 if let WindowEvent::Focused(false) = event {
                     if window.label() == "search" {
+                        // 检查是否正在拖拽，如果是则不隐藏窗口
+                        let app_handle = window.app_handle();
+                        if let Some(state) = app_handle.try_state::<Arc<AppState>>() {
+                            if let Ok(is_dragging) = state.is_dragging.lock() {
+                                if *is_dragging {
+                                    println!("[DEBUG] Window focus lost during dragging, skipping hide");
+                                    return;
+                                }
+                            }
+                        }
                         let _ = window.hide();
                     }
                 }
@@ -154,6 +164,7 @@ pub mod app {
                         file_search,
                         hotkey,
                         window,
+                        is_dragging: Arc::new(Mutex::new(false)),
                     }))
                 })?;
 
@@ -198,6 +209,7 @@ pub mod app {
                 crate::commands::set_pin_top,
                 crate::commands::set_window_height,
                 crate::commands::start_dragging,
+                crate::commands::set_dragging,
                 crate::commands::quit_app,
             ])
             .run(tauri::generate_context!())

@@ -7,6 +7,7 @@ use crate::repositories::*;
 use crate::services::hotkey::HotkeyService;
 use crate::services::window::WindowService;
 use std::sync::Arc;
+use std::sync::Mutex;
 use tauri::AppHandle;
 
 pub struct AppState {
@@ -21,4 +22,7 @@ pub struct AppState {
 
     pub hotkey: Arc<HotkeyService>,
     pub window: Arc<WindowService>,
+
+    // 窗口拖拽状态，用于防止拖拽时失焦隐藏
+    pub is_dragging: Arc<Mutex<bool>>,
 }

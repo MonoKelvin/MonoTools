@@ -259,8 +259,17 @@ pub async fn set_window_height(
 
 /// 应用层提供的"开始拖拽窗口"命令——前端 header 空白区域会触发。
 #[tauri::command]
-pub async fn start_dragging(window: tauri::WebviewWindow) -> Result<(), String> {
+pub async fn start_dragging(
+    state: tauri::State<'_, Arc<AppState>>,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
     println!("[DEBUG] start_dragging called");
+
+    // 设置拖拽状态，防止拖拽期间失焦隐藏窗口
+    if let Ok(mut dragging) = state.is_dragging.lock() {
+        *dragging = true;
+    }
+
     window
         .start_dragging()
         .map_err(|e| {
@@ -268,6 +277,22 @@ pub async fn start_dragging(window: tauri::WebviewWindow) -> Result<(), String> 
             format!("Failed to start dragging: {e}")
         })?;
     println!("[DEBUG] Dragging started successfully");
+
+    // 注意：拖拽状态将在 500ms 后由前端的 set_dragging(false) 调用重置
+    // 这样可以在拖拽期间防止窗口失焦隐藏
+    Ok(())
+}
+
+/// 设置拖拽状态（用于拖拽结束后重置状态）
+#[tauri::command]
+pub async fn set_dragging(
+    state: tauri::State<'_, Arc<AppState>>,
+    dragging: bool,
+) -> Result<(), String> {
+    if let Ok(mut is_dragging) = state.is_dragging.lock() {
+        *is_dragging = dragging;
+        println!("[DEBUG] Dragging state set to: {}", dragging);
+    }
     Ok(())
 }
 

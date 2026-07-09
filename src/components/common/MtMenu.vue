@@ -155,7 +155,19 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
   -webkit-backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
   border: 1px solid var(--glass-border);
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+  box-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.24),
+    0 8px 16px rgba(0, 0, 0, 0.20),
+    0 16px 32px rgba(0, 0, 0, 0.16),
+    0 24px 48px rgba(0, 0, 0, 0.10),
+    0 32px 64px rgba(0, 0, 0, 0.05);
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.0) 40%,
+      rgba(0, 0, 0, 0.02) 100%
+    );
   user-select: none;
 }
 
