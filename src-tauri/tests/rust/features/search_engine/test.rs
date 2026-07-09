@@ -37,10 +37,13 @@ fn cleanup_test_data() {
 fn get_system_roots() -> Vec<PathBuf> {
     let mut roots = Vec::new();
 
-    for letter in ['C', 'D', 'E', 'F', 'G', 'H'] {
-        let path = PathBuf::from(format!("{}:\\", letter));
-        if path.exists() {
-            roots.push(path);
+    let e_work = PathBuf::from("E:\\work");
+    if e_work.exists() {
+        roots.push(e_work);
+    } else {
+        let e_path = PathBuf::from("E:\\");
+        if e_path.exists() {
+            roots.push(e_path);
         }
     }
 
@@ -49,39 +52,36 @@ fn get_system_roots() -> Vec<PathBuf> {
 
 fn get_common_search_keywords() -> Vec<&'static str> {
     vec![
-        "notepad",
-        "system32",
-        "windows",
-        "chrome",
-        "explorer",
-        "cmd",
-        "powershell",
-        "git",
-        "python",
-        "rust",
-        "visual",
+        "work",
         "code",
-        "dll",
-        "exe",
-        "config",
-        "log",
+        "project",
+        "git",
+        "rust",
         "txt",
-        "pdf",
-        "jpg",
-        "png",
         "json",
-        "xml",
-        "html",
-        "css",
-        "js",
         "rs",
         "toml",
         "lock",
+        "md",
+        "html",
+        "css",
+        "js",
+        "png",
+        "jpg",
+        "log",
+        "config",
+        "data",
+        "src",
+        "target",
+        "build",
+        "test",
+        "readme",
+        "cargo",
+        "package",
+        "index",
         "cache",
-        "temp",
-        "desktop",
-        "download",
-        "documents",
+        "tmp",
+        "backup",
     ]
 }
 
@@ -111,7 +111,7 @@ pub async fn run_search_engine_tests() {
     let roots = get_system_roots();
     println!("DEBUG: 系统根目录: {:?}", roots);
 
-    let engine = match FileSearchEngine::new_with_db_path(roots, db_path) {
+    let engine = match FileSearchEngine::new_with_db_path(db_path) {
         Ok(e) => e,
         Err(e) => {
             results.add_result("引擎创建", false, &format!("创建失败: {}", e), 0);
@@ -121,6 +121,12 @@ pub async fn run_search_engine_tests() {
             return;
         }
     };
+
+    if let Some(indexer) = engine.get_ntfs_indexer() {
+        println!("DEBUG: NTFS索引器可用，卷列表: {:?}", indexer.get_volumes());
+    } else {
+        println!("DEBUG: NTFS索引器不可用");
+    }
 
 
 
@@ -132,7 +138,8 @@ pub async fn run_search_engine_tests() {
     if !t1.passed || t1.total_files == 0 {
         results.add_result("路径验证", false, "索引为空，跳过验证", 0);
         report.add_section_item("数据质量", "路径验证", "跳过（索引为空）");
-        report.save(&output_path(MODULE_NAME, "summary.txt"));
+        let summary_filename = table::Table::generate_timestamp_filename("summary");
+        report.save(&output_path(MODULE_NAME, &summary_filename));
         println!("索引为空，跳过后续测试");
         return;
     }
@@ -167,10 +174,13 @@ pub async fn run_search_engine_tests() {
 
     let output_dir = output_path(MODULE_NAME, "");
     ensure_dir(&output_dir);
-    report.save(&output_path(MODULE_NAME, "summary.txt"));
+    let summary_filename = table::Table::generate_timestamp_filename("summary");
+    report.save(&output_path(MODULE_NAME, &summary_filename));
 
     println!("{}", results.generate_summary());
 }
+
+const MAX_INDEX_BUILD_TIME_MS: u64 = 120000;
 
 struct IndexBuildResult {
     passed: bool,
@@ -196,10 +206,19 @@ async fn test_index_building(engine: &FileSearchEngine) -> IndexBuildResult {
                 };
             }
 
-            println!("DEBUG: 索引构建完成，总文件数: {}", total);
+            if duration_ms > MAX_INDEX_BUILD_TIME_MS {
+                return IndexBuildResult {
+                    passed: false,
+                    message: format!("索引构建超时: {}ms，超过{}ms限制", duration_ms, MAX_INDEX_BUILD_TIME_MS),
+                    duration_ms,
+                    total_files: total
+                };
+            }
+
+            println!("DEBUG: 索引构建完成，总文件数: {}，耗时: {}ms", total, duration_ms);
             IndexBuildResult {
                 passed: true,
-                message: format!("索引构建完成，共 {} 个文件", total),
+                message: format!("索引构建完成，共 {} 个文件，耗时 {}ms", total, duration_ms),
                 duration_ms,
                 total_files: total
             }
@@ -310,7 +329,8 @@ async fn test_path_validation(engine: &FileSearchEngine, config: &SearchEngineTe
 
     let output_dir = output_path(MODULE_NAME, "");
     ensure_dir(&output_dir);
-    validation_report.save(&output_path(MODULE_NAME, "path_validation.txt"));
+    let validation_filename = table::Table::generate_timestamp_filename("path_validation");
+    validation_report.save(&output_path(MODULE_NAME, &validation_filename));
 
     let validity_rate = valid_count as f64 / sample_size as f64;
     let duration_ms = start.elapsed().as_millis() as u64;

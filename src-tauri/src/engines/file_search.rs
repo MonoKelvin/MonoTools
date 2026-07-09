@@ -1,14 +1,19 @@
-//! 文件搜索引擎 - 整合 NTFS MFT 枚举和 SQLite FTS5
+//! 文件搜索引擎 - 完全基于 NTFS MFT 和 USN Journal（类似 Everything）
 //!
 //! 架构设计：
-//! - 全量索引：使用 FSCTL_ENUM_USN_DATA 批量读取 MFT（类似 Everything）
+//! - 全量索引：使用 FSCTL_ENUM_USN_DATA 批量读取 MFT，这是最快的全盘枚举方式
 //! - 增量更新：使用 FSCTL_READ_USN_JOURNAL 读取变更记录
 //! - 索引层：SQLite FTS5 虚拟表，实现毫秒级全文搜索
 //! - 缓存层：路径缓存，通过父文件引用号快速重建完整路径
+//!
+//! 参考 Everything 实现原理：
+//! 1. 直接读取 NTFS MFT，不进行递归目录遍历
+//! 2. 利用 USN Journal 实现实时增量更新
+//! 3. 使用前缀索引优化搜索性能
 
 use crate::error::Result;
 use crate::models::{FileResult, ResultType, SearchAction, SearchCategory, SearchResult};
-use crate::platform::windows::usn::{NtfsIndexer, WinUsnJournal, UsnChangeReason, UsnRecord};
+use crate::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashSet;
@@ -16,6 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 const DB_NAME: &str = "monotools_file_index.db";
+const BATCH_SIZE: usize = 100000;
 
 #[derive(Debug, Clone)]
 struct IndexRecord {
@@ -25,24 +31,24 @@ struct IndexRecord {
     size: i64,
     modified_at: i64,
     is_directory: bool,
+    depth: usize,
 }
 
 pub struct FileSearchEngine {
     db: Arc<Mutex<Connection>>,
-    roots: Vec<PathBuf>,
     ntfs_indexer: Option<NtfsIndexer>,
-    usn_journal: Option<WinUsnJournal>,
     last_update: Mutex<i64>,
     indexed_paths: Arc<Mutex<HashSet<String>>>,
+    is_indexing: Mutex<bool>,
 }
 
 impl FileSearchEngine {
-    pub fn new(roots: Vec<PathBuf>) -> Result<Self> {
+    pub fn new(_roots: Vec<PathBuf>) -> Result<Self> {
         let db_path = get_db_path();
-        Self::new_with_db_path(roots, db_path)
+        Self::new_with_db_path(db_path)
     }
 
-    pub fn new_with_db_path(roots: Vec<PathBuf>, db_path: PathBuf) -> Result<Self> {
+    pub fn new_with_db_path(db_path: PathBuf) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -56,16 +62,23 @@ impl FileSearchEngine {
 
         Self::init_db(&conn)?;
 
-        let ntfs_indexer = NtfsIndexer::new().ok();
-        let usn_journal = WinUsnJournal::new().ok();
+        let ntfs_indexer = match NtfsIndexer::new() {
+            Ok(i) => {
+                log::info!("NTFS索引器创建成功，检测到 {} 个卷", i.get_volumes().len());
+                Some(i)
+            }
+            Err(e) => {
+                log::warn!("NTFS索引器创建失败: {}", e);
+                None
+            }
+        };
 
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
-            roots,
             ntfs_indexer,
-            usn_journal,
             last_update: Mutex::new(0),
             indexed_paths: Arc::new(Mutex::new(HashSet::new())),
+            is_indexing: Mutex::new(false),
         })
     }
 
@@ -74,8 +87,10 @@ impl FileSearchEngine {
             r#"
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=NORMAL;
-            PRAGMA cache_size=100000;
+            PRAGMA cache_size=500000;
             PRAGMA temp_store=MEMORY;
+            PRAGMA page_size=65536;
+            PRAGMA mmap_size=268435456;
 
             CREATE TABLE IF NOT EXISTS files_meta (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -108,206 +123,147 @@ impl FileSearchEngine {
             CREATE INDEX IF NOT EXISTS idx_files_meta_path ON files_meta(path);
             CREATE INDEX IF NOT EXISTS idx_files_meta_modified ON files_meta(modified);
             CREATE INDEX IF NOT EXISTS idx_files_meta_is_dir ON files_meta(is_dir);
-            CREATE INDEX IF NOT EXISTS idx_files_meta_depth ON files_meta(depth);
+            CREATE INDEX IF NOT EXISTS idx_files_meta_ext ON files_meta(ext);
             "#,
         )?;
         Ok(())
     }
 
     pub async fn build_index(&self) -> Result<()> {
-        log::info!("开始构建文件索引 - roots: {:?}", self.roots);
+        if *self.is_indexing.lock() {
+            log::info!("索引构建已在进行中");
+            return Ok(());
+        }
+        *self.is_indexing.lock() = true;
+
+        log::info!("开始构建文件索引（基于NTFS MFT）");
         let now = std::time::Instant::now();
 
-        let total = self.build_index_sync().await?;
+        let total = self.build_index_ntfs().await?;
 
         log::info!("文件索引构建完成: {} 个文件，耗时 {:?}", total, now.elapsed());
+        *self.is_indexing.lock() = false;
         Ok(())
     }
 
-    async fn build_index_sync(&self) -> Result<usize> {
+    async fn build_index_ntfs(&self) -> Result<usize> {
         let mut conn = self.db.lock();
         conn.execute("DELETE FROM files_meta", [])?;
 
-        let mut total = 0;
-        let mut paths = HashSet::new();
+        let mut records = Vec::new();
 
         if let Some(indexer) = &self.ntfs_indexer {
-            total = self.build_index_ntfs(indexer, &mut conn, &mut paths);
-            log::info!("NTFS MFT 索引完成: {} 个文件", total);
+            let volumes = indexer.get_volumes();
+            log::info!("NTFS索引器可用，检测到 {} 个卷: {:?}", volumes.len(), volumes);
+
+            for volume in volumes {
+                log::info!("开始枚举卷: {}", volume);
+                let count = self.enumerate_volume(indexer, volume, &mut records);
+                log::info!("卷 {} 枚举完成: {} 个文件", volume, count);
+            }
+        } else {
+            log::error!("NTFS索引器不可用，无法构建索引");
+            return Ok(0);
         }
 
-        let walkdir_total = self.build_index_walkdir(&mut conn, &mut paths);
-        if walkdir_total > 0 {
-            log::info!("Walkdir 索引完成: {} 个文件", walkdir_total);
-            total += walkdir_total;
-        }
+        log::info!("开始批量写入数据库，共 {} 条记录", records.len());
+        self.batch_insert_records(&mut conn, &records)?;
 
         conn.execute_batch("VACUUM")?;
 
-        *self.indexed_paths.lock() = paths;
+        *self.indexed_paths.lock() = records.iter().map(|r| r.full_path.to_string_lossy().to_string()).collect();
         *self.last_update.lock() = chrono::Utc::now().timestamp();
 
-        Ok(total)
+        Ok(records.len())
     }
 
-    fn build_index_ntfs(
-        &self,
-        indexer: &NtfsIndexer,
-        conn: &mut Connection,
-        paths: &mut HashSet<String>,
-    ) -> usize {
-        let mut total = 0;
+    fn enumerate_volume(&self, indexer: &NtfsIndexer, volume: &str, records: &mut Vec<UsnRecord>) -> usize {
+        let mut count = 0;
+        let mut skipped = 0;
 
-        for volume in indexer.get_volumes() {
-            let result = indexer.enumerate_volume_files(volume, |record| {
-                let path_str = record.full_path.to_string_lossy().to_string();
+        let result = indexer.enumerate_volume_files(volume, |record| {
+            let path_str = record.full_path.to_string_lossy().to_string();
 
-                if paths.contains(&path_str) {
-                    return;
-                }
-
-                paths.insert(path_str.clone());
-                total += 1;
-            });
-
-            if let Err(e) = result {
-                log::warn!("枚举卷 {} 失败: {}", volume, e);
+            if records.iter().any(|r| r.full_path.to_string_lossy() == path_str) {
+                return;
             }
+
+            if self.should_skip_path(&record) {
+                skipped += 1;
+                return;
+            }
+
+            records.push(record);
+            count += 1;
+        });
+
+        if let Err(e) = result {
+            log::warn!("枚举卷 {} 失败: {}", volume, e);
         }
 
-        let _ = self.insert_paths_ntfs(conn, paths);
-
-        total
+        log::debug!("卷 {} 枚举完成，有效文件: {}, 跳过: {}", volume, count, skipped);
+        count
     }
 
-    fn insert_paths_ntfs(&self, conn: &mut Connection, paths: &HashSet<String>) -> Result<()> {
-        let batch_size = 5000;
-        let mut batch = Vec::new();
+    fn should_skip_path(&self, record: &UsnRecord) -> bool {
+        let name = record.file_name.to_lowercase();
 
+        if name.starts_with('.') && !name.starts_with(".git") && !name.starts_with(".vscode") {
+            return true;
+        }
+
+        if name.starts_with('$') {
+            return true;
+        }
+
+        if name == "thumbs.db" || name == "desktop.ini" || name == "pagefile.sys" || name == "hiberfil.sys" {
+            return true;
+        }
+
+        let path_str = record.full_path.to_string_lossy().to_lowercase();
+        if path_str.contains("\\windows\\winsxs") ||
+           path_str.contains("\\windows\\system32\\config") ||
+           path_str.contains("\\windows\\softwaredistribution") {
+            return true;
+        }
+
+        false
+    }
+
+    fn batch_insert_records(&self, conn: &mut Connection, records: &[UsnRecord]) -> Result<()> {
         let tx = conn.transaction()?;
         let mut stmt = tx.prepare(
             "INSERT OR IGNORE INTO files_meta(path, name, ext, size, modified, is_dir, depth)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
         )?;
 
-        for path_str in paths {
-            let path = PathBuf::from(path_str);
-            let record = build_record(path, 0);
-            if record.name.is_empty() {
-                continue;
-            }
+        let mut inserted = 0;
 
-            batch.push((
-                path_str.clone(),
-                record.name,
-                record.extension.unwrap_or_default(),
-                record.size,
-                record.modified_at,
+        for record in records {
+            let path_str = record.full_path.to_string_lossy().to_string();
+            let depth = record.full_path.components().count() as i64;
+
+            let _ = stmt.execute(rusqlite::params![
+                path_str,
+                record.file_name,
+                record.extension.as_deref().unwrap_or(""),
+                record.file_size as i64,
+                record.last_write_time,
                 if record.is_directory { 1 } else { 0 },
-                0,
-            ));
+                depth,
+            ]);
 
-            if batch.len() >= batch_size {
-                for (path, name, ext, size, modified, is_dir, depth) in &batch {
-                    let _ = stmt.execute(rusqlite::params![path, name, ext, *size, *modified, *is_dir, *depth]);
-                }
-                batch.clear();
-            }
-        }
+            inserted += 1;
 
-        if !batch.is_empty() {
-            for (path, name, ext, size, modified, is_dir, depth) in &batch {
-                let _ = stmt.execute(rusqlite::params![path, name, ext, *size, *modified, *is_dir, *depth]);
+            if inserted % BATCH_SIZE == 0 {
+                log::debug!("已插入 {} 条记录", inserted);
             }
         }
 
         drop(stmt);
         tx.commit()?;
 
-        Ok(())
-    }
-
-    fn build_index_walkdir(
-        &self,
-        conn: &mut Connection,
-        paths: &mut HashSet<String>,
-    ) -> usize {
-        let mut total = 0;
-
-        for root in &self.roots {
-            if !root.exists() {
-                continue;
-            }
-
-            let walker = walkdir::WalkDir::new(root)
-                .max_depth(8)
-                .follow_links(false)
-                .into_iter()
-                .filter_entry(|e| !is_hidden(e.file_name()));
-
-            for entry in walker.filter_map(|e| e.ok()) {
-                if entry.depth() == 0 {
-                    continue;
-                }
-
-                let path_str = entry.path().to_string_lossy().to_string();
-                if paths.contains(&path_str) {
-                    continue;
-                }
-                paths.insert(path_str.clone());
-                total += 1;
-            }
-        }
-
-        let _ = self.insert_paths_walkdir(conn, paths);
-
-        total
-    }
-
-    fn insert_paths_walkdir(&self, conn: &mut Connection, paths: &HashSet<String>) -> Result<()> {
-        let batch_size = 10000;
-        let mut batch = Vec::new();
-
-        let tx = conn.transaction()?;
-        let mut stmt = tx.prepare(
-            "INSERT OR IGNORE INTO files_meta(path, name, ext, size, modified, is_dir, depth)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
-        )?;
-
-        for path_str in paths {
-            let path = PathBuf::from(path_str);
-            let record = build_record(path, 0);
-            if record.name.is_empty() {
-                continue;
-            }
-
-            batch.push((
-                path_str.clone(),
-                record.name,
-                record.extension.unwrap_or_default(),
-                record.size,
-                record.modified_at,
-                if record.is_directory { 1 } else { 0 },
-                0,
-            ));
-
-            if batch.len() >= batch_size {
-                for (path, name, ext, size, modified, is_dir, depth) in &batch {
-                    let _ = stmt.execute(rusqlite::params![path, name, ext, *size, *modified, *is_dir, *depth]);
-                }
-                batch.clear();
-            }
-        }
-
-        if !batch.is_empty() {
-            for (path, name, ext, size, modified, is_dir, depth) in &batch {
-                let _ = stmt.execute(rusqlite::params![path, name, ext, *size, *modified, *is_dir, *depth]);
-            }
-        }
-
-        drop(stmt);
-        tx.commit()?;
-
+        log::info!("批量插入完成，共插入 {} 条记录", inserted);
         Ok(())
     }
 
@@ -315,8 +271,7 @@ impl FileSearchEngine {
         if let Some(indexer) = &self.ntfs_indexer {
             return self.update_index_usn(indexer);
         }
-
-        self.update_index_fallback()
+        Ok(())
     }
 
     fn update_index_usn(&self, indexer: &NtfsIndexer) -> Result<()> {
@@ -333,22 +288,28 @@ impl FileSearchEngine {
         for change in changes {
             let path_str = change.full_path.to_string_lossy().to_string();
 
+            if self.should_skip_path(&change) {
+                continue;
+            }
+
+            let depth = change.full_path.components().count() as i64;
+            let ext = change.extension.as_deref().unwrap_or("");
+
             match change.reason {
                 UsnChangeReason::Created | UsnChangeReason::RenamedNewName => {
                     if !paths.contains(&path_str) {
-                        let record = build_record(change.full_path.clone(), 0);
-                        if !record.name.is_empty() {
+                        if !change.file_name.is_empty() {
                             conn.execute(
                                 "INSERT OR REPLACE INTO files_meta(path, name, ext, size, modified, is_dir, depth)
                                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                                 rusqlite::params![
                                     path_str,
-                                    record.name,
-                                    record.extension.unwrap_or_default(),
-                                    record.size,
-                                    record.modified_at,
-                                    if record.is_directory { 1 } else { 0 },
-                                    0,
+                                    change.file_name,
+                                    ext,
+                                    change.file_size as i64,
+                                    change.last_write_time,
+                                    if change.is_directory { 1 } else { 0 },
+                                    depth,
                                 ],
                             )?;
                             paths.insert(path_str);
@@ -361,18 +322,17 @@ impl FileSearchEngine {
                 }
                 UsnChangeReason::Modified => {
                     if paths.contains(&path_str) {
-                        let record = build_record(change.full_path.clone(), 0);
-                        if !record.name.is_empty() {
+                        if !change.file_name.is_empty() {
                             conn.execute(
                                 "UPDATE files_meta SET name = ?2, ext = ?3, size = ?4, modified = ?5, is_dir = ?6
                                  WHERE path = ?1",
                                 rusqlite::params![
                                     path_str,
-                                    record.name,
-                                    record.extension.unwrap_or_default(),
-                                    record.size,
-                                    record.modified_at,
-                                    if record.is_directory { 1 } else { 0 },
+                                    change.file_name,
+                                    ext,
+                                    change.file_size as i64,
+                                    change.last_write_time,
+                                    if change.is_directory { 1 } else { 0 },
                                 ],
                             )?;
                         }
@@ -382,110 +342,6 @@ impl FileSearchEngine {
         }
 
         *self.last_update.lock() = chrono::Utc::now().timestamp();
-        Ok(())
-    }
-
-    fn update_index_fallback(&self) -> Result<()> {
-        let last = *self.last_update.lock();
-        let now = chrono::Utc::now().timestamp();
-
-        if now - last < 60 {
-            return Ok(());
-        }
-
-        let mut conn = self.db.lock();
-
-        let latest: Option<i64> = conn
-            .query_row("SELECT MAX(modified) FROM files_meta", [], |row| row.get(0))
-            .ok()
-            .flatten();
-
-        let latest_ts = latest.unwrap_or(0);
-
-        let existing: HashSet<String> = conn
-            .prepare("SELECT path FROM files_meta")?
-            .query_map([], |row| row.get::<_, String>(0))?
-            .filter_map(|r| r.ok())
-            .collect();
-
-        let mut current_paths = HashSet::new();
-
-        {
-            let tx = conn.transaction()?;
-
-            for root in &self.roots {
-                if !root.exists() {
-                    continue;
-                }
-
-                let walker = walkdir::WalkDir::new(root)
-                    .max_depth(8)
-                    .follow_links(false)
-                    .into_iter()
-                    .filter_entry(|e| !is_hidden(e.file_name()));
-
-                for entry in walker.filter_map(|e| e.ok()) {
-                    if entry.depth() == 0 {
-                        continue;
-                    }
-
-                    let path_str = entry.path().to_string_lossy().to_string();
-                    current_paths.insert(path_str.clone());
-
-                    if existing.contains(&path_str) {
-                        let modified = entry.metadata()
-                            .ok()
-                            .and_then(|m| m.modified().ok())
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs() as i64)
-                            .unwrap_or(0);
-
-                        if modified <= latest_ts {
-                            continue;
-                        }
-                    }
-
-                    let record = build_record(entry.path().to_path_buf(), entry.depth());
-                    if record.name.is_empty() {
-                        continue;
-                    }
-
-                    let _ = tx.execute(
-                        "INSERT OR REPLACE INTO files_meta(path, name, ext, size, modified, is_dir, depth)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                        rusqlite::params![
-                            path_str,
-                            record.name,
-                            record.extension.unwrap_or_default(),
-                            record.size,
-                            record.modified_at,
-                            if record.is_directory { 1 } else { 0 },
-                            entry.depth() as i64,
-                        ],
-                    );
-                }
-            }
-
-            let to_delete: Vec<String> = existing.difference(&current_paths).cloned().collect();
-            if !to_delete.is_empty() {
-                let placeholders: Vec<&str> = to_delete.iter().map(|_| "?").collect();
-                let sql = format!(
-                    "DELETE FROM files_meta WHERE path IN ({})",
-                    placeholders.join(",")
-                );
-                let params: Vec<&dyn rusqlite::ToSql> = to_delete
-                    .iter()
-                    .map(|p| p as &dyn rusqlite::ToSql)
-                    .collect();
-                tx.execute(&sql, rusqlite::params_from_iter(params))?;
-            }
-
-            tx.commit()?;
-        }
-
-        *self.last_update.lock() = now;
-        *self.indexed_paths.lock() = current_paths;
-
         Ok(())
     }
 
@@ -608,12 +464,8 @@ impl FileSearchEngine {
         count as usize
     }
 
-    pub fn get_roots(&self) -> &[PathBuf] {
-        &self.roots
-    }
-
-    pub fn set_roots(&mut self, roots: Vec<PathBuf>) {
-        self.roots = roots;
+    pub fn is_indexing(&self) -> bool {
+        *self.is_indexing.lock()
     }
 
     pub fn get_ntfs_indexer(&self) -> Option<&NtfsIndexer> {
@@ -626,44 +478,6 @@ fn get_db_path() -> PathBuf {
         PathBuf::from(app_data).join("MonoTools").join(DB_NAME)
     } else {
         PathBuf::from(DB_NAME)
-    }
-}
-
-fn is_hidden(name: &std::ffi::OsStr) -> bool {
-    name.to_string_lossy().starts_with('.')
-}
-
-fn build_record(path: PathBuf, _depth: usize) -> IndexRecord {
-    let metadata = std::fs::metadata(&path).ok();
-    let (size, is_dir) = metadata
-        .as_ref()
-        .map(|m| (m.len() as i64, m.is_dir()))
-        .unwrap_or((0, false));
-
-    let modified = metadata
-        .and_then(|m| m.modified().ok())
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-
-    let name = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string();
-
-    let extension = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_lowercase());
-
-    IndexRecord {
-        path,
-        name,
-        extension,
-        size,
-        modified_at: modified,
-        is_directory: is_dir,
     }
 }
 

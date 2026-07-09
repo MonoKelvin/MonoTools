@@ -68,6 +68,11 @@ impl Table {
     pub fn save(&self, path: &std::path::PathBuf) {
         let _ = std::fs::write(path, self.generate());
     }
+
+    pub fn generate_timestamp_filename(base_name: &str) -> String {
+        let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
+        format!("{}_{}.txt", base_name, timestamp)
+    }
 }
 
 pub struct ValidationReport {

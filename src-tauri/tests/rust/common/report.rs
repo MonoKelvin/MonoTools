@@ -75,7 +75,7 @@ impl TestReport {
 
             let max_label_len = section.items.iter().map(|i| i.label.len()).max().unwrap_or(0);
             for item in &section.items {
-                output.push_str(&format!("{:<width$}: {}\n", item.label, item.value, width = max_label_len + 2));
+                output.push_str(&format!("{:<width$}:{}\n", item.label, item.value, width = max_label_len));
             }
         }
 

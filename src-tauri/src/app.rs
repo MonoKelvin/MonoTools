@@ -134,18 +134,6 @@ pub mod app {
                     let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
                     let file_roots = settings_repo.get().file_search_roots.clone();
                     let file_search = Arc::new(FileSearchEngine::new(file_roots.clone()).unwrap());
-                    if !file_roots.is_empty() {
-                        let _ = file_search.build_index().await;
-                    }
-                    // 启动后台增量更新（每 120 秒）
-                    if !file_roots.is_empty() {
-                        use crate::engines::start_update_loop;
-                        let fs_clone = file_search.clone();
-                        start_update_loop(
-                            move || fs_clone.update_index(),
-                            std::time::Duration::from_secs(120),
-                        );
-                    }
 
                     let search_engine = Arc::new(SearchEngine::new(
                         app_search.clone(),
@@ -173,6 +161,27 @@ pub mod app {
                     }))
                 })?;
 
+                let file_search_clone = state.file_search.clone();
+                let file_roots_clone = state.settings_repo.get().file_search_roots.clone();
+                if !file_roots_clone.is_empty() {
+                    tauri::async_runtime::spawn(async move {
+                        log::info!("后台索引构建任务启动...");
+                        let start = std::time::Instant::now();
+                        if let Err(e) = file_search_clone.build_index().await {
+                            log::error!("后台索引构建失败: {}", e);
+                        } else {
+                            log::info!("后台索引构建完成，耗时 {:?}", start.elapsed());
+                        }
+
+                        use crate::engines::start_update_loop;
+                        let fs_clone = file_search_clone.clone();
+                        start_update_loop(
+                            move || fs_clone.update_index(),
+                            std::time::Duration::from_secs(120),
+                        );
+                    });
+                }
+
                 app.manage(state.clone());
 
                 // 同步初始置顶状态到窗口
@@ -180,14 +189,17 @@ pub mod app {
                     let _ = w.set_always_on_top(state.settings_repo.get().pin_to_top);
                 }
 
-                // 注册快捷键
+                // 注册快捷键（非阻塞）
                 let app_handle_for_setup = app.handle().clone();
                 let initial_hotkey = state.settings_repo.get().hotkey.clone();
-                if let Err(e) = tauri::async_runtime::block_on(async {
-                    state.hotkey.register(&initial_hotkey, &app_handle_for_setup).await
-                }) {
-                    log::warn!("注册默认快捷键失败: {e}");
-                }
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = state.hotkey.register(&initial_hotkey, &app_handle_for_setup).await {
+                        log::warn!("注册默认快捷键失败: {}，请检查是否被其他程序占用", e);
+                        log::info!("尝试重新注册...");
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        let _ = state.hotkey.register(&initial_hotkey, &app_handle_for_setup).await;
+                    }
+                });
 
                 Ok(())
             })

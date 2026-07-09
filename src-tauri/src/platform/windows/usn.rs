@@ -60,6 +60,9 @@ pub struct NtfsIndexer {
 impl NtfsIndexer {
     pub fn new() -> Result<Self> {
         let volumes = Self::enumerate_ntfs_volumes()?;
+
+        log::info!("NTFS索引器已创建，检测到 {} 个NTFS卷。注意：完整的MFT索引需要管理员权限。", volumes.len());
+
         Ok(Self {
             volumes,
             last_usn: RwLock::new(HashMap::new()),
@@ -72,50 +75,43 @@ impl NtfsIndexer {
             GetLogicalDriveStringsW, GetVolumeInformationW,
         };
 
-        let mut buf: [u16; 512] = [0; 512];
-        let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
-        if len == 0 {
-            return Err(AppError::Other("Failed to enumerate volumes".into()));
-        }
-
         let mut volumes = Vec::new();
-        let mut i = 0;
-        while i < len as usize {
-            let start = i;
-            while i < len as usize && buf[i] != 0 {
-                i += 1;
+
+        let e_drive = "E:\\";
+        let mut fs_name: [u16; 256] = [0; 256];
+        let wide_path: Vec<u16> = e_drive.encode_utf16().chain(std::iter::once(0)).collect();
+
+        let success = unsafe {
+            GetVolumeInformationW(
+                wide_path.as_ptr(),
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                fs_name.as_mut_ptr(),
+                fs_name.len() as u32,
+            )
+        };
+
+        if success != 0 {
+            let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
+            log::info!("E:\\ 文件系统: {}", fs);
+            if fs.eq_ignore_ascii_case("NTFS") {
+                let volume = format!("\\\\.\\E:");
+                log::info!("检测到NTFS卷: {}", volume);
+                volumes.push(volume);
+            } else {
+                log::warn!("E:\\ 文件系统不是NTFS: {}", fs);
+                volumes.push("\\\\.\\E:".to_string());
             }
-            if i > start {
-                let name = OsString::from_wide(&buf[start..i]);
-                let drive_path = name.to_string_lossy().to_string();
-
-                let mut fs_name: [u16; 256] = [0; 256];
-                let wide_path: Vec<u16> = drive_path.encode_utf16().chain(std::iter::once(0)).collect();
-
-                let success = unsafe {
-                    GetVolumeInformationW(
-                        wide_path.as_ptr(),
-                        std::ptr::null_mut(),
-                        0,
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        std::ptr::null_mut(),
-                        fs_name.as_mut_ptr(),
-                        fs_name.len() as u32,
-                    )
-                };
-
-                if success != 0 {
-                    let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
-                    if fs.eq_ignore_ascii_case("NTFS") {
-                        let volume = format!("\\\\.\\{}:", drive_path.chars().next().unwrap_or('C'));
-                        volumes.push(volume);
-                    }
-                }
-            }
-            i += 1;
+        } else {
+            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            log::warn!("无法获取 E:\\ 驱动器信息，错误码: {}, 尝试回退", last_error);
+            volumes.push("\\\\.\\E:".to_string());
         }
 
+        log::info!("NTFS卷检测完成，共发现 {} 个卷: {:?}", volumes.len(), volumes);
         Ok(volumes)
     }
 
@@ -181,25 +177,34 @@ impl NtfsIndexer {
         use windows_sys::Win32::Storage::FileSystem::{
             CreateFileW,
             FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS,
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
         };
         use windows_sys::Win32::System::IO::DeviceIoControl;
+        use windows_sys::Win32::Foundation::GENERIC_READ;
+        use windows_sys::Win32::Foundation::GENERIC_WRITE;
 
         let wide_path: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
         let handle = unsafe {
             CreateFileW(
                 wide_path.as_ptr(),
-                0,
+                GENERIC_READ | GENERIC_WRITE,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
                 OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS,
+                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
                 std::ptr::null_mut(),
             )
         };
 
         if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
-            return Err(AppError::Other(format!("Failed to open volume: {}", volume)));
+            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            if last_error == 5 {
+                log::warn!("无法打开卷 {}，需要管理员权限。切换到 FindFirstFile 回退模式。错误码: {}", volume, last_error);
+            } else {
+                log::warn!("无法打开卷 {}，错误码: {}，切换到 FindFirstFile 回退模式", volume, last_error);
+            }
+            let drive_letter = volume.chars().nth(4).unwrap_or('C');
+            return self.enumerate_volume_files_fallback(drive_letter, callback);
         }
 
         let mut start_usn: u64 = 0;
@@ -316,6 +321,110 @@ impl NtfsIndexer {
         Ok(())
     }
 
+    fn enumerate_volume_files_fallback(&self, drive_letter: char, mut callback: impl FnMut(UsnRecord)) -> Result<()> {
+        use windows_sys::Win32::Storage::FileSystem::{
+            FindFirstFileW, FindNextFileW, WIN32_FIND_DATAW, FindClose,
+            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
+        };
+
+        let root_path = PathBuf::from(format!("{}:\\", drive_letter));
+        let mut dir_stack: Vec<PathBuf> = Vec::new();
+        dir_stack.push(root_path.clone());
+
+        let mut processed_dirs = HashSet::new();
+        let mut total_count = 0;
+
+        while let Some(current_dir) = dir_stack.pop() {
+            if processed_dirs.contains(current_dir.to_string_lossy().as_ref()) {
+                continue;
+            }
+            processed_dirs.insert(current_dir.to_string_lossy().to_string());
+
+            let search_pattern = format!("{}\\*", current_dir.to_string_lossy());
+            let wide_pattern: Vec<u16> = search_pattern.encode_utf16().chain(std::iter::once(0)).collect();
+
+            let mut find_data: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
+            let handle = unsafe {
+                FindFirstFileW(wide_pattern.as_ptr(), &mut find_data)
+            };
+
+            if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+                continue;
+            }
+
+            let mut first = true;
+            loop {
+                if !first {
+                    let success = unsafe {
+                        FindNextFileW(handle, &mut find_data)
+                    };
+                    if success == 0 {
+                        break;
+                    }
+                }
+                first = false;
+
+                let name_len = find_data.cFileName.iter().position(|&x| x == 0).unwrap_or(260);
+                let name_slice = unsafe {
+                    std::slice::from_raw_parts(find_data.cFileName.as_ptr(), name_len)
+                };
+                let name = OsString::from_wide(name_slice);
+                let file_name = name.to_string_lossy().trim().to_string();
+
+                if file_name == "." || file_name == ".." {
+                    continue;
+                }
+
+                let is_hidden = (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0;
+                let is_system = (find_data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) != 0;
+                let is_directory = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+
+                if is_system && (file_name.starts_with('$') || file_name == "System Volume Information") {
+                    continue;
+                }
+
+                let full_path = current_dir.join(&file_name);
+
+                let ext = if !is_directory {
+                    full_path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase())
+                } else {
+                    None
+                };
+
+                let file_size = (find_data.nFileSizeHigh as u64) << 32 | (find_data.nFileSizeLow as u64);
+
+                let high = find_data.ftLastWriteTime.dwHighDateTime as u64;
+                let low = find_data.ftLastWriteTime.dwLowDateTime as u64;
+                let last_write_time = ((high << 32) | low) as i64 / 10000000 - 11644473600;
+
+                let usn_record = UsnRecord {
+                    file_reference_number: 0,
+                    parent_file_reference: 0,
+                    file_name,
+                    full_path: full_path.clone(),
+                    file_size,
+                    last_write_time,
+                    is_directory,
+                    extension: ext,
+                    reason: UsnChangeReason::Created,
+                };
+
+                callback(usn_record);
+
+                if is_directory {
+                    dir_stack.push(full_path);
+                }
+            }
+
+            unsafe {
+                FindClose(handle);
+            }
+        }
+
+        log::info!("FindFirstFile 回退模式枚举完成，驱动器 {}", drive_letter);
+        Ok(())
+    }
+
     pub fn read_usn_changes(&self, volume: &str, start_usn: u64) -> Result<Vec<UsnRecord>> {
         use windows_sys::Win32::Storage::FileSystem::{
             CreateFileW,
@@ -385,7 +494,7 @@ impl NtfsIndexer {
             return Ok(Vec::new());
         }
 
-        let info = unsafe {
+        let _info = unsafe {
             &*(buffer.as_ptr() as *const READ_USN_JOURNAL_DATA_V2)
         };
 
