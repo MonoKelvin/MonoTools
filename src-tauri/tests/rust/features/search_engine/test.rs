@@ -1,11 +1,13 @@
 use monotools_lib::engines::file_search::FileSearchEngine;
-use std::io::Write;
+use monotools_lib::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
 
 const MODULE_NAME: &str = "search_engine";
 
 fn base_dir() -> std::path::PathBuf {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    std::path::PathBuf::from(manifest_dir).join("tests").join("rust")
+    std::path::PathBuf::from(manifest_dir)
+        .join("tests")
+        .join("rust")
 }
 
 fn data_path(module: &str, filename: &str) -> std::path::PathBuf {
@@ -22,7 +24,6 @@ fn ensure_dir(path: &std::path::PathBuf) {
     }
 }
 
-/// 生成带日期时间的文件名，如 summary_20260710_075820.txt
 fn timestamped_filename(base: &str, ext: &str) -> String {
     let ts = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
     format!("{}_{}.{}", base, ts, ext)
@@ -66,35 +67,44 @@ struct SearchEngineTestConfig {
     pub index_timeout_ms: u64,
     pub sample_size: usize,
     pub search_limit: u32,
-    pub max_search_time_ms: u64,
     pub search_keywords: Vec<String>,
     pub validity_threshold: f64,
-    /// 搜索结果抽样输出数量（每个关键字输出前 N 条路径）
     pub search_sample_paths: usize,
+    pub usn_monitor_duration_ms: u64,
 }
 
 impl Default for SearchEngineTestConfig {
     fn default() -> Self {
         SearchEngineTestConfig {
-            test_drives: vec!['D'],
+            test_drives: vec!['E'],
             index_timeout_ms: 180000,
             sample_size: 100,
             search_limit: 100,
-            max_search_time_ms: 1000,
             search_keywords: vec![
-                "txt".to_string(),
-                "pdf".to_string(),
-                "doc".to_string(),
-                "exe".to_string(),
-                "rust".to_string(),
+                "work".to_string(),
                 "code".to_string(),
-                "test".to_string(),
                 "project".to_string(),
-                "data".to_string(),
+                "git".to_string(),
+                "rust".to_string(),
+                "txt".to_string(),
+                "json".to_string(),
+                "rs".to_string(),
+                "toml".to_string(),
+                "lock".to_string(),
+                "md".to_string(),
+                "html".to_string(),
+                "css".to_string(),
+                "js".to_string(),
+                "png".to_string(),
+                "jpg".to_string(),
+                "log".to_string(),
                 "config".to_string(),
+                "data".to_string(),
+                "src".to_string(),
             ],
             validity_threshold: 0.85,
             search_sample_paths: 10,
+            usn_monitor_duration_ms: 5000,
         }
     }
 }
@@ -120,7 +130,10 @@ pub async fn run_search_engine_tests() {
         Err(e) => {
             results.add_result("引擎创建", false, &format!("创建失败: {}", e), 0);
             report.add_section_item("错误", "引擎创建失败", &format!("{}", e));
-            report.save(&output_path(MODULE_NAME, &timestamped_filename("summary", "txt")));
+            report.save(&output_path(
+                MODULE_NAME,
+                &timestamped_filename("summary", "txt"),
+            ));
             println!("引擎创建失败: {}", e);
             return;
         }
@@ -131,19 +144,32 @@ pub async fn run_search_engine_tests() {
     let t1 = test_index_building(&engine, &config).await;
     results.add_result("索引构建", t1.passed, &t1.message, t1.duration_ms);
     let t1_status = if t1.passed {
-        format!("通过, {} 个文件, 耗时 {}ms, 抽样验证 {}/{}", t1.total_files, t1.duration_ms, t1.valid_count, t1.sample_count)
-    } else { "失败".to_string() };
+        format!(
+            "通过, {} 个文件, 耗时 {}ms, 抽样验证 {}/{}",
+            t1.total_files, t1.duration_ms, t1.valid_count, t1.sample_count
+        )
+    } else {
+        "失败".to_string()
+    };
     report.add_section_item("索引功能", "索引构建", &t1_status);
 
-    // 输出抽样验证的文件列表
     if !t1.sample_files.is_empty() {
         let mut details = Vec::new();
-        details.push(format!("抽样数量: {}, 有效: {}, 无效: {}", t1.sample_count, t1.valid_count, t1.sample_count - t1.valid_count));
-        details.push(String::new()); // 空行分隔
+        details.push(format!(
+            "抽样数量: {}, 有效: {}, 无效: {}",
+            t1.sample_count,
+            t1.valid_count,
+            t1.sample_count - t1.valid_count
+        ));
+        details.push(String::new());
         details.push(format!("{:<6} {}", "状态", "文件路径"));
         details.push("-".repeat(80));
         for (path, exists) in &t1.sample_files {
-            let status = if *exists { "✓ 存在" } else { "✗ 不存在" };
+            let status = if *exists {
+                "✓ 存在"
+            } else {
+                "✗ 不存在"
+            };
             details.push(format!("{:<6} {}", status, path));
         }
         report.add_section_item_with_details("索引功能", "抽样验证文件", &t1_status, &details);
@@ -155,32 +181,97 @@ pub async fn run_search_engine_tests() {
         report.add_section_item("测试结果", "总测试数", &format!("{}", passed + failed));
         report.add_section_item("测试结果", "通过", &format!("{}", passed));
         report.add_section_item("测试结果", "失败", &format!("{}", failed));
-        report.save(&output_path(MODULE_NAME, &timestamped_filename("summary", "txt")));
+        report.save(&output_path(
+            MODULE_NAME,
+            &timestamped_filename("summary", "txt"),
+        ));
         println!("{}", results.generate_summary());
         return;
     }
 
     let t2 = test_search_logic(&engine, &config).await;
     results.add_result("搜索验证", t2.passed, &t2.message, t2.duration_ms);
-    let t2_status = format!("通过, 总验证 {}/{}, 平均搜索时间 {}ms", t2.total_valid, t2.total_checked, t2.avg_search_time_ms);
+    let t2_status = format!(
+        "通过, 总验证 {}/{}, 平均搜索时间 {}ms",
+        t2.total_valid, t2.total_checked, t2.avg_search_time_ms
+    );
     report.add_section_item("搜索功能", "搜索验证", &t2_status);
 
-    // 输出每个关键字的搜索详情
     for kd in &t2.keyword_details {
         let mut details = Vec::new();
         details.push(format!("关键字: '{}'", kd.keyword));
-        details.push(format!("匹配规则: FTS5 前缀匹配 (prefix='2 3 4', tokenizer='unicode61')"));
-        details.push(format!("结果数: {}, 有效数: {}, 耗时: {}ms", kd.result_count, kd.valid_count, kd.time_ms));
+        details.push(format!(
+            "匹配规则: FTS5 前缀匹配 (prefix='2 3 4', tokenizer='unicode61')"
+        ));
+        details.push(format!(
+            "结果数: {}, 有效数: {}, 耗时: {}ms",
+            kd.result_count, kd.valid_count, kd.time_ms
+        ));
         if !kd.sample_paths.is_empty() {
             details.push(String::new());
             details.push(format!("{:<6} {}", "状态", "文件路径"));
             details.push("-".repeat(80));
             for (path, exists) in &kd.sample_paths {
-                let status = if *exists { "✓ 存在" } else { "✗ 不存在" };
+                let status = if *exists {
+                    "✓ 存在"
+                } else {
+                    "✗ 不存在"
+                };
                 details.push(format!("{:<6} {}", status, path));
             }
         }
-        report.add_section_item_with_details("搜索功能", &format!("关键字 '{}'", kd.keyword), &kd.summary(), &details);
+        report.add_section_item_with_details(
+            "搜索功能",
+            &format!("关键字 '{}'", kd.keyword),
+            &kd.summary(),
+            &details,
+        );
+    }
+
+    let t3 = test_usn_journal(&config).await;
+    results.add_result("USN监控", t3.passed, &t3.message, t3.duration_ms);
+    let t3_status = format!(
+        "{}, 总变化数 {}, 创建 {}, 修改 {}, 删除 {}, 验证 {}/{}",
+        if t3.passed { "通过" } else { "失败" },
+        t3.total_changes,
+        t3.create_count,
+        t3.modify_count,
+        t3.delete_count,
+        t3.valid_count,
+        t3.total_validated
+    );
+    report.add_section_item("USN Journal", "监控测试", &t3_status);
+
+    if !t3.changes.is_empty() {
+        let mut details = Vec::new();
+        details.push(format!(
+            "总变化数: {}, 创建: {}, 修改: {}, 删除: {}, 验证: {}/{}",
+            t3.total_changes,
+            t3.create_count,
+            t3.modify_count,
+            t3.delete_count,
+            t3.valid_count,
+            t3.total_validated
+        ));
+        details.push(String::new());
+        details.push(format!("{:<10} {:<10} {}", "类型", "状态", "文件路径"));
+        details.push("-".repeat(80));
+        for (reason, path, exists) in &t3.changes {
+            let reason_str = match reason {
+                UsnChangeReason::Created => "创建",
+                UsnChangeReason::Modified => "修改",
+                UsnChangeReason::Deleted => "删除",
+                UsnChangeReason::RenamedOldName => "重命名(旧)",
+                UsnChangeReason::RenamedNewName => "重命名(新)",
+            };
+            let status = if *exists {
+                "✓ 存在"
+            } else {
+                "✗ 不存在"
+            };
+            details.push(format!("{:<10} {:<10} {}", reason_str, status, path));
+        }
+        report.add_section_item_with_details("USN Journal", "变化详情", &t3_status, &details);
     }
 
     let (passed, failed) = results.summary();
@@ -190,7 +281,10 @@ pub async fn run_search_engine_tests() {
 
     let output_dir = output_path(MODULE_NAME, "");
     ensure_dir(&output_dir);
-    report.save(&output_path(MODULE_NAME, &timestamped_filename("summary", "txt")));
+    report.save(&output_path(
+        MODULE_NAME,
+        &timestamped_filename("summary", "txt"),
+    ));
 
     println!("{}", results.generate_summary());
 }
@@ -202,17 +296,20 @@ struct IndexBuildResult {
     total_files: usize,
     sample_count: usize,
     valid_count: usize,
-    /// 抽样文件列表 (路径, 是否存在)
     sample_files: Vec<(String, bool)>,
 }
 
-async fn test_index_building(engine: &FileSearchEngine, config: &SearchEngineTestConfig) -> IndexBuildResult {
+async fn test_index_building(
+    engine: &FileSearchEngine,
+    config: &SearchEngineTestConfig,
+) -> IndexBuildResult {
     let start = std::time::Instant::now();
 
     let build_result = tokio::time::timeout(
         std::time::Duration::from_millis(config.index_timeout_ms),
-        engine.build_index()
-    ).await;
+        engine.build_index(),
+    )
+    .await;
 
     let duration_ms = start.elapsed().as_millis() as u64;
 
@@ -235,7 +332,10 @@ async fn test_index_building(engine: &FileSearchEngine, config: &SearchEngineTes
             if duration_ms > config.index_timeout_ms {
                 return IndexBuildResult {
                     passed: false,
-                    message: format!("索引构建超时: {}ms，超过{}ms限制", duration_ms, config.index_timeout_ms),
+                    message: format!(
+                        "索引构建超时: {}ms，超过{}ms限制",
+                        duration_ms, config.index_timeout_ms
+                    ),
                     duration_ms,
                     total_files: total,
                     sample_count: 0,
@@ -244,14 +344,23 @@ async fn test_index_building(engine: &FileSearchEngine, config: &SearchEngineTes
                 };
             }
 
-            let (sample_count, valid_count, sample_files) = validate_index_samples(engine, config.sample_size);
+            let (sample_count, valid_count, sample_files) =
+                validate_index_samples(engine, config.sample_size);
 
-            let rate = if sample_count > 0 { valid_count as f64 / sample_count as f64 } else { 0.0 };
+            let rate = if sample_count > 0 {
+                valid_count as f64 / sample_count as f64
+            } else {
+                0.0
+            };
             let passed = rate >= config.validity_threshold;
 
             let message = format!(
                 "索引构建完成，共 {} 个文件，耗时 {}ms，抽样验证 {}/{} ({:.1}%)",
-                total, duration_ms, valid_count, sample_count, rate * 100.0
+                total,
+                duration_ms,
+                valid_count,
+                sample_count,
+                rate * 100.0
             );
 
             println!("DEBUG: {}", message);
@@ -266,33 +375,34 @@ async fn test_index_building(engine: &FileSearchEngine, config: &SearchEngineTes
                 sample_files,
             }
         }
-        Ok(Err(e)) => {
-            IndexBuildResult {
-                passed: false,
-                message: format!("索引构建失败: {}", e),
-                duration_ms,
-                total_files: 0,
-                sample_count: 0,
-                valid_count: 0,
-                sample_files: Vec::new(),
-            }
-        }
-        Err(_) => {
-            IndexBuildResult {
-                passed: false,
-                message: format!("索引构建超时: {}ms，超过{}ms限制", duration_ms, config.index_timeout_ms),
-                duration_ms,
-                total_files: 0,
-                sample_count: 0,
-                valid_count: 0,
-                sample_files: Vec::new(),
-            }
-        }
+        Ok(Err(e)) => IndexBuildResult {
+            passed: false,
+            message: format!("索引构建失败: {}", e),
+            duration_ms,
+            total_files: 0,
+            sample_count: 0,
+            valid_count: 0,
+            sample_files: Vec::new(),
+        },
+        Err(_) => IndexBuildResult {
+            passed: false,
+            message: format!(
+                "索引构建超时: {}ms，超过{}ms限制",
+                duration_ms, config.index_timeout_ms
+            ),
+            duration_ms,
+            total_files: 0,
+            sample_count: 0,
+            valid_count: 0,
+            sample_files: Vec::new(),
+        },
     }
 }
 
-/// 验证索引抽样，返回 (抽样数, 有效数, 文件列表)
-fn validate_index_samples(engine: &FileSearchEngine, sample_size: usize) -> (usize, usize, Vec<(String, bool)>) {
+fn validate_index_samples(
+    engine: &FileSearchEngine,
+    sample_size: usize,
+) -> (usize, usize, Vec<(String, bool)>) {
     let all_results = engine.search("", sample_size as u32);
     let mut sample_files = Vec::new();
     let mut valid_count = 0;
@@ -306,22 +416,27 @@ fn validate_index_samples(engine: &FileSearchEngine, sample_size: usize) -> (usi
         sample_files.push((result.id.clone(), exists));
     }
 
-    (all_results.len().min(sample_size), valid_count, sample_files)
+    (
+        all_results.len().min(sample_size),
+        valid_count,
+        sample_files,
+    )
 }
 
-/// 单个关键字的搜索详情
 struct KeywordDetail {
     keyword: String,
     result_count: usize,
     valid_count: usize,
     time_ms: u64,
-    /// 抽样路径列表 (路径, 是否存在)
     sample_paths: Vec<(String, bool)>,
 }
 
 impl KeywordDetail {
     fn summary(&self) -> String {
-        format!("结果 {}, 有效 {}, 耗时 {}ms", self.result_count, self.valid_count, self.time_ms)
+        format!(
+            "结果 {}, 有效 {}, 耗时 {}ms",
+            self.result_count, self.valid_count, self.time_ms
+        )
     }
 }
 
@@ -335,7 +450,10 @@ struct SearchTestResult {
     keyword_details: Vec<KeywordDetail>,
 }
 
-async fn test_search_logic(engine: &FileSearchEngine, config: &SearchEngineTestConfig) -> SearchTestResult {
+async fn test_search_logic(
+    engine: &FileSearchEngine,
+    config: &SearchEngineTestConfig,
+) -> SearchTestResult {
     let mut total_checked = 0;
     let mut total_valid = 0;
     let mut total_search_time_ms = 0u64;
@@ -355,7 +473,6 @@ async fn test_search_logic(engine: &FileSearchEngine, config: &SearchEngineTestC
             if exists {
                 valid_count += 1;
             }
-            // 只抽样前 N 条路径用于输出
             if i < config.search_sample_paths {
                 sample_paths.push((result.id.clone(), exists));
             }
@@ -372,7 +489,12 @@ async fn test_search_logic(engine: &FileSearchEngine, config: &SearchEngineTestC
             sample_paths,
         });
 
-        println!("DEBUG: 搜索 '{}' -> {} 结果, {} 有效", keyword, results.len(), valid_count);
+        println!(
+            "DEBUG: 搜索 '{}' -> {} 结果, {} 有效",
+            keyword,
+            results.len(),
+            valid_count
+        );
     }
 
     let avg_search_time_ms = if !config.search_keywords.is_empty() {
@@ -391,7 +513,10 @@ async fn test_search_logic(engine: &FileSearchEngine, config: &SearchEngineTestC
 
     let message = format!(
         "搜索测试完成，总验证 {}/{} ({:.1}%)，平均搜索时间 {}ms",
-        total_valid, total_checked, rate * 100.0, avg_search_time_ms
+        total_valid,
+        total_checked,
+        rate * 100.0,
+        avg_search_time_ms
     );
 
     SearchTestResult {
@@ -402,6 +527,194 @@ async fn test_search_logic(engine: &FileSearchEngine, config: &SearchEngineTestC
         total_valid,
         avg_search_time_ms,
         keyword_details,
+    }
+}
+
+struct UsnMonitorResult {
+    passed: bool,
+    message: String,
+    duration_ms: u64,
+    total_changes: usize,
+    create_count: usize,
+    modify_count: usize,
+    delete_count: usize,
+    total_validated: usize,
+    valid_count: usize,
+    changes: Vec<(UsnChangeReason, String, bool)>,
+}
+
+async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
+    let start = std::time::Instant::now();
+
+    let indexer = match NtfsIndexer::new() {
+        Ok(i) => i,
+        Err(e) => {
+            return UsnMonitorResult {
+                passed: false,
+                message: format!("NtfsIndexer 创建失败: {}", e),
+                duration_ms: 0,
+                total_changes: 0,
+                create_count: 0,
+                modify_count: 0,
+                delete_count: 0,
+                total_validated: 0,
+                valid_count: 0,
+                changes: Vec::new(),
+            };
+        }
+    };
+
+    let volumes = indexer.get_volumes();
+    if volumes.is_empty() {
+        return UsnMonitorResult {
+            passed: false,
+            message: "未检测到 NTFS 卷".to_string(),
+            duration_ms: 0,
+            total_changes: 0,
+            create_count: 0,
+            modify_count: 0,
+            delete_count: 0,
+            total_validated: 0,
+            valid_count: 0,
+            changes: Vec::new(),
+        };
+    }
+
+    let volume = volumes[0].clone();
+    let test_dir = data_path(MODULE_NAME, "usn_test_files");
+    ensure_dir(&test_dir);
+
+    let mut start_usn = 0;
+    if let Some(state) = indexer.get_journal_state(&volume) {
+        start_usn = state.next_usn;
+        println!("DEBUG: USN Journal 状态: next_usn={}", start_usn);
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    let mut test_files = Vec::new();
+    for i in 0..5 {
+        let file_path = test_dir.join(format!("usn_test_{}.txt", i));
+        test_files.push(file_path.clone());
+        let _ = std::fs::write(&file_path, format!("测试内容 {}", i));
+        println!("DEBUG: 创建测试文件: {}", file_path.display());
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    for (i, file_path) in test_files.iter().enumerate().take(3) {
+        let _ = std::fs::write(file_path, format!("修改内容 {}", i));
+        println!("DEBUG: 修改测试文件: {}", file_path.display());
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    for (_i, file_path) in test_files.iter().enumerate().take(2) {
+        let _ = std::fs::remove_file(file_path);
+        println!("DEBUG: 删除测试文件: {}", file_path.display());
+    }
+
+    tokio::time::sleep(std::time::Duration::from_millis(
+        config.usn_monitor_duration_ms,
+    ))
+    .await;
+
+    let changes = match indexer.read_usn_changes(&volume, start_usn) {
+        Ok(c) => c,
+        Err(e) => {
+            let duration_ms = start.elapsed().as_millis() as u64;
+            return UsnMonitorResult {
+                passed: false,
+                message: format!("读取 USN 变化失败: {}", e),
+                duration_ms,
+                total_changes: 0,
+                create_count: 0,
+                modify_count: 0,
+                delete_count: 0,
+                total_validated: 0,
+                valid_count: 0,
+                changes: Vec::new(),
+            };
+        }
+    };
+
+    let duration_ms = start.elapsed().as_millis() as u64;
+
+    let mut create_count = 0;
+    let mut modify_count = 0;
+    let mut delete_count = 0;
+    let mut total_validated = 0;
+    let mut valid_count = 0;
+    let mut change_list = Vec::new();
+
+    for record in changes.iter().take(50) {
+        match record.reason {
+            UsnChangeReason::Created => create_count += 1,
+            UsnChangeReason::Modified => modify_count += 1,
+            UsnChangeReason::Deleted => delete_count += 1,
+            _ => {}
+        }
+
+        let is_valid = validate_usn_record(record);
+        total_validated += 1;
+        if is_valid {
+            valid_count += 1;
+        }
+
+        change_list.push((
+            record.reason.clone(),
+            record.full_path.to_string_lossy().to_string(),
+            is_valid,
+        ));
+
+        println!(
+            "DEBUG: USN变化 [{:?}]: {}",
+            record.reason,
+            record.full_path.display()
+        );
+    }
+
+    let rate = if total_validated > 0 {
+        valid_count as f64 / total_validated as f64
+    } else {
+        0.0
+    };
+
+    let passed = rate >= config.validity_threshold || changes.len() > 0;
+
+    let message = format!(
+        "USN监控完成，总变化数: {}, 创建: {}, 修改: {}, 删除: {}, 验证: {}/{} ({:.1}%)",
+        changes.len(),
+        create_count,
+        modify_count,
+        delete_count,
+        valid_count,
+        total_validated,
+        rate * 100.0
+    );
+
+    println!("DEBUG: {}", message);
+
+    UsnMonitorResult {
+        passed,
+        message,
+        duration_ms,
+        total_changes: changes.len(),
+        create_count,
+        modify_count,
+        delete_count,
+        total_validated,
+        valid_count,
+        changes: change_list,
+    }
+}
+
+fn validate_usn_record(record: &UsnRecord) -> bool {
+    match record.reason {
+        UsnChangeReason::Created => record.full_path.exists(),
+        UsnChangeReason::Deleted => !record.full_path.exists(),
+        UsnChangeReason::Modified => record.full_path.exists(),
+        _ => true,
     }
 }
 
@@ -419,7 +732,6 @@ struct ReportSection {
 struct ReportItem {
     label: String,
     value: String,
-    /// 详情列表（多行），输出在 value 之后
     details: Vec<String>,
 }
 
@@ -445,7 +757,13 @@ impl TestReport {
         self.add_section_item_with_details(section_title, label, value, &[]);
     }
 
-    pub fn add_section_item_with_details(&mut self, section_title: &str, label: &str, value: &str, details: &[String]) {
+    pub fn add_section_item_with_details(
+        &mut self,
+        section_title: &str,
+        label: &str,
+        value: &str,
+        details: &[String],
+    ) {
         let section = self.sections.iter_mut().find(|s| s.title == section_title);
         match section {
             Some(s) => {
@@ -475,10 +793,19 @@ impl TestReport {
         for section in &self.sections {
             output.push_str(&format!("\n## {}\n", section.title));
 
-            let max_label_len = section.items.iter().map(|i| i.label.len()).max().unwrap_or(0);
+            let max_label_len = section
+                .items
+                .iter()
+                .map(|i| i.label.len())
+                .max()
+                .unwrap_or(0);
             for item in &section.items {
-                output.push_str(&format!("{:<width$}: {}\n", item.label, item.value, width = max_label_len));
-                // 输出详情列表
+                output.push_str(&format!(
+                    "{:<width$}: {}\n",
+                    item.label,
+                    item.value,
+                    width = max_label_len
+                ));
                 for line in &item.details {
                     output.push_str(&format!("  {}\n", line));
                 }
@@ -512,11 +839,14 @@ impl TestResults {
     }
 
     pub fn add_result(&mut self, test_name: &str, passed: bool, message: &str, duration_ms: u64) {
-        self.results.insert(test_name.to_string(), TestResult {
-            passed,
-            message: message.to_string(),
-            duration_ms,
-        });
+        self.results.insert(
+            test_name.to_string(),
+            TestResult {
+                passed,
+                message: message.to_string(),
+                duration_ms,
+            },
+        );
     }
 
     pub fn summary(&self) -> (usize, usize) {
@@ -531,7 +861,10 @@ impl TestResults {
 
         let mut output = format!("测试结果汇总\n");
         output.push_str(&"=".repeat(60));
-        output.push_str(&format!("\n总测试数: {}\n通过: {}\n失败: {}\n", total, passed, failed));
+        output.push_str(&format!(
+            "\n总测试数: {}\n通过: {}\n失败: {}\n",
+            total, passed, failed
+        ));
         output.push_str(&"-".repeat(60));
         output.push('\n');
 

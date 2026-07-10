@@ -188,7 +188,8 @@ MTools/
 │   ├── tauri.conf.json           # Tauri 配置
 │   ├── tests/                    # 测试框架
 │   │   ├── SKILL.md              # 测试框架规范
-│   │   ├── all_tests.rs          # 统一测试入口
+│   │   ├── run.rs                # 统一测试入口
+│   │   ├── all_tests.rs          # 测试入口代理
 │   │   └── rust/                 # Rust 测试
 │   │       ├── common/           # 公共工具
 │   │       │   ├── mod.rs
@@ -196,8 +197,7 @@ MTools/
 │   │       │   ├── report.rs     # 测试报告生成器
 │   │       │   └── table.rs      # 表格格式化工具
 │   │       └── features/         # 功能模块测试
-│   │           ├── search_engine/ # 搜索引擎测试
-│   │           └── usn_journal/  # USN Journal 测试
+│   │           └── search_engine/ # 搜索引擎测试（含 USN Journal）
 │   └── src/
 │       ├── main.rs               # GUI 入口
 │       ├── cli_main.rs           # CLI 入口
@@ -270,8 +270,7 @@ MTools/
 - [x] pnpm workspace 配置
 - [x] 开发环境搭建
 - [x] Rust 测试框架建立（report、table、paths 工具）
-- [x] 搜索引擎测试模块
-- [x] USN Journal 测试模块
+- [x] 搜索引擎测试模块（含 USN Journal 监控）
 
 ### ✅ Phase 1: MVP — 搜索面板 (已完成)
 

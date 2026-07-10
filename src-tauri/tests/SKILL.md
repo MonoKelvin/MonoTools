@@ -15,22 +15,16 @@ tests/
 │   ├── config/               # 全局配置（可选）
 │   ├── data/                 # 测试数据（运行时生成，不提交）
 │   ├── output/               # 测试输出（运行时生成，不提交）
-│   │   ├── search_engine/
-│   │   │   ├── summary.txt
-│   │   │   └── path_validation.txt
-│   │   └── usn_journal/
-│   │       ├── summary.txt
-│   │       └── path_validation.txt
+│   │   └── search_engine/
+│   │       ├── summary_20260710_075820.txt
+│   │       └── path_validation_20260710_075820.txt
 │   └── features/             # 功能模块测试（分类存放）
-│       ├── search_engine/    # 文件搜索引擎测试模块
-│       │   ├── mod.rs
-│       │   ├── config.rs     # 模块配置
-│       │   └── test.rs       # 测试代码
-│       └── usn_journal/      # USN Journal 测试模块
+│       └── search_engine/    # 文件搜索引擎测试模块（包含 USN Journal）
 │           ├── mod.rs
-│           ├── config.rs
-│           └── test.rs
-├── all_tests.rs              # 统一测试入口（运行所有模块）
+│           ├── config.rs     # 模块配置
+│           └── test.rs       # 测试代码
+├── run.rs                    # 统一测试入口（单文件，运行所有模块）
+├── all_tests.rs              # 测试入口代理（指向 run.rs）
 └── SKILL.md                  # 本文件
 ```
 
@@ -113,9 +107,14 @@ pub async fn run_<module_name>_tests() {
 
     let output_dir = output_path(MODULE_NAME, "");
     ensure_dir(&output_dir);
-    report.save(&output_path(MODULE_NAME, "summary.txt"));
+    report.save(&output_path(MODULE_NAME, &timestamped_filename("summary", "txt")));
 
     println!("{}", results.generate_summary());
+}
+
+fn timestamped_filename(base: &str, ext: &str) -> String {
+    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
+    format!("{}_{}.{}", base, ts, ext)
 }
 ```
 
@@ -128,7 +127,7 @@ pub mod test;
 
 ### 5. 更新统一测试入口
 
-在 `all_tests.rs` 中添加：
+在 `run.rs` 中添加：
 
 ```rust
 #[path = "rust/features/<module_name>/test.rs"]
@@ -163,11 +162,11 @@ mod <module_name>_test;
 
 ```
 output/<module_name>/
-├── summary_20260709185049.txt          # 汇总报告（包含所有测试用例结果）
-└── path_validation_20260709185049.txt  # 路径验证报告（表格形式，可选）
+├── summary_20260710_075820.txt          # 汇总报告（包含所有测试用例结果）
+└── path_validation_20260710_075820.txt  # 路径验证报告（表格形式，可选）
 ```
 
-文件名格式：`<base_name>_<timestamp>.txt`，timestamp 格式为 `YYYYMMDDHHMMSS`
+文件名格式：`<base_name>_<timestamp>.txt`，timestamp 格式为 `YYYYMMDD_HHMMSS`
 
 ### 报告内容格式
 
@@ -175,20 +174,21 @@ output/<module_name>/
 
 ```
 <模块名> 测试报告
-============================================================
-输出时间: 2026-07-09 18:50:49
+================================================================================
+输出时间: 2026-07-10 07:58:20
 
-## 测试分类
-测试项1:通过
-测试项2: 通过, 结果数100
+## 索引功能
+索引构建: 通过, 1500000 个文件, 耗时 112345ms, 抽样验证 95/100
 
-## 性能指标
-索引构建: 1267ms
-搜索时间: 50ms
+## 搜索功能
+搜索验证: 通过, 总验证 98/100, 平均搜索时间 25ms
+
+## USN Journal
+监控测试: 通过, 总变化数 15, 创建 5, 修改 3, 删除 2, 验证 15/15
 
 ## 测试结果
-总测试数: 13
-通过: 13
+总测试数: 3
+通过: 3
 失败: 0
 ```
 
@@ -216,8 +216,9 @@ void.doc                  F:/not/exists/path/void.doc                      --   
 let mut report = TestReport::new("模块名");
 
 report.add_section_item("分类名", "项目名", "值");
+report.add_section_item_with_details("分类名", "项目名", "值", &["详情行1", "详情行2"]);
 
-report.save(&output_path(MODULE_NAME, "summary.txt"));
+report.save(&output_path(MODULE_NAME, &timestamped_filename("summary", "txt")));
 ```
 
 ### 使用 `TestResults`
@@ -242,7 +243,7 @@ for result in &samples {
     validation_report.add_entry(&filename, &result.id, exists);
 }
 
-validation_report.save(&output_path(MODULE_NAME, "path_validation.txt"));
+validation_report.save(&output_path(MODULE_NAME, &timestamped_filename("path_validation", "txt")));
 ```
 
 ## 测试用例命名规范
@@ -251,28 +252,33 @@ validation_report.save(&output_path(MODULE_NAME, "path_validation.txt"));
 |------|------|------|
 | `test_` | 单元测试函数 | `test_build_index` |
 | `run_all_` | 测试入口（带 `#[tokio::test]`） | `run_all_search_engine_tests` |
-| `run_` | 公共执行函数（可被 all_tests 调用） | `run_search_engine_tests` |
+| `run_` | 公共执行函数（可被 run.rs 调用） | `run_search_engine_tests` |
 | `<name>_Result` | 测试结果结构体 | `BuildIndexResult` |
 
 ## 测试执行命令
 
 ```bash
-# 运行所有测试
+# 运行所有测试（推荐方式）
 cargo test --test all_tests
+
+# 运行所有测试（直接调用 run.rs）
+cargo test --test run
 
 # 运行特定模块测试
 cargo test --test all_tests search_engine_test::run_all_search_engine_tests
 
 # 运行单个测试函数
 cargo test --test all_tests run_all_tests
+
+# 启用详细输出
+cargo test --test all_tests -- --nocapture
 ```
 
 ## 现有测试模块
 
 | 模块 | 路径 | 描述 |
 |------|------|------|
-| search_engine | `tests/rust/features/search_engine/` | 文件搜索引擎测试 |
-| usn_journal | `tests/rust/features/usn_journal/` | USN Journal 监控测试 |
+| search_engine | `tests/rust/features/search_engine/` | 文件搜索引擎测试（包含索引构建、搜索验证、USN Journal 监控） |
 
 ## 注意事项
 
@@ -283,9 +289,10 @@ cargo test --test all_tests run_all_tests
 5. **模块导入方式**：使用 `#[path = "..."]` 宏导入公共模块和配置
 6. **测试函数结构**：提供两个入口函数
    - `run_all_xxx_tests()`：带 `#[tokio::test]` 属性，供单独运行
-   - `run_xxx_tests()`：`pub async`，供 `all_tests.rs` 调用
+   - `run_xxx_tests()`：`pub async`，供 `run.rs` 调用
 7. **清理测试数据**：测试结束后清理临时文件和目录
 8. **错误处理**：使用 `Result` 和 `match` 处理可能的错误
+9. **时间戳文件名**：使用 `timestamped_filename()` 函数生成带时间戳的输出文件名
 
 ## 模块导入模板
 
@@ -315,10 +322,17 @@ use table::ValidationReport;
 2. 创建：`tests/rust/features/app_search/config.rs`
 3. 创建：`tests/rust/features/app_search/test.rs`
 4. 创建：`tests/rust/features/app_search/mod.rs`
-5. 更新：`tests/all_tests.rs`
+5. 更新：`tests/run.rs`
 
 ### 输出文件分类
 
 每个模块的输出文件应包含：
 - **summary.txt**：汇总报告（概览、功能测试、性能指标、测试结果）
 - **path_validation.txt**：路径验证报告（表格形式，包含文件名、完整路径、状态）
+
+### 模块合并原则
+
+当多个测试模块逻辑上属于同一功能域时，应合并到一个模块中：
+- USN Journal 测试合并到 search_engine 模块（USN 是搜索引擎增量更新的基础）
+- 保持测试入口统一，避免分散的测试文件
+- 合并后的模块包含多个测试子项，但共享同一输出目录和报告格式
