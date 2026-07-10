@@ -1,9 +1,49 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { SearchResult } from '@/types/search'
+
+const truncatePath = (path: string, maxLength: number = 80): string => {
+  if (path.length <= maxLength) {
+    return path
+  }
+
+  const parts = path.split('\\')
+  if (parts.length <= 2) {
+    return path.substring(0, maxLength - 3) + '...'
+  }
+
+  const startPart = parts[0] + '\\'
+  const endPart = '\\' + parts[parts.length - 1]
+  const middleLength = maxLength - startPart.length - endPart.length - 3
+
+  if (middleLength <= 0) {
+    return path.substring(0, maxLength - 3) + '...'
+  }
+
+  const middleParts = parts.slice(1, parts.length - 1)
+  let middle = middleParts.join('\\')
+
+  if (middle.length > middleLength) {
+    const half = Math.floor(middleLength / 2)
+    middle = middle.substring(0, half) + '...' + middle.substring(middle.length - half)
+  }
+
+  return startPart + middle + endPart
+}
+
+const truncateText = (text: string, maxLength: number = 40): string => {
+  if (text.length <= maxLength) {
+    return text
+  }
+
+  const half = Math.floor((maxLength - 3) / 2)
+  return text.substring(0, half) + '...' + text.substring(text.length - half)
+}
 import {
   FolderOpen, FileText, Terminal, Command, Grid3x3,
-  Monitor, User, Package, Image, Video, Music, Archive, Cpu
+  Monitor, User, Package, Image, Video, Music, Archive, Cpu,
+  Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
+  FileArchive, FileBraces, File
 } from "@lucide/vue"
 
 const props = defineProps<{
@@ -15,21 +55,22 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
   (e: 'mouseover', index: number): void
+  (e: 'contextmenu', event: MouseEvent, item: SearchResult): void
 }>()
 
 const IconComponent = computed(() => {
   const typeMap: Record<string, typeof FolderOpen> = {
     'system-app': Monitor,
-    'user-app': User,
+    'user-app': AppWindow,
     'uwp-app': Package,
-    'directory': FolderOpen,
-    'document': FileText,
-    'image': Image,
-    'video': Video,
-    'audio': Music,
-    'executable': Cpu,
-    'archive': Archive,
-    'other-file': FileText,
+    'directory': Folder,
+    'document': FileCode,
+    'image': FileImage,
+    'video': FileVideo,
+    'audio': FileAudio,
+    'executable': FileBraces,
+    'archive': FileArchive,
+    'other-file': File,
     'command': Terminal,
   }
 
@@ -39,15 +80,15 @@ const IconComponent = computed(() => {
 const categoryColor = computed(() => {
   const typeMap: Record<string, string> = {
     'system-app': '#6366f1',
-    'user-app': '#10b981',
-    'uwp-app': '#f59e0b',
-    'directory': '#3b82f6',
-    'document': '#8b5cf6',
+    'user-app': '#3b82f6',
+    'uwp-app': '#8b5cf6',
+    'directory': '#f59e0b',
+    'document': '#06b6d4',
     'image': '#ec4899',
     'video': '#84cc16',
     'audio': '#f97316',
     'executable': '#ef4444',
-    'archive': '#06b6d4',
+    'archive': '#10b981',
     'other-file': '#6b7280',
     'command': '#14b8a6',
   }
@@ -80,14 +121,21 @@ const resultTypeLabel = computed(() => {
     :class="['result-item', { 'result-item--active': active }]"
     @click="emit('select', result)"
     @mouseenter="emit('mouseover', index)"
+    @contextmenu="(e) => emit('contextmenu', e, result)"
   >
     <div class="result-item__icon" :style="{ '--category-color': categoryColor }">
       <component :is="IconComponent" :size="16" :stroke-width="2" />
     </div>
 
     <div class="result-item__content">
-      <div class="result-item__title">{{ result.title }}</div>
-      <div v-if="result.subtitle" class="result-item__subtitle">{{ result.subtitle }}</div>
+      <div class="result-item__title" :title="result.title">{{ truncateText(result.title, 50) }}</div>
+      <div
+        v-if="result.subtitle"
+        class="result-item__subtitle"
+        :title="result.subtitle"
+      >
+        {{ truncatePath(result.subtitle, 90) }}
+      </div>
     </div>
 
     <div class="result-item__meta">
@@ -139,38 +187,25 @@ const resultTypeLabel = computed(() => {
 
 .result-item__icon {
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-tertiary);
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  position: relative;
-}
-
-.result-item__icon::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  background: var(--category-color);
-  opacity: 0;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--category-color) 12%, transparent);
+  color: var(--category-color);
   transition: opacity var(--dur-fast) var(--ease-out);
-  filter: blur(20px);
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--category-color) 20%, transparent);
 }
 
 .result-item:hover .result-item__icon {
-  color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.08);
-  transform: scale(1.08);
+  background: color-mix(in srgb, var(--category-color) 16%, transparent);
 }
 
 .result-item--active .result-item__icon {
-  background: var(--surface-raised);
-  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--category-color) 20%, transparent);
 }
 
 .result-item__content {
@@ -179,11 +214,10 @@ const resultTypeLabel = computed(() => {
 }
 
 .result-item__title {
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   line-height: var(--leading-tight);
 }
@@ -192,9 +226,6 @@ const resultTypeLabel = computed(() => {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.4);
   margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-family: var(--font-mono);
 }
 

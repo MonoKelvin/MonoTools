@@ -48,9 +48,9 @@ impl FileSearchEngine {
 
         let conn = Connection::open_with_flags(
             &db_path,
-            OpenFlags::SQLITE_OPEN_READ_WRITE |
-            OpenFlags::SQLITE_OPEN_CREATE |
-            OpenFlags::SQLITE_OPEN_FULL_MUTEX,
+            OpenFlags::SQLITE_OPEN_READ_WRITE
+                | OpenFlags::SQLITE_OPEN_CREATE
+                | OpenFlags::SQLITE_OPEN_FULL_MUTEX,
         )?;
 
         Self::init_db(&conn)?;
@@ -72,7 +72,10 @@ impl FileSearchEngine {
         } else {
             match NtfsIndexer::new_with_drives(drives.clone()) {
                 Ok(i) => {
-                    log::info!("NTFS索引器创建成功（指定盘符），检测到 {} 个卷", i.get_volumes().len());
+                    log::info!(
+                        "NTFS索引器创建成功（指定盘符），检测到 {} 个卷",
+                        i.get_volumes().len()
+                    );
                     Some(i)
                 }
                 Err(e) => {
@@ -151,7 +154,11 @@ impl FileSearchEngine {
 
         let total = self.build_index_ntfs().await?;
 
-        log::info!("文件索引构建完成: {} 个文件，耗时 {:?}", total, now.elapsed());
+        log::info!(
+            "文件索引构建完成: {} 个文件，耗时 {:?}",
+            total,
+            now.elapsed()
+        );
         *self.is_indexing.lock() = false;
         Ok(())
     }
@@ -166,12 +173,21 @@ impl FileSearchEngine {
 
         if let Some(indexer) = &self.ntfs_indexer {
             let volumes = indexer.get_volumes();
-            log::info!("NTFS索引器可用，检测到 {} 个卷: {:?}", volumes.len(), volumes);
+            log::info!(
+                "NTFS索引器可用，检测到 {} 个卷: {:?}",
+                volumes.len(),
+                volumes
+            );
 
             for volume in volumes {
                 log::info!("开始枚举卷: {}", volume);
                 let count = self.enumerate_volume(indexer, volume, &mut records);
-                log::info!("卷 {} 枚举完成: {} 个文件，当前累计: {}", volume, count, records.len());
+                log::info!(
+                    "卷 {} 枚举完成: {} 个文件，当前累计: {}",
+                    volume,
+                    count,
+                    records.len()
+                );
             }
         } else {
             log::warn!("NTFS索引器不可用，无法构建索引");
@@ -187,7 +203,12 @@ impl FileSearchEngine {
         Ok(records.len())
     }
 
-    fn enumerate_volume(&self, indexer: &NtfsIndexer, volume: &str, records: &mut Vec<UsnRecord>) -> usize {
+    fn enumerate_volume(
+        &self,
+        indexer: &NtfsIndexer,
+        volume: &str,
+        records: &mut Vec<UsnRecord>,
+    ) -> usize {
         let mut count = 0;
         let mut skipped = 0;
 
@@ -205,7 +226,12 @@ impl FileSearchEngine {
             log::warn!("枚举卷 {} 失败: {}", volume, e);
         }
 
-        log::info!("卷 {} 枚举完成，有效文件: {}, 跳过: {}", volume, count, skipped);
+        log::info!(
+            "卷 {} 枚举完成，有效文件: {}, 跳过: {}",
+            volume,
+            count,
+            skipped
+        );
         count
     }
 
@@ -220,14 +246,19 @@ impl FileSearchEngine {
             return true;
         }
 
-        if name == "thumbs.db" || name == "desktop.ini" || name == "pagefile.sys" || name == "hiberfil.sys" {
+        if name == "thumbs.db"
+            || name == "desktop.ini"
+            || name == "pagefile.sys"
+            || name == "hiberfil.sys"
+        {
             return true;
         }
 
         let path_str = record.full_path.to_string_lossy().to_lowercase();
-        if path_str.contains("\\windows\\winsxs") ||
-           path_str.contains("\\windows\\system32\\config") ||
-           path_str.contains("\\windows\\softwaredistribution") {
+        if path_str.contains("\\windows\\winsxs")
+            || path_str.contains("\\windows\\system32\\config")
+            || path_str.contains("\\windows\\softwaredistribution")
+        {
             return true;
         }
 
@@ -244,7 +275,7 @@ impl FileSearchEngine {
 
         let mut stmt = conn.prepare(
             "INSERT OR IGNORE INTO files_meta(path, name, ext, size, modified, is_dir, depth)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?;
 
         let mut inserted = 0;
@@ -345,7 +376,10 @@ impl FileSearchEngine {
                     }
                 }
                 UsnChangeReason::Deleted | UsnChangeReason::RenamedOldName => {
-                    conn.execute("DELETE FROM files_meta WHERE path = ?1", rusqlite::params![path_str])?;
+                    conn.execute(
+                        "DELETE FROM files_meta WHERE path = ?1",
+                        rusqlite::params![path_str],
+                    )?;
                     paths.remove(&path_str);
                 }
                 UsnChangeReason::Modified => {
@@ -375,7 +409,8 @@ impl FileSearchEngine {
 
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
         if query.is_empty() {
-            return self.recent_files(limit)
+            return self
+                .recent_files(limit)
                 .into_iter()
                 .map(|f| file_result_to_search_result(f))
                 .collect();
@@ -409,12 +444,16 @@ impl FileSearchEngine {
             }
         }
 
-        results.into_iter().map(|f| file_result_to_search_result(f)).collect()
+        results
+            .into_iter()
+            .map(|f| file_result_to_search_result(f))
+            .collect()
     }
 
     pub fn search_with_score(&self, query: &str, limit: u32) -> Vec<(f32, FileResult)> {
         if query.is_empty() {
-            return self.recent_files(limit)
+            return self
+                .recent_files(limit)
                 .into_iter()
                 .map(|f| (0.0, f))
                 .collect();
@@ -487,7 +526,8 @@ impl FileSearchEngine {
 
     pub fn total(&self) -> usize {
         let conn = self.db.lock();
-        let count: i64 = conn.query_row("SELECT COUNT(*) FROM files_meta", [], |row| row.get(0))
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files_meta", [], |row| row.get(0))
             .unwrap_or(0);
         count as usize
     }
@@ -515,7 +555,7 @@ fn get_db_path() -> PathBuf {
 
 fn extract_drives_from_roots(roots: &[PathBuf]) -> Vec<char> {
     let mut drives = HashSet::new();
-    
+
     for root in roots {
         if let Some(drive) = root.as_os_str().to_str().and_then(|s| s.chars().next()) {
             if drive.is_ascii_alphabetic() {
@@ -523,7 +563,7 @@ fn extract_drives_from_roots(roots: &[PathBuf]) -> Vec<char> {
             }
         }
     }
-    
+
     drives.into_iter().collect()
 }
 
@@ -535,7 +575,9 @@ fn build_fts_query(query: &str) -> String {
             let escaped = t
                 .chars()
                 .map(|c| match c {
-                    '"' | '\'' | '\\' | '^' | '$' | '@' | '~' | '*' | '(' | ')' => format!("\\{}", c),
+                    '"' | '\'' | '\\' | '^' | '$' | '@' | '~' | '*' | '(' | ')' | '.' => {
+                        format!("\\{}", c)
+                    }
                     _ => c.to_string(),
                 })
                 .collect::<String>();
@@ -569,7 +611,10 @@ fn file_result_to_search_result(f: FileResult) -> SearchResult {
         id: path_str.clone(),
         title: f.name,
         subtitle,
-        icon: f.extension.clone().map(|ext| format!("file:///{}.ico", ext)),
+        icon: f
+            .extension
+            .clone()
+            .map(|ext| format!("file:///{}.ico", ext)),
         category: SearchCategory::Files,
         result_type,
         action: if f.is_directory {
@@ -590,11 +635,14 @@ fn file_type_of(f: &FileResult) -> ResultType {
 
     match ext.as_str() {
         "exe" | "dll" | "msi" | "bat" | "cmd" | "ps1" => ResultType::Executable,
-        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "ico" | "svg" | "webp" => ResultType::Image,
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "ico" | "svg" | "webp" => {
+            ResultType::Image
+        }
         "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" => ResultType::Video,
         "mp3" | "wav" | "flac" | "ogg" | "aac" | "wma" => ResultType::Audio,
         "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" => ResultType::Archive,
-        "txt" | "md" | "doc" | "docx" | "pdf" | "xls" | "xlsx" | "ppt" | "pptx" | "csv" | "json" | "xml" => ResultType::Document,
+        "txt" | "md" | "doc" | "docx" | "pdf" | "xls" | "xlsx" | "ppt" | "pptx" | "csv"
+        | "json" | "xml" => ResultType::Document,
         _ => ResultType::OtherFile,
     }
 }

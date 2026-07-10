@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronUp, ChevronDown, CornerDownLeft, X, Loader2, CheckCircle, AlertCircle } from "@lucide/vue"
+import { ChevronUp, ChevronDown, CornerDownLeft, Keyboard, Loader2, CheckCircle, AlertCircle } from "@lucide/vue"
 import type { SearchResult } from '@/types/search'
 
 const props = defineProps<{
@@ -9,6 +9,10 @@ const props = defineProps<{
   indexBuilding: boolean
   indexStatus: string
   indexMessage: string
+}>()
+
+const emit = defineEmits<{
+  (e: 'showHotkeys'): void
 }>()
 
 const showIndexStatus = ref(false)
@@ -82,9 +86,9 @@ const displayText = computed(() => {
   <div class="action-bar">
     <div class="action-bar__left">
       <span class="action-bar__status" :class="{ 'action-bar__status--active': showIndexStatus }">
-        <Loader2 v-if="indexStatus === 'building'" :size="12" class="action-bar__status-spinner" />
-        <CheckCircle v-else-if="indexStatus === 'completed'" :size="12" class="action-bar__status-icon action-bar__status-icon--success" />
-        <AlertCircle v-else-if="indexStatus === 'error'" :size="12" class="action-bar__status-icon action-bar__status-icon--error" />
+        <Loader2 v-if="showIndexStatus && indexStatus === 'building'" :size="12" class="action-bar__status-spinner" />
+        <CheckCircle v-else-if="showIndexStatus && indexStatus === 'completed'" :size="12" class="action-bar__status-icon action-bar__status-icon--success" />
+        <AlertCircle v-else-if="showIndexStatus && indexStatus === 'error'" :size="12" class="action-bar__status-icon action-bar__status-icon--error" />
         <span>{{ displayText }}</span>
       </span>
     </div>
@@ -101,10 +105,9 @@ const displayText = computed(() => {
         <span class="kbd"><CornerDownLeft :size="12" :stroke-width="2.5" /></span>
         <span class="action-bar__label">打开</span>
       </span>
-      <span class="action-bar__hint">
-        <span class="kbd"><X :size="12" :stroke-width="2.5" /></span>
-        <span class="action-bar__label">关闭</span>
-      </span>
+      <button class="action-bar__hotkey-btn" @click="emit('showHotkeys')" title="快捷键">
+        <Keyboard :size="14" :stroke-width="2" />
+      </button>
     </div>
   </div>
 </template>
@@ -229,5 +232,24 @@ const displayText = computed(() => {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xs);
   line-height: 1;
+}
+
+.action-bar__hotkey-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.action-bar__hotkey-btn:hover {
+  background: var(--surface-overlay);
+  color: var(--text-secondary);
 }
 </style>

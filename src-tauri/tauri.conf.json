@@ -16,7 +16,7 @@
         "label": "search",
         "title": "MonoTools",
         "width": 680,
-        "height": 440,
+        "height": 520,
         "minWidth": 680,
         "minHeight": 360,
         "decorations": false,

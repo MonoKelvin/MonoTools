@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, watch, nextTick } from 'vue'
 import type { SearchResult } from '@/types/search'
 import ResultItem from '@/components/common/ResultItem.vue'
 
@@ -8,24 +9,41 @@ interface Props {
   selectedIndex: number
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   loading: false,
 })
 
 defineEmits<{
   (e: 'select', item: SearchResult): void
   (e: 'hover', index: number): void
+  (e: 'contextmenu', event: MouseEvent, item: SearchResult): void
 }>()
+
+const listRef = ref<HTMLElement | null>(null)
+
+watch(() => props.selectedIndex, async (newIndex) => {
+  await nextTick()
+  if (!listRef.value) return
+
+  const items = listRef.value.querySelectorAll('.result-item')
+  const activeItem = items[newIndex] as HTMLElement
+  if (!activeItem) return
+
+  activeItem.scrollIntoView({
+    behavior: 'smooth',
+    block: 'nearest',
+  })
+})
 </script>
 
 <template>
-  <div class="search-results" data-tauri-drag-region>
+  <div class="search-results">
     <div v-if="loading" class="search-results__loading">
       <div class="search-results__spinner"></div>
       <span class="search-results__loading-text">搜索中...</span>
     </div>
 
-    <TransitionGroup v-else-if="results.length" name="list" tag="div" class="search-results__list">
+    <TransitionGroup v-else-if="results.length" name="list" tag="div" class="search-results__list" ref="listRef">
       <ResultItem
         v-for="(item, idx) in results"
         :key="item.id"
@@ -34,6 +52,7 @@ defineEmits<{
         :active="idx === selectedIndex"
         @select="emit('select', $event)"
         @mouseover="emit('hover', idx)"
+        @contextmenu="(e, item) => emit('contextmenu', e, item)"
       />
     </TransitionGroup>
 

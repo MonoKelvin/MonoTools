@@ -94,3 +94,9 @@ export const pinTopApi = {
         return call<void>('set_pin_top', { value })
     },
 }
+
+export const shellApi = {
+    open(path: string) {
+        return call<void>('execute_result', { item: { action: { Open: path } } })
+    },
+}

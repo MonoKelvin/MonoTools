@@ -15,9 +15,9 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 const CATEGORY_WEIGHTS: [(SearchCategory, f32); 3] = [
-    (SearchCategory::Apps, 1.0),
+    (SearchCategory::Apps, 0.8),
     (SearchCategory::Commands, 1.2),
-    (SearchCategory::Files, 0.8),
+    (SearchCategory::Files, 1.0),
 ];
 
 pub struct SearchEngine {

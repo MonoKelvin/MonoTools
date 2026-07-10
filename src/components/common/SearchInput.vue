@@ -39,32 +39,41 @@ onMounted(() => {
   inputRef.value?.focus()
 })
 
-function isOverText(input: HTMLInputElement, clientX: number): boolean {
+function isOverInteractiveArea(input: HTMLInputElement, clientX: number): boolean {
   const rect = input.getBoundingClientRect()
-  if (!input.value || input.value.length === 0) {
-    return clientX <= rect.left + rect.width * 0.4
-  }
-
   const style = getComputedStyle(input)
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')!
   ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
 
-  const paddingLeft = parseFloat(style.paddingLeft) || 0
   const charWidth = ctx.measureText('m').width
-  const bufferWidth = charWidth * 4
-  const textWidth = ctx.measureText(input.value).width
 
-  const textAreaStart = rect.left + paddingLeft - bufferWidth
-  const textAreaEnd = rect.left + paddingLeft + textWidth + bufferWidth
+  let textWidth: number
+  let textStart: number
 
-  return clientX >= textAreaStart && clientX <= textAreaEnd
+  if (!input.value || input.value.length === 0) {
+    const placeholderWidth = ctx.measureText(props.placeholder || '').width
+    textWidth = placeholderWidth
+    textStart = rect.left
+  } else {
+    textWidth = ctx.measureText(input.value).width
+    textStart = rect.left
+  }
+
+  const interactiveStart = textStart
+  const interactiveEnd = textStart + textWidth
+
+  return clientX >= interactiveStart && clientX <= interactiveEnd
 }
 
 async function handleSearchBarMousedown(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  if (target.closest('.logo-area')) {
+  if (target.closest('.search-bar__logo')) {
+    return
+  }
+
+  if (target.closest('.search-bar__clear')) {
     return
   }
 
@@ -72,35 +81,25 @@ async function handleSearchBarMousedown(event: MouseEvent) {
     showLogoMenu.value = false
   }
 
-  if (target.closest('.search-clear')) {
-    return
-  }
-
   const input = inputRef.value
-  if (input && target.closest('.search-input-wrapper')) {
-    const overText = isOverText(input, event.clientX)
-    if (overText) {
-      return
-    } else {
-      event.stopPropagation()
-      if (isTauri) {
-        try {
-          await invoke('set_dragging', { dragging: true })
-          await invoke('start_dragging')
-          setTimeout(async () => {
-            try {
-              await invoke('set_dragging', { dragging: false })
-            } catch {}
-          }, 500)
-        } catch {}
-      }
+  if (input && target.closest('.search-bar__input-wrapper')) {
+    const isInteractive = isOverInteractiveArea(input, event.clientX)
+    if (isInteractive) {
       return
     }
   }
 
+  event.preventDefault()
+
   if (isTauri) {
     try {
+      await invoke('set_dragging', { dragging: true })
       await invoke('start_dragging')
+      setTimeout(async () => {
+        try {
+          await invoke('set_dragging', { dragging: false })
+        } catch {}
+      }, 500)
     } catch {}
   }
 }
@@ -109,8 +108,8 @@ function handleSearchBarMousemove(event: MouseEvent) {
   const input = inputRef.value
   if (!input) return
 
-  const overText = isOverText(input, event.clientX)
-  const cursor = overText ? 'text' : 'default'
+  const isInteractive = isOverInteractiveArea(input, event.clientX)
+  const cursor = isInteractive ? 'text' : 'default'
 
   const wrapper = event.currentTarget as HTMLElement
   wrapper.style.cursor = cursor
@@ -196,7 +195,6 @@ defineExpose({ focus: () => inputRef.value?.focus() })
     @mousedown="handleSearchBarMousedown"
     @mousemove="handleSearchBarMousemove"
     @mouseleave="handleSearchBarMouseleave"
-    data-tauri-drag-region
   >
     <div class="search-bar__left">
       <div class="search-bar__icon" aria-hidden="true">

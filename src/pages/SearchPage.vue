@@ -7,11 +7,21 @@ import { hotkeyApi, windowApi } from '@/services'
 import { isTauri } from '@/services/env'
 import { useRouter } from 'vue-router'
 import { listenEvent } from '@/services/tauri'
+import type { SearchResult } from '@/types/search'
 
 import SearchInput from '@/components/common/SearchInput.vue'
 import CategoryTabs from '@/components/search/CategoryTabs.vue'
 import SearchResults from '@/components/search/SearchResults.vue'
 import ActionBar from '@/components/search/ActionBar.vue'
+import ContextMenu from '@/components/search/ContextMenu.vue'
+import HotkeyModal from '@/components/common/HotkeyModal.vue'
+import { searchCommands } from '@/commands/searchCommands'
+
+const showContextMenu = ref(false)
+const contextMenuX = ref(0)
+const contextMenuY = ref(0)
+const contextMenuItem = ref<ReturnType<typeof useSearchStore>['filteredResults'][0] | null>(null)
+const showHotkeyModal = ref(false)
 
 const search = useSearchStore()
 const settings = useSettingsStore()
@@ -54,7 +64,12 @@ const onUp = () => search.selectPrev()
 const onDown = () => search.selectNext()
 const onEscape = () => { search.hide() }
 
-const onSelect = (item: any) => search.executeItem(item)
+const onSelect = (item: any) => {
+  const idx = search.filteredResults.findIndex(r => r.id === item.id)
+  if (idx >= 0) search.selectedIndex = idx
+  search.executeItem(item)
+}
+const onShowHotkeys = () => { showHotkeyModal.value = true }
 const onHover = (idx: number) => { search.selectedIndex = idx }
 const onQueryChange = (val: string) => search.setQuery(val)
 const onCategorySelect = (cat: any) => search.setCategory(cat)
@@ -69,13 +84,42 @@ const handleIndexProgress = (progress: { status: string; message?: string; files
   search.setIndexProgress(progress)
 }
 
+const handleContextMenu = (e: MouseEvent, item?: SearchResult) => {
+  e.preventDefault()
+  if (item) {
+    contextMenuX.value = e.clientX
+    contextMenuY.value = e.clientY
+    contextMenuItem.value = item
+    showContextMenu.value = true
+  } else if (search.filteredResults.length > 0 && search.selectedIndex >= 0 && search.selectedIndex < search.filteredResults.length) {
+    contextMenuX.value = e.clientX
+    contextMenuY.value = e.clientY
+    contextMenuItem.value = search.filteredResults[search.selectedIndex]
+    showContextMenu.value = true
+  }
+}
+
+const closeContextMenu = () => {
+  showContextMenu.value = false
+}
+
 onMounted(async () => {
+  searchCommands.register({
+    onEnter,
+    onUp,
+    onDown,
+    onEscape,
+  })
   await settings.load()
   await tryRegisterHotkey()
   await fixWindowWidth()
   await search.loadIndexStatus()
 
   unlistenIndexProgress = await listenEvent('index_progress', handleIndexProgress)
+
+  if (containerRef.value) {
+    containerRef.value.addEventListener('contextmenu', handleContextMenu)
+  }
 
   await nextTick()
   if (containerRef.value && typeof ResizeObserver !== 'undefined') {
@@ -90,15 +134,20 @@ onUpdated(() => {
 })
 
 onBeforeUnmount(() => {
+  searchCommands.unregister()
   if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
   if (unlistenIndexProgress) { unlistenIndexProgress() }
+  if (containerRef.value) {
+    containerRef.value.removeEventListener('contextmenu', handleContextMenu)
+  }
 })
 
 watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
 </script>
 
 <template>
-  <div class="search-page" data-tauri-drag-region>
+  <div class="search-page">
+
     <div class="search-container" ref="containerRef">
       <SearchInput
         ref="inputRef"
@@ -122,6 +171,7 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
         :selected-index="search.selectedIndex"
         @select="onSelect"
         @hover="onHover"
+        @contextmenu="handleContextMenu"
       >
         <template #empty>
           <div class="empty-state">
@@ -145,8 +195,22 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
         :index-building="search.indexStatus === 'building'"
         :index-status="search.indexStatus"
         :index-message="search.indexMessage"
+        @show-hotkeys="onShowHotkeys"
       />
     </div>
+
+    <ContextMenu
+      :visible="showContextMenu"
+      :x="contextMenuX"
+      :y="contextMenuY"
+      :item="contextMenuItem"
+      @close="closeContextMenu"
+    />
+
+    <HotkeyModal
+      :visible="showHotkeyModal"
+      @close="showHotkeyModal = false"
+    />
   </div>
 </template>
 
@@ -159,7 +223,10 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
   align-items: flex-start;
   background: var(--canvas);
   overflow: hidden;
+  position: relative;
 }
+
+
 
 .search-container {
   width: 100%;

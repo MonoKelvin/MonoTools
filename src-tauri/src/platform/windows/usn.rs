@@ -40,6 +40,7 @@ pub struct UsnRecord {
     pub is_directory: bool,
     pub extension: Option<String>,
     pub reason: UsnChangeReason,
+    pub usn: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -612,6 +613,7 @@ impl NtfsIndexer {
                     is_directory: true,
                     extension: None,
                     reason: UsnChangeReason::Created,
+                    usn: 0,
                 };
                 callback(usn_record);
                 total_count += 1;
@@ -636,6 +638,7 @@ impl NtfsIndexer {
                     is_directory: false,
                     extension: ext,
                     reason: UsnChangeReason::Created,
+                    usn: 0,
                 };
                 callback(usn_record);
                 total_count += 1;
@@ -786,8 +789,8 @@ impl NtfsIndexer {
         );
 
         let mut offset = 8;
-        let mut dir_records: Vec<(u64, u64, String)> = Vec::new();
-        let mut file_records: Vec<(u64, u64, String, u32, i64)> = Vec::new();
+        let mut dir_records: Vec<(u64, u64, String, u64)> = Vec::new();
+        let mut file_records: Vec<(u64, u64, String, u32, i64, u64)> = Vec::new();
 
         while offset < bytes_returned as usize {
             let record = unsafe { &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2) };
@@ -816,6 +819,7 @@ impl NtfsIndexer {
                     record.FileReferenceNumber,
                     record.ParentFileReferenceNumber,
                     file_name,
+                    record.Usn as u64,
                 ));
             } else {
                 file_records.push((
@@ -824,6 +828,7 @@ impl NtfsIndexer {
                     file_name,
                     record.Reason,
                     record.TimeStamp,
+                    record.Usn as u64,
                 ));
             }
 
@@ -834,9 +839,9 @@ impl NtfsIndexer {
         path_cache.clear();
 
         let all_dir_frns: std::collections::HashSet<u64> =
-            dir_records.iter().map(|(frn, _, _)| *frn).collect();
+            dir_records.iter().map(|(frn, _, _, _)| *frn).collect();
         let mut root_frn: Option<u64> = None;
-        for (_, parent_ref, _) in &dir_records {
+        for (_, parent_ref, _, _) in &dir_records {
             if !all_dir_frns.contains(parent_ref) {
                 root_frn = Some(*parent_ref);
                 break;
@@ -847,7 +852,7 @@ impl NtfsIndexer {
             for candidate in [5u64, 0u64] {
                 if dir_records
                     .iter()
-                    .any(|(_, parent, _)| *parent == candidate)
+                    .any(|(_, parent, _, _)| *parent == candidate)
                 {
                     root_frn = Some(candidate);
                     break;
@@ -863,7 +868,7 @@ impl NtfsIndexer {
             log::warn!("无法确定根目录 FRN，使用 fallback (0 和 5)");
         }
 
-        dir_records.sort_by_key(|(_, parent_ref, _)| *parent_ref);
+        dir_records.sort_by_key(|(_, parent_ref, _, _)| *parent_ref);
 
         let mut changed = true;
         let mut iterations = 0;
@@ -871,7 +876,7 @@ impl NtfsIndexer {
             changed = false;
             iterations += 1;
 
-            for (file_ref, parent_ref, file_name) in &dir_records {
+            for (file_ref, parent_ref, file_name, _) in &dir_records {
                 if path_cache.contains_key(file_ref) {
                     continue;
                 }
@@ -886,7 +891,7 @@ impl NtfsIndexer {
 
         let path_cache = self.path_cache.read();
 
-        for (file_ref, parent_ref, file_name) in &dir_records {
+        for (file_ref, parent_ref, file_name, usn) in &dir_records {
             let parent_path = path_cache
                 .get(parent_ref)
                 .cloned()
@@ -903,10 +908,11 @@ impl NtfsIndexer {
                 is_directory: true,
                 extension: None,
                 reason: UsnChangeReason::Modified,
+                usn: *usn,
             });
         }
 
-        for (file_ref, parent_ref, file_name, reason, timestamp) in &file_records {
+        for (file_ref, parent_ref, file_name, reason, timestamp, usn) in &file_records {
             let parent_path = path_cache
                 .get(parent_ref)
                 .cloned()
@@ -937,6 +943,7 @@ impl NtfsIndexer {
                 is_directory: false,
                 extension: ext,
                 reason: reason_enum,
+                usn: *usn,
             });
         }
 
@@ -957,7 +964,7 @@ impl NtfsIndexer {
             if let Ok(volume_changes) = self.read_usn_changes(volume, start_usn) {
                 changes.extend(volume_changes);
                 if let Some(record) = changes.last() {
-                    *last_usn.entry(volume.clone()).or_insert(0) = record.file_reference_number;
+                    *last_usn.entry(volume.clone()).or_insert(0) = record.usn;
                 }
             }
         }

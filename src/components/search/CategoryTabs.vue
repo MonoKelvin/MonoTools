@@ -22,7 +22,7 @@ const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
 </script>
 
 <template>
-  <div class="category-tabs" data-tauri-drag-region>
+  <div class="category-tabs">
     <div class="category-tabs__list">
       <button
         v-for="t in tabs"
@@ -40,8 +40,8 @@ const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
 .category-tabs {
   display: flex;
   align-items: center;
-  padding: var(--sp-3) var(--sp-5);
-  height: 48px;
+  padding: var(--sp-2) var(--sp-5);
+  height: 40px;
   background: var(--surface);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
