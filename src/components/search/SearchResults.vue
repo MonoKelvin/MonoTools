@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue'
+import { ref, watch, nextTick, onUpdated } from 'vue'
 import type { SearchResult } from '@/types/search'
 import ResultItem from '@/components/common/ResultItem.vue'
 
@@ -21,18 +21,26 @@ defineEmits<{
 
 const listRef = ref<HTMLElement | null>(null)
 
-watch(() => props.selectedIndex, async (newIndex) => {
+const scrollToActive = async () => {
   await nextTick()
   if (!listRef.value) return
 
   const items = listRef.value.querySelectorAll('.result-item')
-  const activeItem = items[newIndex] as HTMLElement
+  const activeItem = items[props.selectedIndex] as HTMLElement | undefined
   if (!activeItem) return
 
   activeItem.scrollIntoView({
     behavior: 'smooth',
     block: 'nearest',
   })
+}
+
+watch(() => props.selectedIndex, scrollToActive)
+
+onUpdated(() => {
+  if (props.selectedIndex >= 0) {
+    scrollToActive()
+  }
 })
 </script>
 
