@@ -1,11 +1,11 @@
 //! Tauri IPC Commands - 前端 ↔ 后端
 
-use crate::models::{CustomCommand, SearchResult, Settings};
-use crate::services::app_state::AppState;
 use crate::models::SearchAction;
+use crate::models::{CustomCommand, SearchResult, Settings};
 use crate::platform::windows::shell;
+use crate::services::app_state::AppState;
 use std::sync::Arc;
-use tauri::{LogicalSize, Manager, State};
+use tauri::{Emitter, LogicalSize, Manager, State};
 
 const WINDOW_DEFAULT_WIDTH: f64 = 680.0;
 
@@ -13,9 +13,68 @@ const WINDOW_DEFAULT_WIDTH: f64 = 680.0;
 pub async fn search_cmd(
     state: State<'_, Arc<AppState>>,
     query: String,
+    _options: Option<serde_json::Value>,
 ) -> Result<Vec<SearchResult>, String> {
     let limit = if query.is_empty() { 50u32 } else { 20u32 };
     let results = state.search_engine.search(&query, limit);
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn build_file_index(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<String, String> {
+    let state_clone = Arc::clone(&state);
+    let app_clone = app.clone();
+
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = state_clone.file_search.build_index().await {
+            log::error!("索引构建失败: {}", e);
+            let _ = app_clone.emit(
+                "index_progress",
+                serde_json::json!({
+                    "status": "error",
+                    "message": e.to_string(),
+                }),
+            );
+        } else {
+            let stats = state_clone.search_engine.total_indexed();
+            let _ = app_clone.emit(
+                "index_progress",
+                serde_json::json!({
+                    "status": "completed",
+                    "files": stats.files,
+                    "apps": stats.apps,
+                    "commands": stats.commands,
+                }),
+            );
+        }
+    });
+
+    Ok("索引构建已启动".to_string())
+}
+
+#[tauri::command]
+pub async fn get_index_status(
+    state: State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    let stats = state.search_engine.total_indexed();
+    Ok(serde_json::json!({
+        "files": stats.files,
+        "apps": stats.apps,
+        "commands": stats.commands,
+    }))
+}
+
+#[tauri::command]
+pub async fn file_search(
+    state: State<'_, Arc<AppState>>,
+    query: String,
+    limit: Option<u32>,
+) -> Result<Vec<SearchResult>, String> {
+    let lim = limit.unwrap_or(20);
+    let results = state.file_search.search(&query, lim);
     Ok(results)
 }
 
@@ -28,7 +87,9 @@ pub async fn execute_result(
     shell::launch_str(&item).map_err(|e| e.to_string())?;
     state.app_search.record_launch(&item.title);
     if let SearchAction::Launch(path) = &item.action {
-        state.stats_repo.record_launch(path, &item.title, chrono::Utc::now().timestamp());
+        state
+            .stats_repo
+            .record_launch(path, &item.title, chrono::Utc::now().timestamp());
     }
     if let Some(h) = state.window.handle_for("search") {
         h.hide();
@@ -102,10 +163,7 @@ pub async fn list_commands(state: State<'_, Arc<AppState>>) -> Result<Vec<Custom
 }
 
 #[tauri::command]
-pub async fn remove_command(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<(), String> {
+pub async fn remove_command(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
     state.command_repo.remove(&id).map_err(|e| e.to_string())
 }
 
@@ -195,12 +253,10 @@ pub async fn set_appearance(
         .and_then(|v| v.as_str())
         .unwrap_or("#ffffff")
         .to_string();
-    let res = state
-        .settings_repo
-        .update(Box::new(move |s| {
-            s.theme = mode;
-            s.accent_color = accent;
-        }));
+    let res = state.settings_repo.update(Box::new(move |s| {
+        s.theme = mode;
+        s.accent_color = accent;
+    }));
     res.map(|_| ()).map_err(|e| e.to_string())
 }
 
@@ -233,10 +289,7 @@ pub async fn set_pin_top(
 }
 
 #[tauri::command]
-pub async fn set_window_height(
-    app: tauri::AppHandle,
-    height: u32,
-) -> Result<(), String> {
+pub async fn set_window_height(app: tauri::AppHandle, height: u32) -> Result<(), String> {
     let Some(w) = app.get_webview_window("search") else {
         return Ok(());
     };
@@ -258,12 +311,10 @@ pub async fn start_dragging(
         *dragging = true;
     }
 
-    window
-        .start_dragging()
-        .map_err(|e| {
-            println!("[ERROR] Failed to start dragging: {}", e);
-            format!("Failed to start dragging: {e}")
-        })?;
+    window.start_dragging().map_err(|e| {
+        println!("[ERROR] Failed to start dragging: {}", e);
+        format!("Failed to start dragging: {e}")
+    })?;
 
     Ok(())
 }

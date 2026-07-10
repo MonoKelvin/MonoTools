@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated } from 'vue'
 import { Search } from "@lucide/vue"
 import { useSearchStore } from '@/stores/search'
 import { useSettingsStore } from '@/stores/settings'
 import { hotkeyApi, windowApi } from '@/services'
 import { isTauri } from '@/services/env'
 import { useRouter } from 'vue-router'
+import { listenEvent } from '@/services/tauri'
 
 import SearchInput from '@/components/common/SearchInput.vue'
 import CategoryTabs from '@/components/search/CategoryTabs.vue'
@@ -21,6 +22,7 @@ const containerRef = ref<HTMLElement | null>(null)
 let resizeObserver: ResizeObserver | null = null
 let pendingHeight = 0
 let resyncTimer: number | null = null
+let unlistenIndexProgress: (() => void) | null = null
 
 const WINDOW_FIXED_WIDTH = 680
 
@@ -63,10 +65,18 @@ const tryRegisterHotkey = async () => {
   catch {}
 }
 
+const handleIndexProgress = (progress: { status: string; message?: string; files?: number }) => {
+  search.setIndexProgress(progress)
+}
+
 onMounted(async () => {
   await settings.load()
   await tryRegisterHotkey()
   await fixWindowWidth()
+  await search.loadIndexStatus()
+
+  unlistenIndexProgress = await listenEvent('index_progress', handleIndexProgress)
+
   await nextTick()
   if (containerRef.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(syncWindowHeight)
@@ -75,8 +85,13 @@ onMounted(async () => {
   }
 })
 
+onUpdated(() => {
+  nextTick(syncWindowHeight)
+})
+
 onBeforeUnmount(() => {
   if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null }
+  if (unlistenIndexProgress) { unlistenIndexProgress() }
 })
 
 watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
@@ -127,6 +142,9 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
       <ActionBar
         :results="search.filteredResults"
         :selected-index="search.selectedIndex"
+        :index-building="search.indexStatus === 'building'"
+        :index-status="search.indexStatus"
+        :index-message="search.indexMessage"
       />
     </div>
   </div>
@@ -159,12 +177,82 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
 @keyframes search-container-fade-in {
   from {
     opacity: 0;
-    transform: translateY(-8px) scale(0.98);
+    transform: translateY(-12px) scale(0.97);
+    filter: blur(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0);
   }
+}
+
+.index-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: linear-gradient(90deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.05) 100%);
+  border-bottom: 1px solid rgba(255, 107, 107, 0.2);
+  animation: status-bar-slide-in 0.3s var(--ease-out);
+}
+
+@keyframes status-bar-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.index-status-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.index-status-bar__icon {
+  flex-shrink: 0;
+}
+
+.index-status-bar__icon--loading {
+  color: var(--accent);
+  animation: spin 1s linear infinite;
+}
+
+.index-status-bar__icon--success {
+  color: #10b981;
+}
+
+.index-status-bar__icon--error {
+  color: #ef4444;
+}
+
+.index-status-bar__text {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.index-status-bar__action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.index-status-bar__action:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .empty-state {
@@ -184,6 +272,12 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
   justify-content: center;
   color: var(--text-quaternary);
   opacity: 0.4;
+  transition: all var(--dur-normal) var(--ease-out);
+}
+
+.empty-state:hover .empty-state__icon {
+  opacity: 0.6;
+  transform: scale(1.05);
 }
 
 .empty-state__text {
@@ -195,5 +289,24 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
 .empty-state__hint {
   color: var(--text-quaternary);
   font-size: var(--text-sm);
+}
+
+.empty-state__action {
+  margin-top: var(--sp-4);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 </style>

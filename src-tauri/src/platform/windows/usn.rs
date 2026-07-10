@@ -126,7 +126,7 @@ impl NtfsIndexer {
     fn enumerate_ntfs_volumes(drives: Option<Vec<char>>) -> Result<Vec<String>> {
         use windows_sys::Win32::Storage::FileSystem::{
             FindFirstVolumeW, FindNextVolumeW, FindVolumeClose, GetLogicalDriveStringsW,
-            GetVolumeInformationW, GetVolumeNameForVolumeMountPointW,
+            GetVolumeInformationW,
         };
 
         let mut volumes = Vec::new();
@@ -155,32 +155,18 @@ impl NtfsIndexer {
                 };
 
                 if success != 0 {
-                    let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
+                    let fs_len = fs_name
+                        .iter()
+                        .position(|&c| c == 0)
+                        .unwrap_or(fs_name.len());
+                    let fs = String::from_utf16_lossy(&fs_name[..fs_len])
+                        .trim()
+                        .to_string();
                     log::info!("{} 文件系统: {}", drive_path, fs);
                     if fs.eq_ignore_ascii_case("NTFS") {
-                        let mut volume_name: [u16; 512] = [0; 512];
-                        let mount_point: Vec<u16> = drive_path
-                            .encode_utf16()
-                            .chain(std::iter::once(0))
-                            .collect();
-                        let success2 = unsafe {
-                            GetVolumeNameForVolumeMountPointW(
-                                mount_point.as_ptr(),
-                                volume_name.as_mut_ptr(),
-                                volume_name.len() as u32,
-                            )
-                        };
-
-                        if success2 != 0 {
-                            let vol_name =
-                                String::from_utf16_lossy(&volume_name).trim().to_string();
-                            log::info!("检测到NTFS卷: {}", vol_name);
-                            volumes.push(vol_name);
-                        } else {
-                            let volume = format!("\\\\.\\{}:", drive_letter);
-                            log::info!("检测到NTFS卷: {}", volume);
-                            volumes.push(volume);
-                        }
+                        let volume = format!("\\\\.\\{}:", drive_letter);
+                        log::info!("检测到NTFS卷: {}", volume);
+                        volumes.push(volume);
                     } else {
                         log::warn!("{} 文件系统不是NTFS: {}", drive_path, fs);
                         volumes.push(format!("\\\\.\\{}:", drive_letter));
@@ -530,44 +516,49 @@ impl NtfsIndexer {
             current_file_ref = next_file_ref;
         }
 
-        log::debug!(
+        log::info!(
             "第一遍扫描完成：{} 个目录，{} 个文件",
             dir_records.len(),
             file_records.len()
         );
 
         // 动态检测根目录的 FRN
-        // 根目录的特点：它的 ParentFileReferenceNumber 不指向任何已知目录
+        // 根目录的特点：
+        // 1. ParentFileReferenceNumber 不指向任何已知目录
+        // 2. ParentFileReferenceNumber 等于它自己的 FRN（根目录的父就是自己）
+        // 3. 常见值是 5 或 0
         let all_dir_frns: std::collections::HashSet<u64> =
             dir_records.iter().map(|(frn, _, _, _)| *frn).collect();
-        let mut root_frn: Option<u64> = None;
-        for (_, parent_ref, _, _) in &dir_records {
-            if !all_dir_frns.contains(parent_ref) {
-                root_frn = Some(*parent_ref);
-                break;
+
+        let mut root_frns: std::collections::HashSet<u64> = std::collections::HashSet::new();
+
+        for (file_ref, parent_ref, _, _) in &dir_records {
+            if !all_dir_frns.contains(parent_ref) || file_ref == parent_ref {
+                root_frns.insert(*parent_ref);
             }
         }
 
         // 如果上面的方法没找到，试试常见值（NTFS 根目录通常是 5）
-        if root_frn.is_none() {
+        if root_frns.is_empty() {
             for candidate in [5u64, 0u64] {
                 if dir_records
                     .iter()
-                    .any(|(_, parent, _, _)| *parent == candidate)
+                    .any(|(frn, parent, _, _)| *frn == candidate || *parent == candidate)
                 {
-                    root_frn = Some(candidate);
-                    break;
+                    root_frns.insert(candidate);
                 }
             }
         }
 
-        log::info!("检测到根目录 FRN: {:?}", root_frn);
+        log::info!("检测到根目录 FRN: {:?}", root_frns);
 
-        // 清除并重新初始化 path_cache，使用正确的根目录 FRN
+        // 清除并重新初始化 path_cache，使用所有检测到的根目录 FRN
         path_cache.clear();
-        if let Some(frn) = root_frn {
-            path_cache.insert(frn, root_path.clone());
-        } else {
+        for frn in &root_frns {
+            path_cache.insert(*frn, root_path.clone());
+        }
+
+        if root_frns.is_empty() {
             // fallback：尝试用 0 和 5
             path_cache.insert(0, root_path.clone());
             path_cache.insert(5, root_path.clone());
@@ -657,11 +648,16 @@ impl NtfsIndexer {
             windows_sys::Win32::Foundation::CloseHandle(handle);
         }
 
+        let file_count = if total_count >= dirs_cached as u64 {
+            total_count - dirs_cached as u64
+        } else {
+            0
+        };
         log::info!(
             "MFT 枚举完成: {} 个条目（目录{} + 文件{}），跳过无父路径: {}",
             total_count,
             dirs_cached,
-            total_count - dirs_cached as u64,
+            file_count,
             skipped_no_parent
         );
 

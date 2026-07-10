@@ -157,8 +157,10 @@ impl FileSearchEngine {
     }
 
     async fn build_index_ntfs(&self) -> Result<usize> {
-        let mut conn = self.db.lock();
-        conn.execute("DELETE FROM files_meta", [])?;
+        {
+            let conn = self.db.lock();
+            conn.execute("DELETE FROM files_meta", [])?;
+        }
 
         let mut records = Vec::new();
 
@@ -177,6 +179,7 @@ impl FileSearchEngine {
         }
 
         log::info!("开始批量写入数据库，共 {} 条记录", records.len());
+        let mut conn = self.db.lock();
         self.batch_insert_records(&mut conn, &records)?;
 
         *self.last_update.lock() = chrono::Utc::now().timestamp();

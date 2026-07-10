@@ -105,15 +105,32 @@ const resultTypeLabel = computed(() => {
   align-items: center;
   gap: var(--sp-4);
   padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--radius-lg);
+  border-radius: 10px;
   cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-out);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   user-select: none;
   background: transparent;
+  position: relative;
+  overflow: hidden;
+}
+
+.result-item::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+}
+
+.result-item:hover::before,
+.result-item--active::before {
+  opacity: 1;
 }
 
 .result-item:hover {
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, 0.06);
+  transform: translateX(4px);
 }
 
 .result-item--active {
@@ -122,24 +139,38 @@ const resultTypeLabel = computed(() => {
 
 .result-item__icon {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
   color: var(--text-tertiary);
-  transition: all var(--dur-fast) var(--ease-out);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.result-item__icon::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 10px;
+  background: var(--category-color);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-out);
+  filter: blur(20px);
 }
 
 .result-item:hover .result-item__icon {
   color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.08);
+  transform: scale(1.08);
 }
 
 .result-item--active .result-item__icon {
-  background: rgba(139, 92, 246, 0.12);
-  color: var(--accent);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
 }
 
 .result-item__content {
@@ -158,16 +189,17 @@ const resultTypeLabel = computed(() => {
 }
 
 .result-item__subtitle {
-  font-size: var(--text-sm);
-  color: var(--text-quaternary);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
   margin-top: 2px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
 }
 
 .result-item--active .result-item__subtitle {
-  color: var(--text-tertiary);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .result-item__meta {
@@ -178,43 +210,54 @@ const resultTypeLabel = computed(() => {
 }
 
 .result-item__badge {
-  padding: 2px 8px;
-  font-size: var(--text-xs);
-  font-weight: 500;
-  color: var(--text-primary);
-  background: rgba(139, 92, 246, 0.12);
-  border-radius: var(--radius-full);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
   color: var(--badge-color, var(--accent));
-  background-color: color-mix(in srgb, var(--badge-color, var(--accent)) 12%, transparent);
+  background: color-mix(in srgb, var(--badge-color, var(--accent)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--badge-color, var(--accent)) 20%, transparent);
+  border-radius: 12px;
+  transition: all var(--dur-fast) var(--ease-out);
 }
 
 .result-item--active .result-item__badge {
-  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--badge-color, var(--accent)) 15%, transparent);
+  border-color: color-mix(in srgb, var(--badge-color, var(--accent)) 30%, transparent);
 }
 
 .result-item__shortcut {
-  opacity: 0.5;
-  transition: opacity var(--dur-fast) var(--ease-out);
+  opacity: 0;
+  transform: translateX(8px);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .result-item:hover .result-item__shortcut,
 .result-item--active .result-item__shortcut {
   opacity: 1;
+  transform: translateX(0);
 }
 
 .kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--text-tertiary);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
   line-height: 1;
+  transition: all var(--dur-fast) var(--ease-out);
+}
+
+.result-item--active .kbd {
+  background: rgba(255, 107, 107, 0.2);
+  border-color: rgba(255, 107, 107, 0.3);
+  color: var(--accent);
 }
 </style>

@@ -4,8 +4,9 @@ import type { SearchResult, SearchOptions, SearchCategory } from '@/types/search
 import { searchApi } from '@/services/searchApi'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
+export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
 
-const DEBOUNCE_MS = 60
+const DEBOUNCE_MS = 80
 
 export const useSearchStore = defineStore('search', () => {
   const query = ref('')
@@ -14,6 +15,10 @@ export const useSearchStore = defineStore('search', () => {
   const activeCategory = ref<ActiveCategory>('all')
   const selectedIndex = ref(0)
   const visible = ref(false)
+
+  const indexStatus = ref<IndexStatus>('idle')
+  const indexMessage = ref('')
+  const indexStats = ref({ files: 0, apps: 0, commands: 0 })
 
   let debounceHandle: number | null = null
 
@@ -40,6 +45,56 @@ export const useSearchStore = defineStore('search', () => {
       results.value = []
     } finally {
       loading.value = false
+    }
+  }
+
+  async function buildIndex() {
+    if (indexStatus.value === 'building') return
+    indexStatus.value = 'building'
+    indexMessage.value = '正在构建索引...'
+    try {
+      await searchApi.buildIndex()
+    } catch (err) {
+      console.error('索引构建失败：', err)
+      indexStatus.value = 'error'
+      indexMessage.value = '索引构建失败'
+    }
+  }
+
+  async function loadIndexStatus() {
+    try {
+      const stats = await searchApi.getIndexStatus()
+      indexStats.value = stats
+      if (stats.files > 0) {
+        indexStatus.value = 'completed'
+        indexMessage.value = `已索引 ${stats.files.toLocaleString()} 个文件`
+      }
+    } catch (err) {
+      console.error('获取索引状态失败：', err)
+    }
+  }
+
+  function setIndexProgress(progress: { status: string; message?: string; files?: number }) {
+    switch (progress.status) {
+      case 'building':
+        indexStatus.value = 'building'
+        indexMessage.value = progress.message || '正在构建索引...'
+        break
+      case 'completed':
+        indexStatus.value = 'completed'
+        if (progress.files) {
+          indexStats.value.files = progress.files
+          indexMessage.value = `索引完成，共 ${progress.files.toLocaleString()} 个文件`
+        } else {
+          indexMessage.value = '索引完成'
+        }
+        break
+      case 'error':
+        indexStatus.value = 'error'
+        indexMessage.value = progress.message || '索引构建失败'
+        break
+      default:
+        break
     }
   }
 
@@ -99,10 +154,16 @@ export const useSearchStore = defineStore('search', () => {
     activeCategory,
     selectedIndex,
     visible,
+    indexStatus,
+    indexMessage,
+    indexStats,
     filteredResults,
     topResults,
     setQuery,
     runSearch,
+    buildIndex,
+    loadIndexStatus,
+    setIndexProgress,
     setCategory,
     selectNext,
     selectPrev,

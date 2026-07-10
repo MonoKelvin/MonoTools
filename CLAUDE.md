@@ -14,6 +14,7 @@ Two binaries share the same library: `monotools` (GUI via Tauri) and `monotools-
 - **UI**: PrimeVue 4.x (Aura theme) + Tailwind CSS 4.x + SCSS + lucide-vue-next icons
 - **State**: Pinia 3.x | **Routing**: Vue Router 4.4+ (hash mode)
 - **Backend**: Rust 1.77+ (2021 Edition) + Tauri 2.11+ + Tokio
+- **Plugins**: tauri-plugin-single-instance (单例模式), tauri-plugin-global-shortcut, tauri-plugin-shell, tauri-plugin-fs
 - **Database**: SQLite (rusqlite 0.40 bundled) | **CLI**: clap with derive
 - **Windows**: windows 0.62 + windows-sys 0.61 | **Search**: NTFS USN Journal, MFT indexing, fuzzy-matcher
 - **Package Manager**: pnpm 8+ (workspace monorepo)
@@ -84,3 +85,5 @@ User types → SearchPage → searchStore.setQuery() → debounce → searchApi.
 - **Config**: Root `tauri.conf.json` defines two windows (search overlay + main window). CSP security policy. Bilingual installers (zh-CN + en-US).
 - **Testing**: Backend test framework at `src-tauri/tests/` with common utilities (`reporter`, `logger`, `paths`, `table`, `report`) and unified test entry (`run.rs`). Search engine tests include USN Journal monitoring, indexed at `tests/rust/features/search_engine/`. Test output: `tests/output/<module>/summary_*.txt` and `tests/output/<module>/log_*.txt`.
 - **Background Tasks**: File indexing runs asynchronously in background via `tauri::async_runtime::spawn`, hotkey registration uses async with retry logic.
+- **Single Instance**: Uses `tauri-plugin-single-instance` to ensure only one instance runs at a time. When a new instance is launched, it activates the existing window instead of creating a new one.
+- **ActionBar**: Bottom status bar with merged status display. Shows index building status (with fade-in animation) and search results count/status. Status messages auto-hide after timeout (5s for completed, 8s for error).

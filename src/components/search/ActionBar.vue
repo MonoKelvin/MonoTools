@@ -1,20 +1,52 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronUp, ChevronDown, CornerDownLeft, X } from "@lucide/vue"
+import { computed, ref, watch } from 'vue'
+import { ChevronUp, ChevronDown, CornerDownLeft, X, Loader2, CheckCircle, AlertCircle } from "@lucide/vue"
 import type { SearchResult } from '@/types/search'
 
 const props = defineProps<{
   results: SearchResult[]
   selectedIndex: number
+  indexBuilding: boolean
+  indexStatus: string
+  indexMessage: string
 }>()
+
+const showIndexStatus = ref(false)
+const autoHideTimer = ref<number | null>(null)
+
+watch(() => props.indexStatus, (newStatus) => {
+  if (newStatus === 'building') {
+    showIndexStatus.value = true
+    if (autoHideTimer.value) {
+      clearTimeout(autoHideTimer.value)
+      autoHideTimer.value = null
+    }
+  } else if (newStatus === 'completed') {
+    showIndexStatus.value = true
+    if (autoHideTimer.value) {
+      clearTimeout(autoHideTimer.value)
+    }
+    autoHideTimer.value = window.setTimeout(() => {
+      showIndexStatus.value = false
+    }, 5000)
+  } else if (newStatus === 'error') {
+    showIndexStatus.value = true
+    if (autoHideTimer.value) {
+      clearTimeout(autoHideTimer.value)
+    }
+    autoHideTimer.value = window.setTimeout(() => {
+      showIndexStatus.value = false
+    }, 8000)
+  }
+})
 
 const statusText = computed(() => {
   if (props.results.length === 0) {
     return '未找到结果'
   }
-  
+
   const selected = props.results[props.selectedIndex]
-  
+
   if (selected) {
     const typeLabels: Record<string, string> = {
       'system-app': '系统程序',
@@ -30,19 +62,31 @@ const statusText = computed(() => {
       'other-file': '其他文件',
       'command': '命令',
     }
-    
+
     const typeLabel = typeLabels[selected.resultType] || selected.resultType
     return `已选择: ${selected.title} · ${typeLabel}`
   }
-  
+
   return `共 ${props.results.length} 项结果`
+})
+
+const displayText = computed(() => {
+  if (showIndexStatus.value) {
+    return props.indexMessage
+  }
+  return statusText.value
 })
 </script>
 
 <template>
   <div class="action-bar">
     <div class="action-bar__left">
-      <span class="action-bar__status">{{ statusText }}</span>
+      <span class="action-bar__status" :class="{ 'action-bar__status--active': showIndexStatus }">
+        <Loader2 v-if="indexStatus === 'building'" :size="12" class="action-bar__status-spinner" />
+        <CheckCircle v-else-if="indexStatus === 'completed'" :size="12" class="action-bar__status-icon action-bar__status-icon--success" />
+        <AlertCircle v-else-if="indexStatus === 'error'" :size="12" class="action-bar__status-icon action-bar__status-icon--error" />
+        <span>{{ displayText }}</span>
+      </span>
     </div>
 
     <div class="action-bar__right">
@@ -108,13 +152,67 @@ const statusText = computed(() => {
 }
 
 .action-bar__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-tertiary);
   font-size: var(--text-xs);
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 300px;
+  max-width: 250px;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+
+.action-bar__status--active {
+  padding: 2px 8px;
+  border-radius: 10px;
+  animation: fadeInUp 0.3s ease-out;
+}
+
+.action-bar__status--active:has(.action-bar__status-spinner) {
+  background: rgba(255, 107, 107, 0.1);
+  color: var(--accent);
+}
+
+.action-bar__status--active:has(.action-bar__status-icon--success) {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.action-bar__status--active:has(.action-bar__status-icon--error) {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.action-bar__status-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.action-bar__status-icon--success {
+  color: #10b981;
+}
+
+.action-bar__status-icon--error {
+  color: #ef4444;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .kbd {

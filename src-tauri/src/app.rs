@@ -1,20 +1,20 @@
 //! Tauri 应用构建与命令入口
 
 pub mod app {
+    use crate::engines::app_search::AppSearchEngine;
+    use crate::engines::command_search::CommandSearchEngine;
+    use crate::engines::file_search::FileSearchEngine;
+    use crate::models::Settings;
+    use crate::repositories::*;
     use crate::services::app_state::AppState;
     use crate::services::hotkey::HotkeyService;
     use crate::services::search::SearchEngine;
     use crate::services::window::WindowService;
-    use crate::engines::app_search::AppSearchEngine;
-    use crate::engines::command_search::CommandSearchEngine;
-    use crate::engines::file_search::FileSearchEngine;
-    use crate::repositories::*;
-    use crate::models::Settings;
     use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
-    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use std::sync::{Arc, Mutex};
     use tauri::menu::{CheckMenuItem, Menu, MenuItem};
-    use tauri::{Manager, WindowEvent};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+    use tauri::{Emitter, Manager, WindowEvent};
 
     pub fn run() {
         if std::env::var("RUST_LOG").is_err() {
@@ -23,6 +23,13 @@ use std::sync::{Arc, Mutex};
         let _ = env_logger::try_init();
 
         tauri::Builder::default()
+            .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                log::info!("检测到新实例启动，激活已有窗口");
+                if let Some(window) = app.get_webview_window("search") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }))
             .plugin(tauri_plugin_global_shortcut::Builder::new().build())
             .plugin(tauri_plugin_shell::init())
             .plugin(tauri_plugin_fs::init())
@@ -61,10 +68,8 @@ use std::sync::{Arc, Mutex};
                     None::<&str>,
                 )?;
                 let quit_item = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
-                let tray_menu = Menu::with_items(
-                    app,
-                    &[&show_item, &hide_item, &pin_item, &quit_item],
-                )?;
+                let tray_menu =
+                    Menu::with_items(app, &[&show_item, &hide_item, &pin_item, &quit_item])?;
 
                 let _tray = TrayIconBuilder::with_id("monotools")
                     .icon(app.default_window_icon().unwrap().clone())
@@ -86,11 +91,9 @@ use std::sync::{Arc, Mutex};
                                     let state: tauri::State<Arc<AppState>> = app_listener.state();
                                     let cur = state.settings_repo.get().pin_to_top;
                                     let next = !cur;
-                                    if let Err(e) =
-                                        state.settings_repo.update(Box::new(move |s| {
-                                            s.pin_to_top = next;
-                                        }))
-                                    {
+                                    if let Err(e) = state.settings_repo.update(Box::new(move |s| {
+                                        s.pin_to_top = next;
+                                    })) {
                                         log::warn!("更新 pin_to_top 失败: {e}");
                                     }
                                     if let Err(e) = window.set_always_on_top(next) {
@@ -135,13 +138,13 @@ use std::sync::{Arc, Mutex};
                     let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
                     let settings = settings_repo.get();
                     let mut file_roots = settings.file_search_roots.clone();
-                    
+
                     if !settings.file_search_drives.is_empty() {
                         for drive in &settings.file_search_drives {
                             file_roots.push(PathBuf::from(format!("{}:\\", drive)));
                         }
                     }
-                    
+
                     let file_search = Arc::new(FileSearchEngine::new(file_roots.clone()).unwrap());
 
                     let search_engine = Arc::new(SearchEngine::new(
@@ -171,15 +174,37 @@ use std::sync::{Arc, Mutex};
                 })?;
 
                 let file_search_clone = state.file_search.clone();
+                let app_handle_for_index = app.handle().clone();
                 let file_roots_clone = state.settings_repo.get().file_search_roots.clone();
                 if !file_roots_clone.is_empty() {
                     tauri::async_runtime::spawn(async move {
                         log::info!("后台索引构建任务启动...");
+                        let _ = app_handle_for_index.emit(
+                            "index_progress",
+                            serde_json::json!({
+                                "status": "building",
+                                "message": "正在构建文件索引...",
+                            }),
+                        );
                         let start = std::time::Instant::now();
                         if let Err(e) = file_search_clone.build_index().await {
                             log::error!("后台索引构建失败: {}", e);
+                            let _ = app_handle_for_index.emit(
+                                "index_progress",
+                                serde_json::json!({
+                                    "status": "error",
+                                    "message": format!("索引构建失败: {}", e),
+                                }),
+                            );
                         } else {
                             log::info!("后台索引构建完成，耗时 {:?}", start.elapsed());
+                            let _ = app_handle_for_index.emit(
+                                "index_progress",
+                                serde_json::json!({
+                                    "status": "completed",
+                                    "message": "索引构建完成",
+                                }),
+                            );
                         }
 
                         use crate::engines::start_update_loop;
@@ -202,11 +227,18 @@ use std::sync::{Arc, Mutex};
                 let app_handle_for_setup = app.handle().clone();
                 let initial_hotkey = state.settings_repo.get().hotkey.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(e) = state.hotkey.register(&initial_hotkey, &app_handle_for_setup).await {
+                    if let Err(e) = state
+                        .hotkey
+                        .register(&initial_hotkey, &app_handle_for_setup)
+                        .await
+                    {
                         log::warn!("注册默认快捷键失败: {}，请检查是否被其他程序占用", e);
                         log::info!("尝试重新注册...");
                         std::thread::sleep(std::time::Duration::from_millis(500));
-                        let _ = state.hotkey.register(&initial_hotkey, &app_handle_for_setup).await;
+                        let _ = state
+                            .hotkey
+                            .register(&initial_hotkey, &app_handle_for_setup)
+                            .await;
                     }
                 });
 
@@ -237,6 +269,9 @@ use std::sync::{Arc, Mutex};
                 crate::commands::start_dragging,
                 crate::commands::set_dragging,
                 crate::commands::quit_app,
+                crate::commands::build_file_index,
+                crate::commands::get_index_status,
+                crate::commands::file_search,
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
