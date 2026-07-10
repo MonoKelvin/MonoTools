@@ -55,7 +55,7 @@ impl TestReport {
                 });
             }
             None => {
-                let mut section = self.add_section(section_title);
+                let section = self.add_section(section_title);
                 section.items.push(ReportItem {
                     label: label.to_string(),
                     value: value.to_string(),

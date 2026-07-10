@@ -1,5 +1,9 @@
 use monotools_lib::engines::file_search::FileSearchEngine;
 use monotools_lib::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
+use rand::prelude::*;
+
+use crate::common::logger::TestLogger;
+use crate::common::reporter::TestReporter;
 
 const MODULE_NAME: &str = "search_engine";
 
@@ -16,6 +20,13 @@ fn data_path(module: &str, filename: &str) -> std::path::PathBuf {
 
 fn output_path(module: &str, filename: &str) -> std::path::PathBuf {
     base_dir().join("output").join(module).join(filename)
+}
+
+fn log_dir_path(module: &str) -> std::path::PathBuf {
+    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join("output")
+        .join(module)
 }
 
 fn ensure_dir(path: &std::path::PathBuf) {
@@ -42,7 +53,9 @@ fn cleanup_test_data() {
         if let Ok(entries) = std::fs::read_dir(&data_dir) {
             for entry in entries.flatten() {
                 let path = entry.path();
-                let _ = std::fs::remove_file(&path);
+                if path.is_file() {
+                    let _ = std::fs::remove_file(&path);
+                }
             }
         }
     }
@@ -61,6 +74,23 @@ fn get_system_roots(drives: &[char]) -> Vec<std::path::PathBuf> {
     roots
 }
 
+fn sample_results<T>(results: &[T], max_sample: usize) -> Vec<&T> {
+    let total = results.len();
+
+    if total <= max_sample {
+        results.iter().collect()
+    } else {
+        let mut rng = thread_rng();
+        let mut indices: Vec<usize> = (0..total).collect();
+        indices.shuffle(&mut rng);
+        indices
+            .into_iter()
+            .take(max_sample)
+            .map(|i| &results[i])
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone)]
 struct SearchEngineTestConfig {
     pub test_drives: Vec<char>,
@@ -71,6 +101,9 @@ struct SearchEngineTestConfig {
     pub validity_threshold: f64,
     pub search_sample_paths: usize,
     pub usn_monitor_duration_ms: u64,
+    pub case_insensitive_keywords: Vec<String>,
+    pub whole_word_keywords: Vec<String>,
+    pub regex_patterns: Vec<String>,
 }
 
 impl Default for SearchEngineTestConfig {
@@ -105,6 +138,15 @@ impl Default for SearchEngineTestConfig {
             validity_threshold: 0.85,
             search_sample_paths: 10,
             usn_monitor_duration_ms: 5000,
+            case_insensitive_keywords: vec![
+                "WORK".to_string(),
+                "CODE".to_string(),
+                "RUST".to_string(),
+                "JSON".to_string(),
+                "INDEX".to_string(),
+            ],
+            whole_word_keywords: vec![],
+            regex_patterns: vec![],
         }
     }
 }
@@ -116,177 +158,172 @@ async fn run_all_search_engine_tests() {
 
 pub async fn run_search_engine_tests() {
     let config = SearchEngineTestConfig::default();
-    let mut report = TestReport::new("文件搜索引擎");
-    let mut results = TestResults::new();
+    let log_dir = log_dir_path(MODULE_NAME);
+    let mut logger = TestLogger::new(MODULE_NAME, &log_dir);
+    let mut reporter = TestReporter::new("文件搜索引擎");
+
+    logger.section("测试初始化");
+    logger.info(&format!("测试模块: {}", MODULE_NAME));
+    logger.info(&format!("测试盘符: {:?}", config.test_drives));
+    logger.info(&format!("索引超时: {}ms", config.index_timeout_ms));
+    logger.info(&format!("抽样数量: {}", config.sample_size));
 
     cleanup_test_data();
     let db_path = get_test_db_path();
+    logger.info(&format!("测试数据库: {}", db_path.display()));
 
     let roots = get_system_roots(&config.test_drives);
-    println!("DEBUG: 测试盘符: {:?}", roots);
+    logger.info(&format!("检测到系统根目录: {:?}", roots));
 
-    let engine = match FileSearchEngine::new_with_db_path_and_roots(db_path, roots) {
+    let engine = match FileSearchEngine::new_with_db_path_and_roots(db_path.clone(), roots.clone())
+    {
         Ok(e) => e,
         Err(e) => {
-            results.add_result("引擎创建", false, &format!("创建失败: {}", e), 0);
-            report.add_section_item("错误", "引擎创建失败", &format!("{}", e));
-            report.save(&output_path(
+            let msg = format!("引擎创建失败: {}", e);
+            logger.error(&msg);
+            reporter.add_test("引擎创建");
+            reporter.finish_test("引擎创建", false, 0, &msg);
+            reporter.print();
+            reporter.save(&output_path(
                 MODULE_NAME,
                 &timestamped_filename("summary", "txt"),
             ));
-            println!("引擎创建失败: {}", e);
             return;
         }
     };
+    logger.success("引擎创建成功");
 
-    println!("DEBUG: 引擎创建成功，开始构建索引...");
+    logger.section("测试一: 索引构建");
+    reporter.add_test("索引构建");
+    let t1 = test_index_building(&engine, &config, &mut logger).await;
+    reporter.finish_test("索引构建", t1.passed, t1.duration_ms, &t1.message);
 
-    let t1 = test_index_building(&engine, &config).await;
-    results.add_result("索引构建", t1.passed, &t1.message, t1.duration_ms);
-    let t1_status = if t1.passed {
-        format!(
-            "通过, {} 个文件, 耗时 {}ms, 抽样验证 {}/{}",
-            t1.total_files, t1.duration_ms, t1.valid_count, t1.sample_count
-        )
-    } else {
-        "失败".to_string()
-    };
-    report.add_section_item("索引功能", "索引构建", &t1_status);
+    if t1.passed {
+        reporter.add_test_detail("索引构建", &format!("文件总数: {}", t1.total_files));
+        reporter.add_test_detail(
+            "索引构建",
+            &format!(
+                "抽样验证: {}/{} ({:.1}%)",
+                t1.valid_count,
+                t1.sample_count,
+                if t1.sample_count > 0 {
+                    t1.valid_count as f64 / t1.sample_count as f64 * 100.0
+                } else {
+                    0.0
+                }
+            ),
+        );
 
-    if !t1.sample_files.is_empty() {
-        let mut details = Vec::new();
-        details.push(format!(
-            "抽样数量: {}, 有效: {}, 无效: {}",
-            t1.sample_count,
-            t1.valid_count,
-            t1.sample_count - t1.valid_count
-        ));
-        details.push(String::new());
-        details.push(format!("{:<6} {}", "状态", "文件路径"));
-        details.push("-".repeat(80));
-        for (path, exists) in &t1.sample_files {
-            let status = if *exists {
-                "✓ 存在"
-            } else {
-                "✗ 不存在"
-            };
-            details.push(format!("{:<6} {}", status, path));
+        if !t1.sample_files.is_empty() {
+            let details: Vec<String> = t1
+                .sample_files
+                .iter()
+                .map(|(path, exists)| format!("{} {}", if *exists { "✓" } else { "✗" }, path))
+                .collect();
+            for detail in details {
+                reporter.add_test_detail("索引构建", &detail);
+            }
         }
-        report.add_section_item_with_details("索引功能", "抽样验证文件", &t1_status, &details);
     }
 
     if !t1.passed || t1.total_files == 0 {
-        println!("索引构建失败或为空，测试结束");
-        let (passed, failed) = results.summary();
-        report.add_section_item("测试结果", "总测试数", &format!("{}", passed + failed));
-        report.add_section_item("测试结果", "通过", &format!("{}", passed));
-        report.add_section_item("测试结果", "失败", &format!("{}", failed));
-        report.save(&output_path(
+        logger.warn("索引构建失败或为空，终止后续测试");
+        reporter.print();
+        reporter.save(&output_path(
             MODULE_NAME,
             &timestamped_filename("summary", "txt"),
         ));
-        println!("{}", results.generate_summary());
         return;
     }
 
-    let t2 = test_search_logic(&engine, &config).await;
-    results.add_result("搜索验证", t2.passed, &t2.message, t2.duration_ms);
-    let t2_status = format!(
-        "通过, 总验证 {}/{}, 平均搜索时间 {}ms",
-        t2.total_valid, t2.total_checked, t2.avg_search_time_ms
-    );
-    report.add_section_item("搜索功能", "搜索验证", &t2_status);
+    logger.section("测试二: 搜索验证");
+    reporter.add_test("搜索验证");
+    let t2 = test_search_logic(&engine, &config, &mut logger).await;
+    reporter.finish_test("搜索验证", t2.passed, t2.duration_ms, &t2.message);
 
-    for kd in &t2.keyword_details {
-        let mut details = Vec::new();
-        details.push(format!("关键字: '{}'", kd.keyword));
-        details.push(format!(
-            "匹配规则: FTS5 前缀匹配 (prefix='2 3 4', tokenizer='unicode61')"
-        ));
-        details.push(format!(
-            "结果数: {}, 有效数: {}, 耗时: {}ms",
-            kd.result_count, kd.valid_count, kd.time_ms
-        ));
-        if !kd.sample_paths.is_empty() {
-            details.push(String::new());
-            details.push(format!("{:<6} {}", "状态", "文件路径"));
-            details.push("-".repeat(80));
-            for (path, exists) in &kd.sample_paths {
-                let status = if *exists {
-                    "✓ 存在"
+    if t2.passed {
+        reporter.add_test_detail(
+            "搜索验证",
+            &format!(
+                "总验证: {}/{} ({:.1}%)",
+                t2.total_valid,
+                t2.total_checked,
+                if t2.total_checked > 0 {
+                    t2.total_valid as f64 / t2.total_checked as f64 * 100.0
                 } else {
-                    "✗ 不存在"
-                };
-                details.push(format!("{:<6} {}", status, path));
-            }
+                    0.0
+                }
+            ),
+        );
+        reporter.add_test_detail(
+            "搜索验证",
+            &format!("平均搜索时间: {}ms", t2.avg_search_time_ms),
+        );
+
+        let mut search_stats_list = Vec::new();
+        for kd in &t2.keyword_details {
+            search_stats_list.push(crate::common::reporter::SearchStats::new(
+                &kd.keyword,
+                kd.result_count,
+                kd.valid_count,
+                kd.time_ms,
+                &kd.match_type,
+            ));
         }
-        report.add_section_item_with_details(
-            "搜索功能",
-            &format!("关键字 '{}'", kd.keyword),
-            &kd.summary(),
-            &details,
+
+        if !search_stats_list.is_empty() {
+            let stats_table =
+                crate::common::reporter::SearchStats::generate_table(&search_stats_list);
+            reporter.add_test_table("搜索验证", stats_table);
+        }
+    }
+
+    logger.section("测试三: USN Journal 监控");
+    reporter.add_test("USN监控");
+    let t3 = test_usn_journal(&config, &mut logger).await;
+    reporter.finish_test("USN监控", t3.passed, t3.duration_ms, &t3.message);
+
+    if t3.passed {
+        reporter.add_test_detail("USN监控", &format!("总变化数: {}", t3.total_changes));
+        reporter.add_test_detail(
+            "USN监控",
+            &format!(
+                "创建: {}, 修改: {}, 删除: {}",
+                t3.create_count, t3.modify_count, t3.delete_count
+            ),
+        );
+        reporter.add_test_detail(
+            "USN监控",
+            &format!(
+                "验证: {}/{} ({:.1}%)",
+                t3.valid_count,
+                t3.total_validated,
+                if t3.total_validated > 0 {
+                    t3.valid_count as f64 / t3.total_validated as f64 * 100.0
+                } else {
+                    0.0
+                }
+            ),
         );
     }
 
-    let t3 = test_usn_journal(&config).await;
-    results.add_result("USN监控", t3.passed, &t3.message, t3.duration_ms);
-    let t3_status = format!(
-        "{}, 总变化数 {}, 创建 {}, 修改 {}, 删除 {}, 验证 {}/{}",
-        if t3.passed { "通过" } else { "失败" },
-        t3.total_changes,
-        t3.create_count,
-        t3.modify_count,
-        t3.delete_count,
-        t3.valid_count,
-        t3.total_validated
-    );
-    report.add_section_item("USN Journal", "监控测试", &t3_status);
-
-    if !t3.changes.is_empty() {
-        let mut details = Vec::new();
-        details.push(format!(
-            "总变化数: {}, 创建: {}, 修改: {}, 删除: {}, 验证: {}/{}",
-            t3.total_changes,
-            t3.create_count,
-            t3.modify_count,
-            t3.delete_count,
-            t3.valid_count,
-            t3.total_validated
-        ));
-        details.push(String::new());
-        details.push(format!("{:<10} {:<10} {}", "类型", "状态", "文件路径"));
-        details.push("-".repeat(80));
-        for (reason, path, exists) in &t3.changes {
-            let reason_str = match reason {
-                UsnChangeReason::Created => "创建",
-                UsnChangeReason::Modified => "修改",
-                UsnChangeReason::Deleted => "删除",
-                UsnChangeReason::RenamedOldName => "重命名(旧)",
-                UsnChangeReason::RenamedNewName => "重命名(新)",
-            };
-            let status = if *exists {
-                "✓ 存在"
-            } else {
-                "✗ 不存在"
-            };
-            details.push(format!("{:<10} {:<10} {}", reason_str, status, path));
-        }
-        report.add_section_item_with_details("USN Journal", "变化详情", &t3_status, &details);
-    }
-
-    let (passed, failed) = results.summary();
-    report.add_section_item("测试结果", "总测试数", &format!("{}", passed + failed));
-    report.add_section_item("测试结果", "通过", &format!("{}", passed));
-    report.add_section_item("测试结果", "失败", &format!("{}", failed));
+    logger.section("测试完成");
+    reporter.print();
 
     let output_dir = output_path(MODULE_NAME, "");
     ensure_dir(&output_dir);
-    report.save(&output_path(
+    reporter.save(&output_path(
         MODULE_NAME,
         &timestamped_filename("summary", "txt"),
     ));
 
-    println!("{}", results.generate_summary());
+    let (passed, failed) = reporter.summary();
+    logger.info(&format!(
+        "测试结果: 通过 {} / 失败 {} / 总数 {}",
+        passed,
+        failed,
+        passed + failed
+    ));
 }
 
 struct IndexBuildResult {
@@ -302,8 +339,10 @@ struct IndexBuildResult {
 async fn test_index_building(
     engine: &FileSearchEngine,
     config: &SearchEngineTestConfig,
+    logger: &mut TestLogger,
 ) -> IndexBuildResult {
     let start = std::time::Instant::now();
+    logger.info("开始构建索引...");
 
     let build_result = tokio::time::timeout(
         std::time::Duration::from_millis(config.index_timeout_ms),
@@ -316,11 +355,14 @@ async fn test_index_building(
     match build_result {
         Ok(Ok(_)) => {
             let total = engine.total();
+            logger.info(&format!("索引构建完成，共 {} 个文件", total));
 
             if total == 0 {
+                let msg = "索引构建完成但文件数为零".to_string();
+                logger.error(&msg);
                 return IndexBuildResult {
                     passed: false,
-                    message: "索引构建完成但文件数为零".to_string(),
+                    message: msg,
                     duration_ms,
                     total_files: 0,
                     sample_count: 0,
@@ -330,12 +372,14 @@ async fn test_index_building(
             }
 
             if duration_ms > config.index_timeout_ms {
+                let msg = format!(
+                    "索引构建超时: {}ms，超过{}ms限制",
+                    duration_ms, config.index_timeout_ms
+                );
+                logger.error(&msg);
                 return IndexBuildResult {
                     passed: false,
-                    message: format!(
-                        "索引构建超时: {}ms，超过{}ms限制",
-                        duration_ms, config.index_timeout_ms
-                    ),
+                    message: msg,
                     duration_ms,
                     total_files: total,
                     sample_count: 0,
@@ -344,8 +388,9 @@ async fn test_index_building(
                 };
             }
 
+            logger.subsection("路径验证");
             let (sample_count, valid_count, sample_files) =
-                validate_index_samples(engine, config.sample_size);
+                validate_index_samples(engine, config.sample_size, logger);
 
             let rate = if sample_count > 0 {
                 valid_count as f64 / sample_count as f64
@@ -363,7 +408,11 @@ async fn test_index_building(
                 rate * 100.0
             );
 
-            println!("DEBUG: {}", message);
+            if passed {
+                logger.success(&message);
+            } else {
+                logger.warn(&message);
+            }
 
             IndexBuildResult {
                 passed,
@@ -375,39 +424,49 @@ async fn test_index_building(
                 sample_files,
             }
         }
-        Ok(Err(e)) => IndexBuildResult {
-            passed: false,
-            message: format!("索引构建失败: {}", e),
-            duration_ms,
-            total_files: 0,
-            sample_count: 0,
-            valid_count: 0,
-            sample_files: Vec::new(),
-        },
-        Err(_) => IndexBuildResult {
-            passed: false,
-            message: format!(
+        Ok(Err(e)) => {
+            let msg = format!("索引构建失败: {}", e);
+            logger.error(&msg);
+            IndexBuildResult {
+                passed: false,
+                message: msg,
+                duration_ms,
+                total_files: 0,
+                sample_count: 0,
+                valid_count: 0,
+                sample_files: Vec::new(),
+            }
+        }
+        Err(_) => {
+            let msg = format!(
                 "索引构建超时: {}ms，超过{}ms限制",
                 duration_ms, config.index_timeout_ms
-            ),
-            duration_ms,
-            total_files: 0,
-            sample_count: 0,
-            valid_count: 0,
-            sample_files: Vec::new(),
-        },
+            );
+            logger.error(&msg);
+            IndexBuildResult {
+                passed: false,
+                message: msg,
+                duration_ms,
+                total_files: 0,
+                sample_count: 0,
+                valid_count: 0,
+                sample_files: Vec::new(),
+            }
+        }
     }
 }
 
 fn validate_index_samples(
     engine: &FileSearchEngine,
     sample_size: usize,
+    logger: &mut TestLogger,
 ) -> (usize, usize, Vec<(String, bool)>) {
-    let all_results = engine.search("", sample_size as u32);
+    let all_results = engine.search("", sample_size as u32 * 2);
+    let samples = sample_results(&all_results, sample_size);
     let mut sample_files = Vec::new();
     let mut valid_count = 0;
 
-    for result in all_results.iter().take(sample_size) {
+    for result in samples {
         let path = std::path::PathBuf::from(&result.id);
         let exists = path.exists();
         if exists {
@@ -416,11 +475,13 @@ fn validate_index_samples(
         sample_files.push((result.id.clone(), exists));
     }
 
-    (
-        all_results.len().min(sample_size),
-        valid_count,
-        sample_files,
-    )
+    logger.info(&format!(
+        "路径验证完成: 抽样 {} 条, 有效 {} 条",
+        sample_files.len(),
+        valid_count
+    ));
+
+    (sample_files.len(), valid_count, sample_files)
 }
 
 struct KeywordDetail {
@@ -429,13 +490,14 @@ struct KeywordDetail {
     valid_count: usize,
     time_ms: u64,
     sample_paths: Vec<(String, bool)>,
+    match_type: String,
 }
 
 impl KeywordDetail {
     fn summary(&self) -> String {
         format!(
-            "结果 {}, 有效 {}, 耗时 {}ms",
-            self.result_count, self.valid_count, self.time_ms
+            "{} | 结果 {} | 有效 {} | 耗时 {}ms",
+            self.match_type, self.result_count, self.valid_count, self.time_ms
         )
     }
 }
@@ -453,54 +515,81 @@ struct SearchTestResult {
 async fn test_search_logic(
     engine: &FileSearchEngine,
     config: &SearchEngineTestConfig,
+    logger: &mut TestLogger,
 ) -> SearchTestResult {
     let mut total_checked = 0;
     let mut total_valid = 0;
     let mut total_search_time_ms = 0u64;
     let mut keyword_details = Vec::new();
 
+    logger.subsection("基础关键字搜索");
     for keyword in &config.search_keywords {
-        let start = std::time::Instant::now();
-        let results = engine.search(keyword, config.search_limit);
-        let search_time_ms = start.elapsed().as_millis() as u64;
-        total_search_time_ms += search_time_ms;
-
-        let mut valid_count = 0;
-        let mut sample_paths = Vec::new();
-        for (i, result) in results.iter().enumerate() {
-            let path = std::path::PathBuf::from(&result.id);
-            let exists = path.exists();
-            if exists {
-                valid_count += 1;
-            }
-            if i < config.search_sample_paths {
-                sample_paths.push((result.id.clone(), exists));
-            }
-        }
-
-        total_checked += results.len();
-        total_valid += valid_count;
-
-        keyword_details.push(KeywordDetail {
-            keyword: keyword.clone(),
-            result_count: results.len(),
-            valid_count,
-            time_ms: search_time_ms,
-            sample_paths,
-        });
-
-        println!(
-            "DEBUG: 搜索 '{}' -> {} 结果, {} 有效",
+        let detail = run_search_test(
+            engine,
             keyword,
-            results.len(),
-            valid_count
+            config.search_limit,
+            config.search_sample_paths,
+            "基础匹配",
+            logger,
         );
+        total_checked += detail.result_count;
+        total_valid += detail.valid_count;
+        total_search_time_ms += detail.time_ms;
+        keyword_details.push(detail);
     }
 
-    let avg_search_time_ms = if !config.search_keywords.is_empty() {
-        total_search_time_ms / config.search_keywords.len() as u64
-    } else {
+    logger.subsection("大小写不敏感搜索");
+    for keyword in &config.case_insensitive_keywords {
+        let detail = run_search_test(
+            engine,
+            keyword,
+            config.search_limit,
+            config.search_sample_paths,
+            "大小写不敏感",
+            logger,
+        );
+        total_checked += detail.result_count;
+        total_valid += detail.valid_count;
+        total_search_time_ms += detail.time_ms;
+        keyword_details.push(detail);
+    }
+
+    logger.subsection("全字匹配搜索");
+    for keyword in &config.whole_word_keywords {
+        let detail = run_search_test(
+            engine,
+            keyword,
+            config.search_limit,
+            config.search_sample_paths,
+            "全字匹配",
+            logger,
+        );
+        total_checked += detail.result_count;
+        total_valid += detail.valid_count;
+        total_search_time_ms += detail.time_ms;
+        keyword_details.push(detail);
+    }
+
+    logger.subsection("正则表达式搜索");
+    for pattern in &config.regex_patterns {
+        let detail = run_search_test(
+            engine,
+            pattern,
+            config.search_limit,
+            config.search_sample_paths,
+            "正则表达式",
+            logger,
+        );
+        total_checked += detail.result_count;
+        total_valid += detail.valid_count;
+        total_search_time_ms += detail.time_ms;
+        keyword_details.push(detail);
+    }
+
+    let avg_search_time_ms = if keyword_details.is_empty() {
         0
+    } else {
+        total_search_time_ms / keyword_details.len() as u64
     };
 
     let rate = if total_checked > 0 {
@@ -519,6 +608,12 @@ async fn test_search_logic(
         avg_search_time_ms
     );
 
+    if passed {
+        logger.success(&message);
+    } else {
+        logger.warn(&message);
+    }
+
     SearchTestResult {
         passed,
         message,
@@ -527,6 +622,58 @@ async fn test_search_logic(
         total_valid,
         avg_search_time_ms,
         keyword_details,
+    }
+}
+
+fn run_search_test(
+    engine: &FileSearchEngine,
+    query: &str,
+    limit: u32,
+    sample_size: usize,
+    match_type: &str,
+    logger: &mut TestLogger,
+) -> KeywordDetail {
+    let start = std::time::Instant::now();
+    let results = engine.search(query, limit);
+    let search_time_ms = start.elapsed().as_millis() as u64;
+
+    let mut valid_count = 0;
+    let mut sample_paths = Vec::new();
+
+    for (i, result) in results.iter().enumerate() {
+        let path = std::path::PathBuf::from(&result.id);
+        let exists = path.exists();
+        if exists {
+            valid_count += 1;
+        }
+        if i < sample_size {
+            sample_paths.push((result.id.clone(), exists));
+        }
+    }
+
+    let rate = if results.len() > 0 {
+        valid_count as f64 / results.len() as f64 * 100.0
+    } else {
+        0.0
+    };
+
+    logger.debug(&format!(
+        "[{}] '{}' -> {} 结果, {} 有效 ({:.1}%), {}ms",
+        match_type,
+        query,
+        results.len(),
+        valid_count,
+        rate,
+        search_time_ms
+    ));
+
+    KeywordDetail {
+        keyword: query.to_string(),
+        result_count: results.len(),
+        valid_count,
+        time_ms: search_time_ms,
+        sample_paths,
+        match_type: match_type.to_string(),
     }
 }
 
@@ -543,15 +690,20 @@ struct UsnMonitorResult {
     changes: Vec<(UsnChangeReason, String, bool)>,
 }
 
-async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
+async fn test_usn_journal(
+    config: &SearchEngineTestConfig,
+    logger: &mut TestLogger,
+) -> UsnMonitorResult {
     let start = std::time::Instant::now();
 
-    let indexer = match NtfsIndexer::new() {
+    let indexer = match NtfsIndexer::new_with_drives(config.test_drives.clone()) {
         Ok(i) => i,
         Err(e) => {
+            let msg = format!("NtfsIndexer 创建失败: {}", e);
+            logger.error(&msg);
             return UsnMonitorResult {
                 passed: false,
-                message: format!("NtfsIndexer 创建失败: {}", e),
+                message: msg,
                 duration_ms: 0,
                 total_changes: 0,
                 create_count: 0,
@@ -565,10 +717,14 @@ async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
     };
 
     let volumes = indexer.get_volumes();
+    logger.info(&format!("检测到 NTFS 卷: {:?}", volumes));
+
     if volumes.is_empty() {
+        let msg = "未检测到 NTFS 卷".to_string();
+        logger.error(&msg);
         return UsnMonitorResult {
             passed: false,
-            message: "未检测到 NTFS 卷".to_string(),
+            message: msg,
             duration_ms: 0,
             total_changes: 0,
             create_count: 0,
@@ -582,13 +738,21 @@ async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
 
     let volume = volumes[0].clone();
     let test_dir = data_path(MODULE_NAME, "usn_test_files");
-    ensure_dir(&test_dir);
 
     let mut start_usn = 0;
     if let Some(state) = indexer.get_journal_state(&volume) {
         start_usn = state.next_usn;
-        println!("DEBUG: USN Journal 状态: next_usn={}", start_usn);
+        logger.info(&format!(
+            "USN Journal 状态: first_usn={}, next_usn={}, journal_id={}",
+            state.first_usn, state.next_usn, state.journal_id
+        ));
     }
+
+    let _ = std::fs::remove_dir_all(&test_dir);
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+
+    std::fs::create_dir_all(&test_dir).unwrap();
+    logger.debug(&format!("创建测试目录: {}", test_dir.display()));
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
@@ -597,35 +761,34 @@ async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
         let file_path = test_dir.join(format!("usn_test_{}.txt", i));
         test_files.push(file_path.clone());
         let _ = std::fs::write(&file_path, format!("测试内容 {}", i));
-        println!("DEBUG: 创建测试文件: {}", file_path.display());
+        logger.debug(&format!("创建测试文件: {}", file_path.display()));
     }
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     for (i, file_path) in test_files.iter().enumerate().take(3) {
         let _ = std::fs::write(file_path, format!("修改内容 {}", i));
-        println!("DEBUG: 修改测试文件: {}", file_path.display());
+        logger.debug(&format!("修改测试文件: {}", file_path.display()));
     }
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
     for (_i, file_path) in test_files.iter().enumerate().take(2) {
         let _ = std::fs::remove_file(file_path);
-        println!("DEBUG: 删除测试文件: {}", file_path.display());
+        logger.debug(&format!("删除测试文件: {}", file_path.display()));
     }
 
-    tokio::time::sleep(std::time::Duration::from_millis(
-        config.usn_monitor_duration_ms,
-    ))
-    .await;
+    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
 
     let changes = match indexer.read_usn_changes(&volume, start_usn) {
         Ok(c) => c,
         Err(e) => {
             let duration_ms = start.elapsed().as_millis() as u64;
+            let msg = format!("读取 USN 变化失败: {} (需要管理员权限)", e);
+            logger.error(&msg);
             return UsnMonitorResult {
                 passed: false,
-                message: format!("读取 USN 变化失败: {}", e),
+                message: msg,
                 duration_ms,
                 total_changes: 0,
                 create_count: 0,
@@ -667,11 +830,11 @@ async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
             is_valid,
         ));
 
-        println!(
-            "DEBUG: USN变化 [{:?}]: {}",
+        logger.debug(&format!(
+            "USN变化 [{:?}]: {}",
             record.reason,
             record.full_path.display()
-        );
+        ));
     }
 
     let rate = if total_validated > 0 {
@@ -682,18 +845,28 @@ async fn test_usn_journal(config: &SearchEngineTestConfig) -> UsnMonitorResult {
 
     let passed = rate >= config.validity_threshold || changes.len() > 0;
 
-    let message = format!(
-        "USN监控完成，总变化数: {}, 创建: {}, 修改: {}, 删除: {}, 验证: {}/{} ({:.1}%)",
-        changes.len(),
-        create_count,
-        modify_count,
-        delete_count,
-        valid_count,
-        total_validated,
-        rate * 100.0
-    );
+    let message = if changes.is_empty() {
+        format!(
+            "USN监控完成（非管理员模式），总变化数: 0, 创建: 0, 修改: 0, 删除: 0, 验证: 0/0 (0.0%)。提示：USN Journal 读取需要管理员权限"
+        )
+    } else {
+        format!(
+            "USN监控完成，总变化数: {}, 创建: {}, 修改: {}, 删除: {}, 验证: {}/{} ({:.1}%)",
+            changes.len(),
+            create_count,
+            modify_count,
+            delete_count,
+            valid_count,
+            total_validated,
+            rate * 100.0
+        )
+    };
 
-    println!("DEBUG: {}", message);
+    if passed {
+        logger.success(&message);
+    } else {
+        logger.warn(&message);
+    }
 
     UsnMonitorResult {
         passed,
@@ -715,167 +888,5 @@ fn validate_usn_record(record: &UsnRecord) -> bool {
         UsnChangeReason::Deleted => !record.full_path.exists(),
         UsnChangeReason::Modified => record.full_path.exists(),
         _ => true,
-    }
-}
-
-struct TestReport {
-    module_name: String,
-    sections: Vec<ReportSection>,
-    timestamp: String,
-}
-
-struct ReportSection {
-    title: String,
-    items: Vec<ReportItem>,
-}
-
-struct ReportItem {
-    label: String,
-    value: String,
-    details: Vec<String>,
-}
-
-impl TestReport {
-    pub fn new(module_name: &str) -> Self {
-        let timestamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-        TestReport {
-            module_name: module_name.to_string(),
-            sections: Vec::new(),
-            timestamp,
-        }
-    }
-
-    pub fn add_section(&mut self, title: &str) -> &mut ReportSection {
-        self.sections.push(ReportSection {
-            title: title.to_string(),
-            items: Vec::new(),
-        });
-        self.sections.last_mut().unwrap()
-    }
-
-    pub fn add_section_item(&mut self, section_title: &str, label: &str, value: &str) {
-        self.add_section_item_with_details(section_title, label, value, &[]);
-    }
-
-    pub fn add_section_item_with_details(
-        &mut self,
-        section_title: &str,
-        label: &str,
-        value: &str,
-        details: &[String],
-    ) {
-        let section = self.sections.iter_mut().find(|s| s.title == section_title);
-        match section {
-            Some(s) => {
-                s.items.push(ReportItem {
-                    label: label.to_string(),
-                    value: value.to_string(),
-                    details: details.to_vec(),
-                });
-            }
-            None => {
-                let section = self.add_section(section_title);
-                section.items.push(ReportItem {
-                    label: label.to_string(),
-                    value: value.to_string(),
-                    details: details.to_vec(),
-                });
-            }
-        }
-    }
-
-    pub fn generate(&self) -> String {
-        let mut output = format!("{} 测试报告\n", self.module_name);
-        output.push_str(&"=".repeat(80));
-        output.push('\n');
-        output.push_str(&format!("输出时间: {}\n", self.timestamp));
-
-        for section in &self.sections {
-            output.push_str(&format!("\n## {}\n", section.title));
-
-            let max_label_len = section
-                .items
-                .iter()
-                .map(|i| i.label.len())
-                .max()
-                .unwrap_or(0);
-            for item in &section.items {
-                output.push_str(&format!(
-                    "{:<width$}: {}\n",
-                    item.label,
-                    item.value,
-                    width = max_label_len
-                ));
-                for line in &item.details {
-                    output.push_str(&format!("  {}\n", line));
-                }
-            }
-        }
-
-        output.push('\n');
-        output
-    }
-
-    pub fn save(&self, path: &std::path::PathBuf) {
-        let _ = std::fs::write(path, self.generate());
-    }
-}
-
-struct TestResults {
-    results: std::collections::HashMap<String, TestResult>,
-}
-
-struct TestResult {
-    passed: bool,
-    message: String,
-    duration_ms: u64,
-}
-
-impl TestResults {
-    pub fn new() -> Self {
-        TestResults {
-            results: std::collections::HashMap::new(),
-        }
-    }
-
-    pub fn add_result(&mut self, test_name: &str, passed: bool, message: &str, duration_ms: u64) {
-        self.results.insert(
-            test_name.to_string(),
-            TestResult {
-                passed,
-                message: message.to_string(),
-                duration_ms,
-            },
-        );
-    }
-
-    pub fn summary(&self) -> (usize, usize) {
-        let passed = self.results.values().filter(|r| r.passed).count();
-        let failed = self.results.len() - passed;
-        (passed, failed)
-    }
-
-    pub fn generate_summary(&self) -> String {
-        let (passed, failed) = self.summary();
-        let total = self.results.len();
-
-        let mut output = format!("测试结果汇总\n");
-        output.push_str(&"=".repeat(60));
-        output.push_str(&format!(
-            "\n总测试数: {}\n通过: {}\n失败: {}\n",
-            total, passed, failed
-        ));
-        output.push_str(&"-".repeat(60));
-        output.push('\n');
-
-        for (name, result) in &self.results {
-            let status = if result.passed { "✓" } else { "✗" };
-            output.push_str(&format!("{} {} ({}ms)\n", status, name, result.duration_ms));
-            if !result.message.is_empty() {
-                output.push_str(&format!("  {}\n", result.message));
-            }
-        }
-
-        output
     }
 }

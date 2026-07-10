@@ -21,7 +21,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 const DB_NAME: &str = "monotools_file_index.db";
-const BATCH_SIZE: usize = 100000;
 
 pub struct FileSearchEngine {
     db: Arc<Mutex<Connection>>,
@@ -180,9 +179,6 @@ impl FileSearchEngine {
         log::info!("开始批量写入数据库，共 {} 条记录", records.len());
         self.batch_insert_records(&mut conn, &records)?;
 
-        conn.execute_batch("VACUUM")?;
-
-        *self.indexed_paths.lock() = records.iter().map(|r| r.full_path.to_string_lossy().to_string()).collect();
         *self.last_update.lock() = chrono::Utc::now().timestamp();
 
         Ok(records.len())
@@ -191,17 +187,8 @@ impl FileSearchEngine {
     fn enumerate_volume(&self, indexer: &NtfsIndexer, volume: &str, records: &mut Vec<UsnRecord>) -> usize {
         let mut count = 0;
         let mut skipped = 0;
-        // 用 HashSet 去重，避免 O(n²) 线性搜索
-        let mut seen_paths: HashSet<String> = HashSet::new();
 
         let result = indexer.enumerate_volume_files(volume, |record| {
-            let path_str = record.full_path.to_string_lossy().to_string();
-
-            // O(1) 去重
-            if !seen_paths.insert(path_str) {
-                return;
-            }
-
             if self.should_skip_path(&record) {
                 skipped += 1;
                 return;
@@ -245,13 +232,20 @@ impl FileSearchEngine {
     }
 
     fn batch_insert_records(&self, conn: &mut Connection, records: &[UsnRecord]) -> Result<()> {
-        let tx = conn.transaction()?;
-        let mut stmt = tx.prepare(
+        conn.execute("PRAGMA synchronous=OFF", [])?;
+        conn.execute("BEGIN TRANSACTION", [])?;
+
+        conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
+        conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
+        conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
+
+        let mut stmt = conn.prepare(
             "INSERT OR IGNORE INTO files_meta(path, name, ext, size, modified, is_dir, depth)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)"
         )?;
 
         let mut inserted = 0;
+        let batch_size = 50000;
 
         for record in records {
             let path_str = record.full_path.to_string_lossy().to_string();
@@ -269,13 +263,30 @@ impl FileSearchEngine {
 
             inserted += 1;
 
-            if inserted % BATCH_SIZE == 0 {
+            if inserted % batch_size == 0 {
                 log::debug!("已插入 {} 条记录", inserted);
             }
         }
 
         drop(stmt);
-        tx.commit()?;
+
+        conn.execute_batch(
+            r#"
+            CREATE TRIGGER files_ai AFTER INSERT ON files_meta BEGIN
+                INSERT INTO files_fts(rowid, name, path) VALUES (new.id, new.name, new.path);
+            END;
+            CREATE TRIGGER files_ad AFTER DELETE ON files_meta BEGIN
+                INSERT INTO files_fts(files_fts, rowid, name, path) VALUES('delete', old.id, old.name, old.path);
+            END;
+            CREATE TRIGGER files_au AFTER UPDATE ON files_meta BEGIN
+                INSERT INTO files_fts(files_fts, rowid, name, path) VALUES('delete', old.id, old.name, old.path);
+                INSERT INTO files_fts(rowid, name, path) VALUES (new.id, new.name, new.path);
+            END;
+            INSERT INTO files_fts(files_fts) VALUES('rebuild');
+            COMMIT;
+            PRAGMA synchronous=NORMAL;
+            "#,
+        )?;
 
         log::info!("批量插入完成，共插入 {} 条记录", inserted);
         Ok(())

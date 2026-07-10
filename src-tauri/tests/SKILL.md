@@ -9,8 +9,10 @@ tests/
 ├── rust/
 │   ├── common/               # 公共工具模块
 │   │   ├── mod.rs
+│   │   ├── logger.rs         # 测试日志输出器（输出到 output/<module>/log_*.txt）
 │   │   ├── paths.rs          # 路径解析工具（相对路径）
-│   │   ├── report.rs         # 测试报告生成器
+│   │   ├── report.rs         # 测试报告生成器（旧版）
+│   │   ├── reporter.rs       # 测试报告输出器（新版，带表格和详情）
 │   │   └── table.rs          # 表格格式化工具（路径验证输出）
 │   ├── config/               # 全局配置（可选）
 │   ├── data/                 # 测试数据（运行时生成，不提交）
@@ -163,6 +165,7 @@ mod <module_name>_test;
 ```
 output/<module_name>/
 ├── summary_20260710_075820.txt          # 汇总报告（包含所有测试用例结果）
+├── log_20260710_075820.txt              # 测试日志（详细运行过程）
 └── path_validation_20260710_075820.txt  # 路径验证报告（表格形式，可选）
 ```
 

@@ -82,5 +82,5 @@ User types → SearchPage → searchStore.setQuery() → debounce → searchApi.
 - **Frontend**: Strict TypeScript, `<script setup>` syntax, `@/` path alias resolves to `src/`.
 - **Styling**: Custom color palette (bg-primary: `#1a1a2e`, accent: `#ff6b6b`), frosted-glass backdrop-blur effect, CSS custom properties for theming. Custom Mt* component system (MtButton, MtMenu, MtInput, etc.) for consistent UI.
 - **Config**: Root `tauri.conf.json` defines two windows (search overlay + main window). CSP security policy. Bilingual installers (zh-CN + en-US).
-- **Testing**: Backend test framework established at `src-tauri/tests/` with common utilities (report, table, paths) and unified test entry (`run.rs`). Search engine tests include USN Journal monitoring, indexed at `tests/rust/features/search_engine/`.
+- **Testing**: Backend test framework at `src-tauri/tests/` with common utilities (`reporter`, `logger`, `paths`, `table`, `report`) and unified test entry (`run.rs`). Search engine tests include USN Journal monitoring, indexed at `tests/rust/features/search_engine/`. Test output: `tests/output/<module>/summary_*.txt` and `tests/output/<module>/log_*.txt`.
 - **Background Tasks**: File indexing runs asynchronously in background via `tauri::async_runtime::spawn`, hotkey registration uses async with retry logic.
