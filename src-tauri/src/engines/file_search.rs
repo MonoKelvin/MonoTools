@@ -17,22 +17,11 @@ use crate::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 const DB_NAME: &str = "monotools_file_index.db";
 const BATCH_SIZE: usize = 100000;
-
-#[derive(Debug, Clone)]
-struct IndexRecord {
-    path: PathBuf,
-    name: String,
-    extension: Option<String>,
-    size: i64,
-    modified_at: i64,
-    is_directory: bool,
-    depth: usize,
-}
 
 pub struct FileSearchEngine {
     db: Arc<Mutex<Connection>>,
@@ -40,15 +29,20 @@ pub struct FileSearchEngine {
     last_update: Mutex<i64>,
     indexed_paths: Arc<Mutex<HashSet<String>>>,
     is_indexing: Mutex<bool>,
+    drives: Vec<char>,
 }
 
 impl FileSearchEngine {
-    pub fn new(_roots: Vec<PathBuf>) -> Result<Self> {
+    pub fn new(roots: Vec<PathBuf>) -> Result<Self> {
         let db_path = get_db_path();
-        Self::new_with_db_path(db_path)
+        Self::new_with_db_path_and_roots(db_path, roots)
     }
 
     pub fn new_with_db_path(db_path: PathBuf) -> Result<Self> {
+        Self::new_with_db_path_and_roots(db_path, Vec::new())
+    }
+
+    pub fn new_with_db_path_and_roots(db_path: PathBuf, roots: Vec<PathBuf>) -> Result<Self> {
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -62,14 +56,30 @@ impl FileSearchEngine {
 
         Self::init_db(&conn)?;
 
-        let ntfs_indexer = match NtfsIndexer::new() {
-            Ok(i) => {
-                log::info!("NTFS索引器创建成功，检测到 {} 个卷", i.get_volumes().len());
-                Some(i)
+        let drives = extract_drives_from_roots(&roots);
+        log::info!("文件搜索引擎配置的盘符: {:?}", drives);
+
+        let ntfs_indexer = if drives.is_empty() {
+            match NtfsIndexer::new() {
+                Ok(i) => {
+                    log::info!("NTFS索引器创建成功，检测到 {} 个卷", i.get_volumes().len());
+                    Some(i)
+                }
+                Err(e) => {
+                    log::warn!("NTFS索引器创建失败: {}", e);
+                    None
+                }
             }
-            Err(e) => {
-                log::warn!("NTFS索引器创建失败: {}", e);
-                None
+        } else {
+            match NtfsIndexer::new_with_drives(drives.clone()) {
+                Ok(i) => {
+                    log::info!("NTFS索引器创建成功（指定盘符），检测到 {} 个卷", i.get_volumes().len());
+                    Some(i)
+                }
+                Err(e) => {
+                    log::warn!("NTFS索引器创建失败: {}", e);
+                    None
+                }
             }
         };
 
@@ -79,6 +89,7 @@ impl FileSearchEngine {
             last_update: Mutex::new(0),
             indexed_paths: Arc::new(Mutex::new(HashSet::new())),
             is_indexing: Mutex::new(false),
+            drives,
         })
     }
 
@@ -159,10 +170,10 @@ impl FileSearchEngine {
             for volume in volumes {
                 log::info!("开始枚举卷: {}", volume);
                 let count = self.enumerate_volume(indexer, volume, &mut records);
-                log::info!("卷 {} 枚举完成: {} 个文件", volume, count);
+                log::info!("卷 {} 枚举完成: {} 个文件，当前累计: {}", volume, count, records.len());
             }
         } else {
-            log::error!("NTFS索引器不可用，无法构建索引");
+            log::warn!("NTFS索引器不可用，无法构建索引");
             return Ok(0);
         }
 
@@ -180,11 +191,14 @@ impl FileSearchEngine {
     fn enumerate_volume(&self, indexer: &NtfsIndexer, volume: &str, records: &mut Vec<UsnRecord>) -> usize {
         let mut count = 0;
         let mut skipped = 0;
+        // 用 HashSet 去重，避免 O(n²) 线性搜索
+        let mut seen_paths: HashSet<String> = HashSet::new();
 
         let result = indexer.enumerate_volume_files(volume, |record| {
             let path_str = record.full_path.to_string_lossy().to_string();
 
-            if records.iter().any(|r| r.full_path.to_string_lossy() == path_str) {
+            // O(1) 去重
+            if !seen_paths.insert(path_str) {
                 return;
             }
 
@@ -201,7 +215,7 @@ impl FileSearchEngine {
             log::warn!("枚举卷 {} 失败: {}", volume, e);
         }
 
-        log::debug!("卷 {} 枚举完成，有效文件: {}, 跳过: {}", volume, count, skipped);
+        log::info!("卷 {} 枚举完成，有效文件: {}, 跳过: {}", volume, count, skipped);
         count
     }
 
@@ -471,6 +485,10 @@ impl FileSearchEngine {
     pub fn get_ntfs_indexer(&self) -> Option<&NtfsIndexer> {
         self.ntfs_indexer.as_ref()
     }
+
+    pub fn get_drives(&self) -> &[char] {
+        &self.drives
+    }
 }
 
 fn get_db_path() -> PathBuf {
@@ -479,6 +497,20 @@ fn get_db_path() -> PathBuf {
     } else {
         PathBuf::from(DB_NAME)
     }
+}
+
+fn extract_drives_from_roots(roots: &[PathBuf]) -> Vec<char> {
+    let mut drives = HashSet::new();
+    
+    for root in roots {
+        if let Some(drive) = root.as_os_str().to_str().and_then(|s| s.chars().next()) {
+            if drive.is_ascii_alphabetic() {
+                drives.insert(drive.to_ascii_uppercase());
+            }
+        }
+    }
+    
+    drives.into_iter().collect()
 }
 
 fn build_fts_query(query: &str) -> String {

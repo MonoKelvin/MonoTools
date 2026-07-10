@@ -28,6 +28,8 @@ pub struct Settings {
     pub file_search_enabled: bool,
     /// 文件搜索收录目录
     pub file_search_roots: Vec<PathBuf>,
+    /// 文件搜索的盘符列表（如 ['C', 'D', 'E']），为空则搜索所有盘符
+    pub file_search_drives: Vec<char>,
     /// 同时搜索的类别
     pub enabled_categories: Vec<String>,
     /// 窗口是否始终置顶
@@ -71,6 +73,7 @@ impl Default for Settings {
             accent_color: "#ffffff".into(),
             file_search_enabled: true,
             file_search_roots: default_search_roots(),
+            file_search_drives: Vec::new(),
             enabled_categories: vec![
                 "apps".into(),
                 "files".into(),

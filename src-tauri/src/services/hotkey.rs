@@ -2,7 +2,7 @@
 use crate::error::Result;
 use parking_lot::Mutex;
 use tauri::{AppHandle, Runtime, WebviewWindow};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState, Shortcut};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 pub struct HotkeyService {
     pub current: Mutex<Option<String>>,

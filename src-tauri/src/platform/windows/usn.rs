@@ -3,22 +3,23 @@
 //! 核心架构：
 //! 1. 全量索引：使用 FSCTL_ENUM_USN_DATA 批量读取 MFT，这是最快的全盘枚举方式
 //! 2. 增量更新：使用 FSCTL_READ_USN_JOURNAL 读取变更记录
-//! 3. 路径重建：通过父文件引用号构建完整路径
+//! 3. 路径重建：通过父文件引用号构建完整路径（两遍扫描：先目录后文件）
 //!
 //! 参考：https://learn.microsoft.com/en-us/windows/win32/api/winioctl/
 
 use crate::error::{AppError, Result};
-use crate::models::FileResult;
 use parking_lot::RwLock;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::ffi::{c_void, OsString};
 use std::os::windows::ffi::OsStringExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-const FSCTL_QUERY_USN_JOURNAL: u32 = 0x900F4;
-const FSCTL_ENUM_USN_DATA: u32 = 0x900B8;
-const FSCTL_READ_USN_JOURNAL: u32 = 0x900F8;
+const FSCTL_QUERY_USN_JOURNAL: u32 = 0x000900F4;
+const FSCTL_ENUM_USN_DATA: u32 = 0x000900B3;
+const FSCTL_READ_USN_JOURNAL: u32 = 0x000900B8;
+const FSCTL_READ_UNPRIVILEGED_USN_JOURNAL: u32 = 0x0009017C;
+const FSCTL_CREATE_USN_JOURNAL: u32 = 0x000900E4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UsnChangeReason {
@@ -46,6 +47,7 @@ pub struct UsnRecord {
 pub struct UsnJournalState {
     pub usn: u64,
     pub next_usn: u64,
+    pub first_usn: u64,
     pub journal_id: u64,
     pub max_size: u64,
     pub allocation_delta: u64,
@@ -59,7 +61,7 @@ pub struct NtfsIndexer {
 
 impl NtfsIndexer {
     pub fn new() -> Result<Self> {
-        let volumes = Self::enumerate_ntfs_volumes()?;
+        let volumes = Self::enumerate_ntfs_volumes(None)?;
 
         log::info!("NTFS索引器已创建，检测到 {} 个NTFS卷。注意：完整的MFT索引需要管理员权限。", volumes.len());
 
@@ -70,45 +72,111 @@ impl NtfsIndexer {
         })
     }
 
-    fn enumerate_ntfs_volumes() -> Result<Vec<String>> {
+    pub fn new_with_drives(drives: Vec<char>) -> Result<Self> {
+        let volumes = Self::enumerate_ntfs_volumes(Some(drives))?;
+
+        log::info!("NTFS索引器已创建（指定盘符），检测到 {} 个NTFS卷: {:?}", volumes.len(), volumes);
+
+        Ok(Self {
+            volumes,
+            last_usn: RwLock::new(HashMap::new()),
+            path_cache: Arc::new(RwLock::new(HashMap::new())),
+        })
+    }
+
+    fn enumerate_ntfs_volumes(drives: Option<Vec<char>>) -> Result<Vec<String>> {
         use windows_sys::Win32::Storage::FileSystem::{
             GetLogicalDriveStringsW, GetVolumeInformationW,
         };
 
         let mut volumes = Vec::new();
 
-        let e_drive = "E:\\";
-        let mut fs_name: [u16; 256] = [0; 256];
-        let wide_path: Vec<u16> = e_drive.encode_utf16().chain(std::iter::once(0)).collect();
+        if let Some(specified_drives) = drives {
+            for drive_char in specified_drives {
+                let drive_letter = drive_char.to_ascii_uppercase();
+                let drive_path = format!("{}:\\", drive_letter);
+                let mut fs_name: [u16; 256] = [0; 256];
+                let wide_path: Vec<u16> = drive_path.encode_utf16().chain(std::iter::once(0)).collect();
 
-        let success = unsafe {
-            GetVolumeInformationW(
-                wide_path.as_ptr(),
-                std::ptr::null_mut(),
-                0,
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                std::ptr::null_mut(),
-                fs_name.as_mut_ptr(),
-                fs_name.len() as u32,
-            )
-        };
+                let success = unsafe {
+                    GetVolumeInformationW(
+                        wide_path.as_ptr(),
+                        std::ptr::null_mut(),
+                        0,
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        std::ptr::null_mut(),
+                        fs_name.as_mut_ptr(),
+                        fs_name.len() as u32,
+                    )
+                };
 
-        if success != 0 {
-            let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
-            log::info!("E:\\ 文件系统: {}", fs);
-            if fs.eq_ignore_ascii_case("NTFS") {
-                let volume = format!("\\\\.\\E:");
-                log::info!("检测到NTFS卷: {}", volume);
-                volumes.push(volume);
-            } else {
-                log::warn!("E:\\ 文件系统不是NTFS: {}", fs);
-                volumes.push("\\\\.\\E:".to_string());
+                if success != 0 {
+                    let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
+                    log::info!("{} 文件系统: {}", drive_path, fs);
+                    if fs.eq_ignore_ascii_case("NTFS") {
+                        let volume = format!("\\\\.\\{}:", drive_letter);
+                        log::info!("检测到NTFS卷: {}", volume);
+                        volumes.push(volume);
+                    } else {
+                        log::warn!("{} 文件系统不是NTFS: {}", drive_path, fs);
+                        volumes.push(format!("\\\\.\\{}:", drive_letter));
+                    }
+                } else {
+                    let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+                    log::warn!("无法获取 {} 驱动器信息，错误码: {}", drive_path, last_error);
+                    volumes.push(format!("\\\\.\\{}:", drive_letter));
+                }
             }
         } else {
-            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-            log::warn!("无法获取 E:\\ 驱动器信息，错误码: {}, 尝试回退", last_error);
-            volumes.push("\\\\.\\E:".to_string());
+            let mut buf: [u16; 512] = [0; 512];
+            let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
+            if len == 0 {
+                log::warn!("无法枚举系统驱动器");
+                return Ok(volumes);
+            }
+
+            let mut i = 0;
+            while i < len as usize {
+                let start = i;
+                while i < len as usize && buf[i] != 0 {
+                    i += 1;
+                }
+                if i > start {
+                    let name = OsString::from_wide(&buf[start..i]);
+                    let s = name.to_string_lossy().to_string();
+                    if s.starts_with("C:\\") || s.starts_with("D:\\") || s.starts_with("E:\\") || 
+                       s.starts_with("F:\\") || s.starts_with("G:\\") || s.starts_with("H:\\") {
+                        
+                        let drive_letter = s.chars().next().unwrap();
+                        let mut fs_name: [u16; 256] = [0; 256];
+                        let wide_path: Vec<u16> = s.encode_utf16().chain(std::iter::once(0)).collect();
+
+                        let success = unsafe {
+                            GetVolumeInformationW(
+                                wide_path.as_ptr(),
+                                std::ptr::null_mut(),
+                                0,
+                                std::ptr::null_mut(),
+                                std::ptr::null_mut(),
+                                std::ptr::null_mut(),
+                                fs_name.as_mut_ptr(),
+                                fs_name.len() as u32,
+                            )
+                        };
+
+                        if success != 0 {
+                            let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
+                            if fs.eq_ignore_ascii_case("NTFS") {
+                                let volume = format!("\\\\.\\{}:", drive_letter);
+                                log::info!("检测到NTFS卷: {}", volume);
+                                volumes.push(volume);
+                            }
+                        }
+                    }
+                }
+                i += 1;
+            }
         }
 
         log::info!("NTFS卷检测完成，共发现 {} 个卷: {:?}", volumes.len(), volumes);
@@ -122,12 +190,13 @@ impl NtfsIndexer {
             FILE_FLAG_BACKUP_SEMANTICS,
         };
         use windows_sys::Win32::System::IO::DeviceIoControl;
+        use windows_sys::Win32::Foundation::GENERIC_READ;
 
         let wide_path: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
         let handle = unsafe {
             CreateFileW(
                 wide_path.as_ptr(),
-                0,
+                GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
                 OPEN_EXISTING,
@@ -137,6 +206,8 @@ impl NtfsIndexer {
         };
 
         if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            log::warn!("无法打开卷 {} 查询 USN Journal 状态，错误码: {}", volume, last_error);
             return None;
         }
 
@@ -167,6 +238,7 @@ impl NtfsIndexer {
         Some(UsnJournalState {
             usn: state.UsnJournalID,
             next_usn: state.NextUsn as u64,
+            first_usn: state.FirstUsn as u64,
             journal_id: state.UsnJournalID,
             max_size: state.MaximumSize,
             allocation_delta: state.AllocationDelta,
@@ -177,63 +249,73 @@ impl NtfsIndexer {
         use windows_sys::Win32::Storage::FileSystem::{
             CreateFileW,
             FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+            FILE_FLAG_BACKUP_SEMANTICS, FILE_ATTRIBUTE_DIRECTORY,
         };
         use windows_sys::Win32::System::IO::DeviceIoControl;
-        use windows_sys::Win32::Foundation::GENERIC_READ;
-        use windows_sys::Win32::Foundation::GENERIC_WRITE;
+        use windows_sys::Win32::Foundation::{GENERIC_READ, INVALID_HANDLE_VALUE};
+
+        log::info!("开始枚举卷文件 (MFT枚举 - 两遍扫描): {}", volume);
+
+        let journal_state = self.get_usn_journal_state(volume);
+        let max_usn: i64 = if let Some(js) = &journal_state {
+            log::info!("USN Journal 状态: journal_id={}, next_usn={}", js.journal_id, js.next_usn);
+            js.next_usn as i64
+        } else {
+            log::warn!("无法获取 USN Journal 状态，使用 0 作为 HighUsn");
+            0
+        };
 
         let wide_path: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
+
         let handle = unsafe {
             CreateFileW(
                 wide_path.as_ptr(),
-                GENERIC_READ | GENERIC_WRITE,
+                GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
                 OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+                FILE_FLAG_BACKUP_SEMANTICS,
                 std::ptr::null_mut(),
             )
         };
 
-        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+        if handle == INVALID_HANDLE_VALUE {
             let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
             if last_error == 5 {
-                log::warn!("无法打开卷 {}，需要管理员权限。切换到 FindFirstFile 回退模式。错误码: {}", volume, last_error);
-            } else {
-                log::warn!("无法打开卷 {}，错误码: {}，切换到 FindFirstFile 回退模式", volume, last_error);
+                return Err(AppError::PermissionDenied);
             }
-            let drive_letter = volume.chars().nth(4).unwrap_or('C');
-            return self.enumerate_volume_files_fallback(drive_letter, callback);
+            return Err(AppError::Other(format!("无法打开卷 {}，错误码: {}", volume, last_error)));
         }
-
-        let mut start_usn: u64 = 0;
-        let mut buffer: Vec<u8> = vec![0; 65536];
-        let mut bytes_returned: u32 = 0;
 
         let drive_letter = volume.chars().nth(4).unwrap_or('C');
         let root_path = PathBuf::from(format!("{}:\\", drive_letter));
 
         let mut path_cache = self.path_cache.write();
+        path_cache.clear();
         path_cache.insert(0, root_path.clone());
 
+        let mut dir_records: Vec<(u64, u64, String, i64)> = Vec::new();
+        let mut file_records: Vec<(u64, u64, String, i64)> = Vec::new();
+
+        let mut buffer: Vec<u8> = vec![0; 1024 * 1024];
+        let mut current_file_ref: u64 = 0;
+
+        // 第一遍扫描：收集所有 MFT 记录（分离目录和文件）
+        log::debug!("第一遍扫描：收集 MFT 记录...");
         loop {
-            let mut query = USN_ENUM_DATA_V2 {
-                StartUsn: start_usn,
-                ReasonMask: 0xFFFFFFFF,
-                ReturnOnlyOnClose: 0,
-                Timeout: 0,
-                BytesToWaitFor: 0,
-                UsnJournalID: 0,
-                NextUsn: 0,
+            let query = MFT_ENUM_DATA {
+                StartFileReferenceNumber: current_file_ref,
+                LowUsn: 0,
+                HighUsn: max_usn,
             };
 
+            let mut bytes_returned: u32 = 0;
             let success = unsafe {
                 DeviceIoControl(
                     handle,
                     FSCTL_ENUM_USN_DATA,
-                    &mut query as *mut _ as *mut c_void,
-                    std::mem::size_of::<USN_ENUM_DATA_V2>() as u32,
+                    &query as *const _ as *mut c_void,
+                    std::mem::size_of::<MFT_ENUM_DATA>() as u32,
                     buffer.as_mut_ptr() as *mut c_void,
                     buffer.len() as u32,
                     &mut bytes_returned,
@@ -242,24 +324,32 @@ impl NtfsIndexer {
             };
 
             if success == 0 || bytes_returned == 0 {
+                let last_error = if success == 0 {
+                    unsafe { windows_sys::Win32::Foundation::GetLastError() }
+                } else {
+                    0
+                };
+                log::debug!(
+                    "FSCTL_ENUM_USN_DATA 结束 - success={}, bytes={}, error={}, dirs={}, files={}",
+                    success, bytes_returned, last_error, dir_records.len(), file_records.len()
+                );
                 break;
             }
 
-            let info = unsafe {
-                &*(buffer.as_ptr() as *const USN_ENUM_DATA_V2)
+            let next_file_ref = unsafe {
+                *(buffer.as_ptr() as *const u64)
             };
 
-            if info.NextUsn == start_usn {
-                break;
-            }
+            let mut offset = std::mem::size_of::<u64>();
 
-            start_usn = info.NextUsn;
-
-            let mut offset = std::mem::size_of::<USN_ENUM_DATA_V2>();
             while offset < bytes_returned as usize {
                 let record = unsafe {
                     &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2)
                 };
+
+                if record.RecordLength == 0 {
+                    break;
+                }
 
                 let name_len = (record.FileNameLength / 2) as usize;
                 let name_slice = unsafe {
@@ -268,49 +358,138 @@ impl NtfsIndexer {
                 let name = OsString::from_wide(name_slice);
                 let file_name = name.to_string_lossy().trim().to_string();
 
-                if file_name.starts_with('.') {
-                    if record.NextRecordOffset == 0 {
-                        break;
+                if !file_name.starts_with('.') && !file_name.starts_with('$') {
+                    let is_directory = record.FileAttributes & FILE_ATTRIBUTE_DIRECTORY != 0;
+                    let entry = (
+                        record.FileReferenceNumber,
+                        record.ParentFileReferenceNumber,
+                        file_name,
+                        record.TimeStamp,
+                    );
+
+                    if is_directory {
+                        dir_records.push(entry);
+                    } else {
+                        file_records.push(entry);
                     }
-                    offset += record.NextRecordOffset as usize;
+                }
+
+                offset += record.RecordLength as usize;
+            }
+
+            if next_file_ref == 0 || next_file_ref == current_file_ref {
+                break;
+            }
+            current_file_ref = next_file_ref;
+        }
+
+        log::debug!("第一遍扫描完成：{} 个目录，{} 个文件", dir_records.len(), file_records.len());
+
+        // 动态检测根目录的 FRN
+        // 根目录的特点：它的 ParentFileReferenceNumber 不指向任何已知目录
+        let all_dir_frns: std::collections::HashSet<u64> = dir_records.iter().map(|(frn, _, _, _)| *frn).collect();
+        let mut root_frn: Option<u64> = None;
+        for (_, parent_ref, _, _) in &dir_records {
+            if !all_dir_frns.contains(parent_ref) {
+                root_frn = Some(*parent_ref);
+                break;
+            }
+        }
+
+        // 如果上面的方法没找到，试试常见值（NTFS 根目录通常是 5）
+        if root_frn.is_none() {
+            for candidate in [5u64, 0u64] {
+                if dir_records.iter().any(|(_, parent, _, _)| *parent == candidate) {
+                    root_frn = Some(candidate);
+                    break;
+                }
+            }
+        }
+
+        log::info!("检测到根目录 FRN: {:?}", root_frn);
+
+        // 清除并重新初始化 path_cache，使用正确的根目录 FRN
+        path_cache.clear();
+        if let Some(frn) = root_frn {
+            path_cache.insert(frn, root_path.clone());
+        } else {
+            // fallback：尝试用 0 和 5
+            path_cache.insert(0, root_path.clone());
+            path_cache.insert(5, root_path.clone());
+            log::warn!("无法确定根目录 FRN，使用 fallback (0 和 5)");
+        }
+
+        // 按层级排序目录（BFS顺序构建路径缓存）
+        dir_records.sort_by_key(|(_, parent_ref, _, _)| *parent_ref);
+
+        // 第二遍：构建目录路径缓存（迭代直到稳定）
+        log::debug!("第二遍扫描：构建目录路径缓存...");
+        let mut changed = true;
+        let mut iterations = 0;
+        while changed && iterations < 100 {
+            changed = false;
+            iterations += 1;
+
+            for (file_ref, parent_ref, file_name, _) in &dir_records {
+                if path_cache.contains_key(file_ref) {
                     continue;
                 }
-
-                let parent_ref = record.ParentFileReferenceNumber;
-                let parent_path = path_cache.get(&parent_ref).cloned().unwrap_or(root_path.clone());
-                let full_path = parent_path.join(&file_name);
-
-                let is_directory = record.FileAttributes & windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_DIRECTORY != 0;
-
-                if is_directory {
-                    path_cache.insert(record.FileReferenceNumber, full_path.clone());
+                if let Some(parent_path) = path_cache.get(parent_ref) {
+                    let full_path = parent_path.join(file_name);
+                    path_cache.insert(*file_ref, full_path);
+                    changed = true;
                 }
+            }
+        }
 
-                let ext = if !is_directory {
-                    full_path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase())
-                } else {
-                    None
-                };
+        let dirs_cached = path_cache.len() - 1; // 减去根目录
+        log::debug!("目录路径缓存构建完成：{} 个目录已缓存（迭代 {} 次）", dirs_cached, iterations);
 
-                let next_offset = record.NextRecordOffset;
+        // 第三遍：处理文件并调用 callback
+        log::debug!("第三遍扫描：处理文件记录...");
+        let mut total_count = 0u64;
+        let mut skipped_no_parent = 0u64;
+
+        for (file_ref, parent_ref, file_name, timestamp) in &dir_records {
+            if let Some(full_path) = path_cache.get(file_ref) {
                 let usn_record = UsnRecord {
-                    file_reference_number: record.FileReferenceNumber,
-                    parent_file_reference: parent_ref,
-                    file_name,
+                    file_reference_number: *file_ref,
+                    parent_file_reference: *parent_ref,
+                    file_name: file_name.clone(),
+                    full_path: full_path.clone(),
+                    file_size: 0,
+                    last_write_time: *timestamp as i64 / 10000000 - 11644473600,
+                    is_directory: true,
+                    extension: None,
+                    reason: UsnChangeReason::Created,
+                };
+                callback(usn_record);
+                total_count += 1;
+            }
+        }
+
+        for (file_ref, parent_ref, file_name, timestamp) in &file_records {
+            if let Some(parent_path) = path_cache.get(parent_ref) {
+                let full_path = parent_path.join(file_name);
+                let ext = full_path.extension()
+                    .and_then(|e| e.to_str())
+                    .map(|s| s.to_lowercase());
+
+                let usn_record = UsnRecord {
+                    file_reference_number: *file_ref,
+                    parent_file_reference: *parent_ref,
+                    file_name: file_name.clone(),
                     full_path,
                     file_size: 0,
-                    last_write_time: record.TimeStamp as i64 / 10000000 - 11644473600,
-                    is_directory,
+                    last_write_time: *timestamp as i64 / 10000000 - 11644473600,
+                    is_directory: false,
                     extension: ext,
                     reason: UsnChangeReason::Created,
                 };
-
                 callback(usn_record);
-
-                if next_offset == 0 {
-                    break;
-                }
-                offset += next_offset as usize;
+                total_count += 1;
+            } else {
+                skipped_no_parent += 1;
             }
         }
 
@@ -318,110 +497,18 @@ impl NtfsIndexer {
             windows_sys::Win32::Foundation::CloseHandle(handle);
         }
 
-        Ok(())
-    }
+        log::info!(
+            "MFT 枚举完成: {} 个条目（目录{} + 文件{}），跳过无父路径: {}",
+            total_count,
+            dirs_cached,
+            total_count - dirs_cached as u64,
+            skipped_no_parent
+        );
 
-    fn enumerate_volume_files_fallback(&self, drive_letter: char, mut callback: impl FnMut(UsnRecord)) -> Result<()> {
-        use windows_sys::Win32::Storage::FileSystem::{
-            FindFirstFileW, FindNextFileW, WIN32_FIND_DATAW, FindClose,
-            FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM,
-        };
-
-        let root_path = PathBuf::from(format!("{}:\\", drive_letter));
-        let mut dir_stack: Vec<PathBuf> = Vec::new();
-        dir_stack.push(root_path.clone());
-
-        let mut processed_dirs = HashSet::new();
-        let mut total_count = 0;
-
-        while let Some(current_dir) = dir_stack.pop() {
-            if processed_dirs.contains(current_dir.to_string_lossy().as_ref()) {
-                continue;
-            }
-            processed_dirs.insert(current_dir.to_string_lossy().to_string());
-
-            let search_pattern = format!("{}\\*", current_dir.to_string_lossy());
-            let wide_pattern: Vec<u16> = search_pattern.encode_utf16().chain(std::iter::once(0)).collect();
-
-            let mut find_data: WIN32_FIND_DATAW = unsafe { std::mem::zeroed() };
-            let handle = unsafe {
-                FindFirstFileW(wide_pattern.as_ptr(), &mut find_data)
-            };
-
-            if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
-                continue;
-            }
-
-            let mut first = true;
-            loop {
-                if !first {
-                    let success = unsafe {
-                        FindNextFileW(handle, &mut find_data)
-                    };
-                    if success == 0 {
-                        break;
-                    }
-                }
-                first = false;
-
-                let name_len = find_data.cFileName.iter().position(|&x| x == 0).unwrap_or(260);
-                let name_slice = unsafe {
-                    std::slice::from_raw_parts(find_data.cFileName.as_ptr(), name_len)
-                };
-                let name = OsString::from_wide(name_slice);
-                let file_name = name.to_string_lossy().trim().to_string();
-
-                if file_name == "." || file_name == ".." {
-                    continue;
-                }
-
-                let is_hidden = (find_data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0;
-                let is_system = (find_data.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) != 0;
-                let is_directory = (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-
-                if is_system && (file_name.starts_with('$') || file_name == "System Volume Information") {
-                    continue;
-                }
-
-                let full_path = current_dir.join(&file_name);
-
-                let ext = if !is_directory {
-                    full_path.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase())
-                } else {
-                    None
-                };
-
-                let file_size = (find_data.nFileSizeHigh as u64) << 32 | (find_data.nFileSizeLow as u64);
-
-                let high = find_data.ftLastWriteTime.dwHighDateTime as u64;
-                let low = find_data.ftLastWriteTime.dwLowDateTime as u64;
-                let last_write_time = ((high << 32) | low) as i64 / 10000000 - 11644473600;
-
-                let usn_record = UsnRecord {
-                    file_reference_number: 0,
-                    parent_file_reference: 0,
-                    file_name,
-                    full_path: full_path.clone(),
-                    file_size,
-                    last_write_time,
-                    is_directory,
-                    extension: ext,
-                    reason: UsnChangeReason::Created,
-                };
-
-                callback(usn_record);
-
-                if is_directory {
-                    dir_stack.push(full_path);
-                }
-            }
-
-            unsafe {
-                FindClose(handle);
-            }
+        if total_count == 0 {
+            log::warn!("USN Journal 返回空结果");
         }
 
-        log::info!("FindFirstFile 回退模式枚举完成，驱动器 {}", drive_letter);
         Ok(())
     }
 
@@ -432,12 +519,13 @@ impl NtfsIndexer {
             FILE_FLAG_BACKUP_SEMANTICS,
         };
         use windows_sys::Win32::System::IO::DeviceIoControl;
+        use windows_sys::Win32::Foundation::GENERIC_READ;
 
         let wide_path: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
         let handle = unsafe {
             CreateFileW(
                 wide_path.as_ptr(),
-                0,
+                GENERIC_READ,
                 FILE_SHARE_READ | FILE_SHARE_WRITE,
                 std::ptr::null_mut(),
                 OPEN_EXISTING,
@@ -467,8 +555,8 @@ impl NtfsIndexer {
         let mut changes = Vec::new();
         let path_cache = self.path_cache.read();
 
-        let mut query = READ_USN_JOURNAL_DATA_V2 {
-            StartUsn: start_usn,
+        let query = READ_USN_JOURNAL_DATA_V2 {
+            StartUsn: start_usn as i64,
             ReasonMask: 0xFFFFFFFF,
             ReturnOnlyOnClose: 0,
             Timeout: 0,
@@ -476,11 +564,12 @@ impl NtfsIndexer {
             UsnJournalID: journal_id,
         };
 
-        let success = unsafe {
+        // 优先使用非特权版本
+        let mut success = unsafe {
             DeviceIoControl(
                 handle,
-                FSCTL_READ_USN_JOURNAL,
-                &mut query as *mut _ as *mut c_void,
+                FSCTL_READ_UNPRIVILEGED_USN_JOURNAL,
+                &query as *const _ as *mut c_void,
                 std::mem::size_of::<READ_USN_JOURNAL_DATA_V2>() as u32,
                 buffer.as_mut_ptr() as *mut c_void,
                 buffer.len() as u32,
@@ -489,16 +578,33 @@ impl NtfsIndexer {
             )
         };
 
+        if success == 0 {
+            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            if last_error == 1 || last_error == 87 {
+                // 回退到特权版本
+                success = unsafe {
+                    DeviceIoControl(
+                        handle,
+                        FSCTL_READ_USN_JOURNAL,
+                        &query as *const _ as *mut c_void,
+                        std::mem::size_of::<READ_USN_JOURNAL_DATA_V2>() as u32,
+                        buffer.as_mut_ptr() as *mut c_void,
+                        buffer.len() as u32,
+                        &mut bytes_returned,
+                        std::ptr::null_mut(),
+                    )
+                };
+            }
+        }
+
         if success == 0 || bytes_returned == 0 {
             unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) };
             return Ok(Vec::new());
         }
 
-        let _info = unsafe {
-            &*(buffer.as_ptr() as *const READ_USN_JOURNAL_DATA_V2)
-        };
+        log::debug!("FSCTL_READ_USN_JOURNAL 返回 {} 字节", bytes_returned);
 
-        let mut offset = std::mem::size_of::<READ_USN_JOURNAL_DATA_V2>();
+        let mut offset = 0;
         while offset < bytes_returned as usize {
             let record = unsafe {
                 &*(buffer.as_ptr().add(offset) as *const USN_RECORD_V2)
@@ -512,10 +618,7 @@ impl NtfsIndexer {
             let file_name = name.to_string_lossy().trim().to_string();
 
             if file_name.starts_with('.') {
-                if record.NextRecordOffset == 0 {
-                    break;
-                }
-                offset += record.NextRecordOffset as usize;
+                offset += record.RecordLength as usize;
                 continue;
             }
 
@@ -551,10 +654,7 @@ impl NtfsIndexer {
                 reason,
             });
 
-            if record.NextRecordOffset == 0 {
-                break;
-            }
-            offset += record.NextRecordOffset as usize;
+            offset += record.RecordLength as usize;
         }
 
         unsafe {
@@ -584,6 +684,72 @@ impl NtfsIndexer {
     pub fn get_volumes(&self) -> &[String] {
         &self.volumes
     }
+
+    pub fn get_usn_journal_state(&self, volume: &str) -> Option<UsnJournalState> {
+        self.get_journal_state(volume)
+    }
+
+    pub fn create_usn_journal(&self, volume: &str) -> Result<bool> {
+        use windows_sys::Win32::Storage::FileSystem::CreateFileW;
+        use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+        use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING};
+        use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_BACKUP_SEMANTICS;
+        use windows_sys::Win32::System::IO::DeviceIoControl;
+
+        let wide_path: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
+        let handle = unsafe {
+            CreateFileW(
+                wide_path.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                std::ptr::null_mut(),
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                std::ptr::null_mut(),
+            )
+        };
+
+        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
+                let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+                if last_error == 5 {
+                    return Err(AppError::PermissionDenied);
+                }
+                return Err(AppError::Other(format!("无法打开卷 {}，错误码: {}", volume, last_error)));
+            }
+
+        let mut journal_data = CREATE_USN_JOURNAL_DATA {
+            MaximumSize: 64 * 1024 * 1024,
+            AllocationDelta: 16 * 1024 * 1024,
+        };
+
+        let success = unsafe {
+            DeviceIoControl(
+                handle,
+                FSCTL_CREATE_USN_JOURNAL,
+                &mut journal_data as *mut _ as *mut c_void,
+                std::mem::size_of::<CREATE_USN_JOURNAL_DATA>() as u32,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(handle);
+        }
+
+        if success == 0 {
+            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            if last_error == 5 {
+                return Err(AppError::PermissionDenied);
+            }
+            return Err(AppError::Other(format!("无法创建 USN Journal，错误码: {}", last_error)));
+        }
+
+        log::info!("USN Journal 创建成功: {}", volume);
+        Ok(true)
+    }
 }
 
 #[repr(C)]
@@ -592,6 +758,7 @@ struct USN_RECORD_V2 {
     RecordLength: u32,
     MajorVersion: u8,
     MinorVersion: u8,
+    _unused: u16,
     FileReferenceNumber: u64,
     ParentFileReferenceNumber: u64,
     Usn: i64,
@@ -600,9 +767,8 @@ struct USN_RECORD_V2 {
     SourceInfo: u32,
     SecurityId: u32,
     FileAttributes: u32,
-    FileNameLength: u32,
-    FileNameOffset: u32,
-    NextRecordOffset: u32,
+    FileNameLength: u16,
+    FileNameOffset: u16,
     FileName: [u16; 1],
 }
 
@@ -622,336 +788,28 @@ struct USN_JOURNAL_DATA_V2 {
 
 #[repr(C)]
 #[derive(Debug, Default)]
-struct USN_ENUM_DATA_V2 {
-    StartUsn: u64,
-    ReasonMask: u32,
-    ReturnOnlyOnClose: u32,
-    Timeout: u32,
-    BytesToWaitFor: u32,
-    UsnJournalID: u64,
-    NextUsn: u64,
+struct MFT_ENUM_DATA {
+    StartFileReferenceNumber: u64,
+    LowUsn: i64,
+    HighUsn: i64,
 }
 
 #[repr(C)]
 #[derive(Debug, Default)]
 struct READ_USN_JOURNAL_DATA_V2 {
-    StartUsn: u64,
+    StartUsn: i64,
     ReasonMask: u32,
     ReturnOnlyOnClose: u32,
-    Timeout: u32,
-    BytesToWaitFor: u32,
+    Timeout: u64,
+    BytesToWaitFor: u64,
     UsnJournalID: u64,
 }
 
-pub trait FileEngine: Send + Sync {
-    fn build_index(&self) -> Result<()>;
-    fn update_index(&self) -> Result<()>;
-    fn search(&self, query: &str, limit: u32) -> Vec<FileResult>;
-    fn total(&self) -> usize;
+#[repr(C)]
+#[derive(Debug, Default)]
+struct CREATE_USN_JOURNAL_DATA {
+    MaximumSize: u64,
+    AllocationDelta: u64,
 }
 
-pub struct WinUsnJournal {
-    volumes: Vec<String>,
-    last_usn: RwLock<HashMap<String, u64>>,
-}
 
-impl WinUsnJournal {
-    pub fn new() -> Result<Self> {
-        let volumes = Self::enumerate_volumes()?;
-        Ok(Self {
-            volumes,
-            last_usn: RwLock::new(HashMap::new()),
-        })
-    }
-
-    fn enumerate_volumes() -> Result<Vec<String>> {
-        use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
-
-        let mut buf: [u16; 512] = [0; 512];
-        let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
-        if len == 0 {
-            return Err(AppError::Other("Failed to enumerate volumes".into()));
-        }
-
-        let mut volumes = Vec::new();
-        let mut i = 0;
-        while i < len as usize {
-            let start = i;
-            while i < len as usize && buf[i] != 0 {
-                i += 1;
-            }
-            if i > start {
-                let name = OsString::from_wide(&buf[start..i]);
-                let s = name.to_string_lossy().to_string();
-                if s.starts_with("C:\\") || s.starts_with("D:\\") || s.starts_with("E:\\") {
-                    volumes.push(format!("\\\\.\\{}:", s.chars().next().unwrap()));
-                }
-            }
-            i += 1;
-        }
-
-        Ok(volumes)
-    }
-
-    pub fn get_changes(&self) -> Result<Vec<UsnRecord>> {
-        let mut changes = Vec::new();
-        let mut last_usn = self.last_usn.write();
-
-        for volume in &self.volumes {
-            if let Ok(volume_changes) = self.get_volume_changes(volume, last_usn.get(volume).copied().unwrap_or(0)) {
-                changes.extend(volume_changes);
-                if let Some(record) = changes.last() {
-                    *last_usn.entry(volume.clone()).or_insert(0) = record.file_reference_number;
-                }
-            }
-        }
-
-        Ok(changes)
-    }
-
-    fn get_volume_changes(&self, volume: &str, _starting_usn: u64) -> Result<Vec<UsnRecord>> {
-        use windows_sys::Win32::Storage::FileSystem::{
-            CreateFileW, ReadDirectoryChangesW,
-            FILE_LIST_DIRECTORY, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
-            FILE_FLAG_BACKUP_SEMANTICS,
-        };
-
-        let wide_path: Vec<u16> = volume.encode_utf16().chain(std::iter::once(0)).collect();
-        let handle = unsafe {
-            CreateFileW(
-                wide_path.as_ptr(),
-                FILE_LIST_DIRECTORY,
-                FILE_SHARE_READ | FILE_SHARE_WRITE,
-                std::ptr::null_mut(),
-                OPEN_EXISTING,
-                FILE_FLAG_BACKUP_SEMANTICS,
-                std::ptr::null_mut(),
-            )
-        };
-
-        if handle == windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE {
-            return Ok(Vec::new());
-        }
-
-        let mut buffer: [u8; 65536] = [0; 65536];
-        let mut bytes_returned: u32 = 0;
-
-        let success = unsafe {
-            ReadDirectoryChangesW(
-                handle,
-                buffer.as_mut_ptr() as *mut c_void,
-                buffer.len() as u32,
-                1,
-                0x00000001 | 0x00000002 | 0x00000004 | 0x00000008 | 0x00000010,
-                &mut bytes_returned,
-                std::ptr::null_mut(),
-                None,
-            )
-        };
-
-        unsafe {
-            windows_sys::Win32::Foundation::CloseHandle(handle);
-        }
-
-        if success == 0 || bytes_returned == 0 {
-            return Ok(Vec::new());
-        }
-
-        self.parse_changes(&buffer[..bytes_returned as usize], volume)
-    }
-
-    fn parse_changes(&self, buffer: &[u8], volume: &str) -> Result<Vec<UsnRecord>> {
-        use windows_sys::Win32::Storage::FileSystem::FILE_NOTIFY_INFORMATION;
-
-        let mut changes = Vec::new();
-        let mut offset: usize = 0;
-
-        while offset < buffer.len() {
-            let info = unsafe {
-                &*(buffer.as_ptr().add(offset) as *const FILE_NOTIFY_INFORMATION)
-            };
-
-            let name_len = (info.FileNameLength / 2) as usize;
-            let name_slice = unsafe {
-                std::slice::from_raw_parts(info.FileName.as_ptr(), name_len)
-            };
-            let name = OsString::from_wide(name_slice);
-            let file_name = name.to_string_lossy().to_string();
-
-            if file_name.starts_with('.') {
-                if info.NextEntryOffset == 0 {
-                    break;
-                }
-                offset += info.NextEntryOffset as usize;
-                continue;
-            }
-
-            let drive_letter = volume.chars().nth(4).unwrap_or('C');
-            let full_path = PathBuf::from(format!("{}:\\{}", drive_letter, file_name));
-
-            let reason = match info.Action {
-                0x00000001 => UsnChangeReason::Created,
-                0x00000002 => UsnChangeReason::Deleted,
-                0x00000003 => UsnChangeReason::Modified,
-                0x00000004 => UsnChangeReason::RenamedOldName,
-                0x00000005 => UsnChangeReason::RenamedNewName,
-                _ => UsnChangeReason::Modified,
-            };
-
-            let record = UsnRecord {
-                file_reference_number: offset as u64,
-                parent_file_reference: 0,
-                file_name,
-                full_path,
-                file_size: 0,
-                last_write_time: chrono::Utc::now().timestamp(),
-                is_directory: info.Action == 0x00000001 || info.Action == 0x00000002,
-                extension: None,
-                reason,
-            };
-
-            changes.push(record);
-
-            if info.NextEntryOffset == 0 {
-                break;
-            }
-            offset += info.NextEntryOffset as usize;
-        }
-
-        Ok(changes)
-    }
-}
-
-pub struct FallbackFileEngine {
-    index: RwLock<HashMap<String, Vec<UsnRecord>>>,
-    roots: Vec<PathBuf>,
-    last_update: RwLock<i64>,
-}
-
-impl FallbackFileEngine {
-    pub fn new(roots: Vec<PathBuf>) -> Self {
-        Self {
-            index: RwLock::new(HashMap::new()),
-            roots,
-            last_update: RwLock::new(0),
-        }
-    }
-
-    fn record_filename(rec: &UsnRecord) -> String {
-        rec.file_name.to_lowercase()
-    }
-
-    fn build_record(path: PathBuf) -> UsnRecord {
-        let metadata = std::fs::metadata(&path).ok();
-        let (size, is_dir) = metadata
-            .as_ref()
-            .map(|m| (m.len(), m.is_dir()))
-            .unwrap_or((0, false));
-        let modified = metadata
-            .and_then(|m| m.modified().ok())
-            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-
-        let name = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("")
-            .to_string();
-        let ext = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .map(|s| s.to_lowercase());
-
-        UsnRecord {
-            file_reference_number: 0,
-            parent_file_reference: 0,
-            file_name: name,
-            full_path: path,
-            file_size: size,
-            last_write_time: modified,
-            is_directory: is_dir,
-            extension: ext,
-            reason: UsnChangeReason::Created,
-        }
-    }
-}
-
-impl FileEngine for FallbackFileEngine {
-    fn build_index(&self) -> Result<()> {
-        log::info!("开始构建文件索引(Fallback) - roots: {:?}", self.roots);
-        let mut idx = self.index.write();
-        idx.clear();
-
-        let now = chrono::Utc::now().timestamp();
-        for root in &self.roots {
-            if !root.exists() {
-                continue;
-            }
-            let walker = walkdir::WalkDir::new(root)
-                .max_depth(8)
-                .follow_links(false)
-                .into_iter()
-                .filter_entry(|e| !is_hidden(e.file_name()));
-            for entry in walker.flatten() {
-                if entry.depth() == 0 {
-                    continue;
-                }
-                let rec = Self::build_record(entry.path().to_path_buf());
-                if rec.file_name.is_empty() {
-                    continue;
-                }
-                let key = Self::record_filename(&rec);
-                idx.entry(key).or_insert_with(Vec::new).push(rec);
-            }
-        }
-        *self.last_update.write() = now;
-        log::info!("索引构建完成: {} 个文件名分组", idx.len());
-        Ok(())
-    }
-
-    fn update_index(&self) -> Result<()> {
-        let last = *self.last_update.read();
-        let now = chrono::Utc::now().timestamp();
-        if now - last < 60 {
-            return Ok(());
-        }
-        self.build_index()
-    }
-
-    fn search(&self, query: &str, limit: u32) -> Vec<FileResult> {
-        if query.is_empty() {
-            return vec![];
-        }
-        let q = query.to_lowercase();
-        let idx = self.index.read();
-        let mut results = Vec::new();
-        'outer: for (name, records) in idx.iter() {
-            if !name.contains(&q) {
-                continue;
-            }
-            for r in records.iter() {
-                results.push(FileResult {
-                    path: r.full_path.clone(),
-                    name: r.file_name.clone(),
-                    extension: r.extension.clone(),
-                    size: r.file_size as i64,
-                    modified_at: r.last_write_time,
-                    is_directory: r.is_directory,
-                });
-                if results.len() >= limit as usize {
-                    break 'outer;
-                }
-            }
-        }
-        results
-    }
-
-    fn total(&self) -> usize {
-        self.index.read().values().map(|v| v.len()).sum()
-    }
-}
-
-fn is_hidden(name: &std::ffi::OsStr) -> bool {
-    name.to_string_lossy().starts_with('.')
-}

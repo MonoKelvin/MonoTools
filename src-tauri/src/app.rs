@@ -10,7 +10,8 @@ pub mod app {
     use crate::engines::file_search::FileSearchEngine;
     use crate::repositories::*;
     use crate::models::Settings;
-    use std::sync::{Arc, Mutex};
+    use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
     use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
     use tauri::menu::{CheckMenuItem, Menu, MenuItem};
     use tauri::{Manager, WindowEvent};
@@ -132,7 +133,15 @@ pub mod app {
                     let app_search = Arc::new(AppSearchEngine::new(settings_repo.clone()).await?);
                     app_search.refresh_index().await?;
                     let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
-                    let file_roots = settings_repo.get().file_search_roots.clone();
+                    let settings = settings_repo.get();
+                    let mut file_roots = settings.file_search_roots.clone();
+                    
+                    if !settings.file_search_drives.is_empty() {
+                        for drive in &settings.file_search_drives {
+                            file_roots.push(PathBuf::from(format!("{}:\\", drive)));
+                        }
+                    }
+                    
                     let file_search = Arc::new(FileSearchEngine::new(file_roots.clone()).unwrap());
 
                     let search_engine = Arc::new(SearchEngine::new(
