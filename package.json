@@ -14,8 +14,8 @@
     "build:frontend": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "lint": "eslint src/ --ext .ts,.vue",
     "format": "prettier --write \"src/**/*.{ts,vue,scss}\"",
@@ -25,13 +25,13 @@
     "cli:dev": "cargo run --manifest-path src-tauri/Cargo.toml --bin monotools-cli -- --help"
   },
   "dependencies": {
+    "@lucide/vue": "^1.23",
     "@primeuix/themes": "^2.0.0",
     "@tauri-apps/api": "^2.11",
     "@tauri-apps/plugin-fs": "^2.5",
     "@tauri-apps/plugin-global-shortcut": "^2.3",
     "@tauri-apps/plugin-shell": "^2.3",
     "@vueuse/core": "^14.0",
-    "@lucide/vue": "^1.23",
     "pinia": "^3.0",
     "primeicons": "^7.0.0",
     "primevue": "^4.5",
@@ -39,18 +39,20 @@
     "vue-router": "^4.4"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.11",
     "@tailwindcss/vite": "^4.0",
+    "@tauri-apps/cli": "^2.11",
     "@types/node": "^22.0",
     "@vitejs/plugin-vue": "^6.0",
+    "@vue/test-utils": "^2.4.11",
     "autoprefixer": "^10.4",
     "eslint": "^9.13",
+    "happy-dom": "^20.10.6",
     "postcss": "^8.4",
     "prettier": "^3.3",
     "sass": "^1.80",
     "tailwindcss": "^4.0",
     "typescript": "~5.7",
-    "vite": "^6.0",
+    "vite": "^6.4.3",
     "vitest": "^3.0"
   },
   "files": [

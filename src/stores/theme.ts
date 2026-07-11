@@ -31,8 +31,11 @@ export const useThemeStore = defineStore('theme', () => {
   function updateClass() {
     const html = document.documentElement
     html.classList.remove('theme-dark', 'theme-light')
-    html.classList.add('theme-dark')
-    html.style.colorScheme = 'dark'
+    const next = (mode.value === 'light' ? 'theme-light' : 'theme-dark') as
+      | 'theme-dark'
+      | 'theme-light'
+    html.classList.add(next)
+    html.style.colorScheme = next === 'theme-light' ? 'light' : 'dark'
     document.documentElement.style.setProperty('--accent', accent.value)
   }
 

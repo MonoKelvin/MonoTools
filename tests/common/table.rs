@@ -1,3 +1,17 @@
+//! 简易表格构造器与"路径验证"风格的报告。
+//!
+//! ## 典型用法
+//!
+//! ```rust
+//! use monotools_tests::table::{Table, ValidationReport};
+//!
+//! let mut t = Table::new(&["文件名", "完整路径", "状态"]);
+//! t.add_row(&["a.txt", "/path/a.txt", "√"]);
+//!
+//! let mut vr = ValidationReport::new("路径验证");
+//! vr.add_entry("a.txt", "/path/a.txt", true);
+//! ```
+
 pub struct Table {
     headers: Vec<String>,
     rows: Vec<Vec<String>>,
@@ -37,7 +51,9 @@ impl Table {
     pub fn generate(&self) -> String {
         let mut output = String::new();
 
-        let header_line = self.headers.iter()
+        let header_line = self
+            .headers
+            .iter()
             .enumerate()
             .map(|(i, h)| format!("{:<width$}", h, width = self.col_widths[i] + 4))
             .collect::<Vec<_>>()
@@ -45,7 +61,9 @@ impl Table {
         output.push_str(&header_line);
         output.push('\n');
 
-        let separator_line = self.col_widths.iter()
+        let separator_line = self
+            .col_widths
+            .iter()
             .map(|w| self.separator.repeat(*w + 4))
             .collect::<Vec<_>>()
             .join("");
@@ -53,7 +71,8 @@ impl Table {
         output.push('\n');
 
         for row in &self.rows {
-            let row_line = row.iter()
+            let row_line = row
+                .iter()
                 .enumerate()
                 .map(|(i, v)| format!("{:<width$}", v, width = self.col_widths[i] + 4))
                 .collect::<Vec<_>>()
@@ -69,12 +88,15 @@ impl Table {
         let _ = std::fs::write(path, self.generate());
     }
 
+    /// 旧接口保留：只用 base_name 拿到时间戳文件名。
+    /// 新代码请改用 `tests/common/paths.rs::timestamped_output_path`。
     pub fn generate_timestamp_filename(base_name: &str) -> String {
         let timestamp = chrono::Local::now().format("%Y%m%d%H%M%S").to_string();
         format!("{}_{}.txt", base_name, timestamp)
     }
 }
 
+/// 路径验证风格报告：包含 `√/×` 状态、自动统计通过率。
 pub struct ValidationReport {
     title: String,
     table: Table,
@@ -128,7 +150,11 @@ impl ValidationReport {
 
         output.push_str(&format!("总样本数: {}\n", self.total_count));
         output.push_str(&format!("通过: {} ({}%)\n", self.passed_count, pass_rate));
-        output.push_str(&format!("未通过: {} ({:.1}%)\n", self.failed_count, (100.0 - pass_rate)));
+        output.push_str(&format!(
+            "未通过: {} ({:.1}%)\n",
+            self.failed_count,
+            (100.0 - pass_rate)
+        ));
         output.push_str(&"=".repeat(80));
 
         output

@@ -1,0 +1,241 @@
+/**
+ * 命令 spec 资源：与后端 `cmd_*.rs` 一一对应的纯 metadata。
+ *
+ * 用途：
+ *  - 命令面板 / 热键弹窗显示（title、shortcut、icon、keywords）
+ *  - 启动时替代后端拉取 `list_command_specs` ：在浏览器开发模式 mock 数据。
+ *
+ * 注意：
+ *  - 这些只覆盖"前端关心的元数据"；业务执行仍然走 IPC `dispatch_command`，由后端实现。
+ *  - 后端主名 id 是这些 id，命令解析时按主名直接派发。
+ */
+import type { CommandSpec } from './types'
+import {
+  CornerDownLeft,
+  ArrowDown,
+  ArrowUp,
+  X as IconX,
+  Search as IconSearch,
+  Copy,
+  FolderOpen,
+  Settings as IconSettings,
+  Terminal,
+  LogOut,
+  Keyboard,
+  Sun,
+  FolderSearch,
+  Power,
+  MonitorPlay,
+} from '@lucide/vue'
+
+/**
+ * 命令 spec 工厂：每个 id 与后端 9 个命令对齐。
+ *
+ * 返回的 id 数组的顺序与 `CommandRegistry::build_default_registry()` 注册顺序一致。
+ */
+export function buildBuiltinCommandSpecs(): CommandSpec[] {
+  return [
+    {
+      id: 'search',
+      title: '搜索',
+      description: '搜索应用 / 文件 / 命令',
+      category: 'search',
+      keywords: ['find', 'fuzzy'],
+      icon: IconSearch,
+    },
+    {
+      id: 'launch',
+      title: '启动',
+      description: '按名称或路径启动应用',
+      category: 'command',
+      keywords: ['run', 'open-app'],
+      icon: Power,
+    },
+    {
+      id: 'open',
+      title: '打开',
+      description: '在文件管理器中打开路径',
+      category: 'file',
+      keywords: ['reveal', 'explorer'],
+      icon: FolderOpen,
+    },
+    {
+      id: 'command',
+      title: '自定义命令',
+      description: '管理自定义命令（list / run / add / remove）',
+      category: 'command',
+      keywords: ['cmd'],
+      icon: Terminal,
+    },
+    {
+      id: 'config',
+      title: '配置',
+      description: '查看或修改设置',
+      category: 'app',
+      keywords: ['cfg', 'setting'],
+      icon: IconSettings,
+    },
+    {
+      id: 'help',
+      title: '帮助',
+      description: '显示帮助信息',
+      category: 'app',
+      keywords: ['-h', '--help'],
+      icon: Keyboard,
+    },
+    {
+      id: 'version',
+      title: '版本',
+      description: '版本信息',
+      category: 'app',
+      keywords: ['-v', '--version'],
+      icon: MonitorPlay,
+    },
+    {
+      id: 'index',
+      title: '索引',
+      description: '文件索引管理（build / update / stats / root）',
+      category: 'file',
+      keywords: ['idx'],
+      icon: FolderSearch,
+    },
+    {
+      id: 'stats',
+      title: '统计',
+      description: '查询应用统计信息',
+      category: 'system',
+      keywords: [],
+      icon: Sun,
+    },
+
+    // ----- 搜索面板 hotkey 绑定（UI-only 习惯，不对应后端命令）-----
+    // 这些不是后端 command；只在搜索面板 / HotkeyModal 中体现，不走 dispatch_command。
+    {
+      id: 'search.cmd.execute-selected',
+      title: '打开选中项',
+      description: '执行当前高亮结果（Enter）',
+      category: 'search',
+      shortcut: 'Enter',
+      keywords: ['open', 'run', 'enter'],
+      icon: CornerDownLeft,
+    },
+    {
+      id: 'search.cmd.next-item',
+      title: '向下选择',
+      description: '移动到下一项结果',
+      category: 'search',
+      shortcut: 'ArrowDown',
+      keywords: ['down', 'next'],
+      icon: ArrowDown,
+    },
+    {
+      id: 'search.cmd.prev-item',
+      title: '向上选择',
+      description: '移动到上一项结果',
+      category: 'search',
+      shortcut: 'ArrowUp',
+      keywords: ['up', 'prev'],
+      icon: ArrowUp,
+    },
+    {
+      id: 'search.cmd.close-window',
+      title: '关闭搜索',
+      description: '隐藏搜索窗口（Esc）',
+      category: 'window',
+      shortcut: 'Escape',
+      keywords: ['close', 'hide', 'esc'],
+      icon: IconX,
+    },
+    {
+      id: 'search.cmd.toggle-window',
+      title: '切换搜索窗口',
+      description: '显示 / 隐藏搜索窗口（Alt+Space）',
+      category: 'window',
+      shortcut: 'Alt + Space',
+      keywords: ['toggle'],
+      icon: IconSearch,
+    },
+    {
+      id: 'search.cmd.focus-input',
+      title: '聚焦输入框',
+      description: '把光标移到搜索输入框',
+      category: 'search',
+      keywords: ['focus'],
+    },
+    {
+      id: 'search.cmd.clear-input',
+      title: '清空查询',
+      description: '清空当前搜索关键字',
+      category: 'search',
+      shortcut: 'Ctrl + K',
+      keywords: ['clear'],
+      icon: IconX,
+    },
+    {
+      id: 'search.cmd.copy-selected-path',
+      title: '复制完整路径',
+      description: '复制当前结果的完整路径或名字到剪贴板',
+      category: 'search',
+      shortcut: 'Ctrl + C',
+      keywords: ['copy', 'clipboard', 'path'],
+      icon: Copy,
+    },
+    {
+      id: 'search.cmd.reveal-selected',
+      title: '打开文件所在路径',
+      description: '在资源管理器中显示当前结果所在文件夹',
+      category: 'search',
+      shortcut: 'Ctrl + Enter',
+      keywords: ['reveal', 'open folder', 'explorer'],
+      icon: FolderOpen,
+    },
+
+    // ----- 路由 / 应用层命令（UI-only）-----
+    {
+      id: 'app.cmd.navigate.settings',
+      title: '打开设置',
+      description: '跳转到设置面板',
+      category: 'app',
+      shortcut: 'Ctrl + ,',
+      keywords: ['settings', 'preferences'],
+      icon: IconSettings,
+    },
+    {
+      id: 'app.cmd.navigate.commands',
+      title: '命令管理',
+      description: '打开自定义命令面板',
+      category: 'app',
+      shortcut: 'Ctrl + ;',
+      keywords: ['commands'],
+      icon: Terminal,
+    },
+    {
+      id: 'app.cmd.quit',
+      title: '退出 MonoTools',
+      description: '关闭主程序',
+      category: 'app',
+      shortcut: 'Ctrl + Q',
+      keywords: ['quit', 'exit'],
+      icon: LogOut,
+    },
+    {
+      id: 'app.cmd.show-hotkeys',
+      title: '快捷键列表',
+      description: '在搜索面板里展示所有快捷键',
+      category: 'app',
+      shortcut: '?',
+      keywords: ['shortcut', 'hotkey'],
+      icon: Keyboard,
+    },
+    {
+      id: 'theme.cmd.toggle',
+      title: '切换主题',
+      description: '在亮 / 暗主题间切换',
+      category: 'system',
+      keywords: ['theme', 'dark', 'light'],
+      icon: Sun,
+    },
+  ]
+}
+
+export const builtinCommandSpecs: CommandSpec[] = buildBuiltinCommandSpecs()

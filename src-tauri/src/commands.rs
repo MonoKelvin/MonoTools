@@ -337,3 +337,45 @@ pub async fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
 }
+
+/// 前端命令面板使用：列出全部已注册命令（含别名）。
+///
+/// 返回 `Vec<CommandSpec>` 序列化后的精简结构（与 Rust 端 [`crate::command::CommandSpec`] 字段对齐）。
+#[tauri::command]
+pub async fn list_command_specs() -> Result<serde_json::Value, String> {
+    use crate::command::build_default_registry;
+    let reg = build_default_registry();
+    let mut names = reg.names();
+    names.sort();
+    let mut specs: Vec<serde_json::Value> = Vec::with_capacity(names.len());
+    for name in names {
+        let Some(cmd) = reg.lookup(&name) else {
+            continue;
+        };
+        let spec = cmd.spec();
+        specs.push(serde_json::json!({
+            "name": spec.name,
+            "description": spec.description,
+            "aliases": spec.aliases,
+            "usage": spec.usage,
+        }));
+    }
+    Ok(serde_json::Value::Array(specs))
+}
+
+/// 前端命令面板使用：精确路由到后端命令。
+///
+/// 前端 `src/commands/store.ts::execute()` 唯一调用入口。
+#[tauri::command]
+pub async fn dispatch_command(
+    state: State<'_, Arc<AppState>>,
+    command_id: String,
+    args: Option<Vec<String>>,
+) -> Result<crate::command::CommandOutput, String> {
+    use crate::command::{registry_dispatch, CommandContext};
+    let ctx = CommandContext::from_app_state(&state);
+    let arg_list = args.unwrap_or_default();
+    registry_dispatch(&command_id, &arg_list, &ctx)
+        .await
+        .map_err(|e| e.to_string())
+}

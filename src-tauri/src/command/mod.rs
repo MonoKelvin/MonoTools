@@ -1,19 +1,26 @@
+//! MonoTools 命令系统：trait + registry + 9 个内置命令（search/launch/open/command/config/help/version/index/stats）。
+//!
+//! 命令归属说明：
+//! - 所有 `Command` 的实现、注册、派发都在 `src-tauri/src/command/` 内集中。
+//! - 前端 `src/commands/` 仅保留 UI metadata（spec 列表 + 响应键盘/菜单的 dispatch）。
+//!   - 每个 id 与后端命令一一对应；"执行" 全部委托给后端 Tauri IPC 命令。
+
 pub mod command_engine;
 pub mod command_registry;
 pub mod command_trait;
 
-pub mod cmd_search;
-pub mod cmd_launch;
-pub mod cmd_open;
 pub mod cmd_command;
 pub mod cmd_config;
 pub mod cmd_help;
-pub mod cmd_version;
 pub mod cmd_index;
+pub mod cmd_launch;
+pub mod cmd_open;
+pub mod cmd_search;
 pub mod cmd_stats;
+pub mod cmd_version;
 
 pub use command_engine::CommandEngine;
-pub use command_registry::CommandRegistry;
+pub use command_registry::{CommandRegistry, build_default_registry, dispatch, registry_dispatch};
 pub use command_trait::{Command, CommandSpec};
 
 pub use cmd_search::SearchCommand;
@@ -26,7 +33,6 @@ pub use cmd_version::VersionCommand;
 pub use cmd_index::IndexCommand;
 pub use cmd_stats::StatsCommand;
 
-pub use crate::command::command_registry::dispatch;
 pub use crate::repositories::settings_repo::SettingsRepo;
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -97,6 +103,7 @@ impl CommandContext {
         })
     }
 
+    /// 从全局 AppState 抽取命令执行所需的依赖：保留原 `from_app_state` 接口以兼容旧模块。
     pub fn from_app_state(state: &std::sync::Arc<crate::services::app_state::AppState>) -> Self {
         Self {
             app_search: state.app_search.clone(),

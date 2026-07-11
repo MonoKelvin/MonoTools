@@ -63,5 +63,5 @@ src-tauri/gen/
 *.orig
 
 # Test output
-src-tauri/tests/rust/output/
-src-tauri/tests/rust/data/
+tests/output/
+tests/data/

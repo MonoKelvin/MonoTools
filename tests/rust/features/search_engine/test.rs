@@ -4,40 +4,25 @@ use rand::prelude::*;
 
 use crate::common::logger::TestLogger;
 use crate::common::reporter::TestReporter;
+use crate::common::paths::{data_path, output_path, ensure_dir, timestamped_output_path};
 
 const MODULE_NAME: &str = "search_engine";
 
 fn base_dir() -> std::path::PathBuf {
-    let manifest_dir = env!("CARGO_MANIFEST_DIR");
-    std::path::PathBuf::from(manifest_dir)
-        .join("tests")
-        .join("rust")
-}
-
-fn data_path(module: &str, filename: &str) -> std::path::PathBuf {
-    base_dir().join("data").join(module).join(filename)
-}
-
-fn output_path(module: &str, filename: &str) -> std::path::PathBuf {
-    base_dir().join("output").join(module).join(filename)
+    // 保留以兼容旧调用方；新代码请直接用 `data_path` / `output_path`。
+    crate::common::paths::tests_root()
 }
 
 fn log_dir_path(module: &str) -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("output")
-        .join(module)
-}
-
-fn ensure_dir(path: &std::path::PathBuf) {
-    if !path.exists() {
-        let _ = std::fs::create_dir_all(path);
-    }
+    crate::common::paths::output_dir(module)
 }
 
 fn timestamped_filename(base: &str, ext: &str) -> String {
-    let ts = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
-    format!("{}_{}.{}", base, ts, ext)
+    timestamped_output_path(MODULE_NAME, base, ext)
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn get_test_db_path() -> std::path::PathBuf {
@@ -48,7 +33,9 @@ fn get_test_db_path() -> std::path::PathBuf {
 }
 
 fn cleanup_test_data() {
-    let data_dir = data_path(MODULE_NAME, "");
+    use std::path::PathBuf;
+    use crate::common::paths::data_dir;
+    let data_dir = data_dir(MODULE_NAME);
     if data_dir.exists() {
         if let Ok(entries) = std::fs::read_dir(&data_dir) {
             for entry in entries.flatten() {
@@ -184,9 +171,10 @@ pub async fn run_search_engine_tests() {
             reporter.add_test("引擎创建");
             reporter.finish_test("引擎创建", false, 0, &msg);
             reporter.print();
-            reporter.save(&output_path(
+            reporter.save(&timestamped_output_path(
                 MODULE_NAME,
-                &timestamped_filename("summary", "txt"),
+                "summary",
+                "txt",
             ));
             return;
         }
@@ -229,9 +217,10 @@ pub async fn run_search_engine_tests() {
     if !t1.passed || t1.total_files == 0 {
         logger.warn("索引构建失败或为空，终止后续测试");
         reporter.print();
-        reporter.save(&output_path(
+        reporter.save(&timestamped_output_path(
             MODULE_NAME,
-            &timestamped_filename("summary", "txt"),
+            "summary",
+            "txt",
         ));
         return;
     }
@@ -312,9 +301,10 @@ pub async fn run_search_engine_tests() {
 
     let output_dir = output_path(MODULE_NAME, "");
     ensure_dir(&output_dir);
-    reporter.save(&output_path(
+    reporter.save(&timestamped_output_path(
         MODULE_NAME,
-        &timestamped_filename("summary", "txt"),
+        "summary",
+        "txt",
     ));
 
     let (passed, failed) = reporter.summary();

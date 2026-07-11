@@ -100,3 +100,20 @@ export const shellApi = {
         return call<void>('execute_result', { item: { action: { Open: path } } })
     },
 }
+
+export const commandSpecsApi = {
+    /** 列出后端已注册命令的所有 spec（id + description + aliases + usage） */
+    list(): Promise<Array<{ name: string; description?: string; aliases?: string[]; usage?: string }>> {
+        return call<Array<{ name: string; description?: string; aliases?: string[]; usage?: string }>>(
+            'list_command_specs',
+            {},
+        )
+    },
+    /** 按 id 路由到后端命令执行；args 是字符串数组 */
+    dispatch(commandId: string, args?: string[]): Promise<{ success: boolean; message: string; data?: unknown }> {
+        return call<{ success: boolean; message: string; data?: unknown }>(
+            'dispatch_command',
+            { commandId, args: args ?? [] },
+        )
+    },
+}

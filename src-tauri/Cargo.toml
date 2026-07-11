@@ -71,3 +71,15 @@ windows-sys = { version = "0.61", features = [
 # this feature is used for production builds or when `devUrl` points to the filesystem
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
+
+# Integration tests live at the repo root under `tests/`. Each `[[test]]`
+# entry points at a file inside `tests/` while `CARGO_MANIFEST_DIR` still
+# resolves to `src-tauri/`; the helper code inside `./tests/rust/common/...`
+# walks one level up to locate `<repo>/tests/rust`.
+[[test]]
+name = "run"
+path = "../tests/run.rs"
+
+[[test]]
+name = "all_tests"
+path = "../tests/run.rs"

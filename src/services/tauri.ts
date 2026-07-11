@@ -51,6 +51,19 @@ async function mockBackend<T>(cmd: string, args?: Record<string, unknown>): Prom
       return true as T
     case 'list_commands':
       return [] as T
+    case 'list_command_specs': {
+      const specs = [
+        { name: 'search', description: '搜索', aliases: ['s', 'find'], usage: 'search <query>' },
+        { name: 'launch', description: '启动', aliases: ['run', 'open-app'], usage: 'launch <name>' },
+        { name: 'open', description: '打开', aliases: [], usage: 'open <path>' },
+        { name: 'config', description: '配置', aliases: ['cfg', 'setting'], usage: 'config' },
+        { name: 'help', description: '帮助', aliases: ['-h', '--help'], usage: 'help' },
+        { name: 'version', description: '版本', aliases: ['-v', '--version'], usage: 'version' },
+      ] as unknown as T
+      return specs
+    }
+    case 'dispatch_command':
+      return { success: true, message: 'mock', data: undefined } as T
     case 'show_search_window':
       return true as T
     case 'hide_search_window':

@@ -333,10 +333,14 @@ chore: 构建/工具链
 
 ### 测试
 
-- **后端测试**: 使用 `pnpm test:rust` 运行
-- **前端测试**: 使用 `pnpm test` 运行 Vitest
-- **测试框架**: 位于 `src-tauri/tests/`，包含测试报告生成器和路径验证工具
-- **新增测试**: 参考 `src-tauri/tests/SKILL.md` 测试框架规范
+- **后端测试**: `pnpm test:rust` 运行 cargo 集成测试，输出位于 `tests/rust/output/<module>/`
+- **前端测试**: `pnpm test` 运行 Vitest（`tests/ui/**/*.test.ts`）
+- **测试目录**: 全部统一在根 `tests/` 下，按语言 / 子项目分流。详见 [tests/README.md](tests/README.md)
+- **新增测试**: 参考 [tests/SKILL.md](tests/SKILL.md)（Rust + UI 双侧规范）
+
+### 命令总线
+
+所有 UI 动作（键盘 / 上下文菜单 / 全局快捷键）都通过 `commandRegistry.execute(id)` 分发，统一在 `src/commands/`。详见 [docs/COMMANDS.md](docs/COMMANDS.md)。
 
 ---
 

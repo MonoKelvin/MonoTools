@@ -6,5 +6,7 @@ export {
   themeApi,
   windowApi,
   pinTopApi,
+  shellApi,
+  commandSpecsApi,
 } from './api'
 export { isTauri } from './env'

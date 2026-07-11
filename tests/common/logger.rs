@@ -1,3 +1,25 @@
+//! MonoTools 测试日志器：把模块化的运行日志同时写到 stdout 与 `tests/output/<module>/log_<ts>.txt`。
+//!
+//! ## 典型用法
+//!
+//! ```rust
+//! use monotools_tests::logger::TestLogger;
+//! use monotools_tests::paths::output_dir;
+//!
+//! let mut logger = TestLogger::new("search_engine", &output_dir("search_engine"));
+//! logger.section("测试初始化");
+//! logger.info("引擎已就绪");
+//! logger.warn("可选路径未配置");
+//! ````
+//!
+//! 日志文件命名：`log_<YYYYMMDD_HHMMSS>.txt`，格式：
+//!
+//! ```text
+//! [YYYY-MM-DD HH:MM:SS] [module_name] [LEVEL] message
+//! ```
+//!
+//! `section` / `subsection` 写加分隔线，便于人眼读取。
+
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;

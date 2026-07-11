@@ -1,3 +1,20 @@
+//! 视觉更花哨的测试报告器：表盘样式边框、彩色的 ✓/✗、测试 / 表格 / 详情聚合。
+//!
+//! 适用场景：在 cargo test 输出需要更醒目摘要时使用。文件保存会自动剥离 ANSI 颜色。
+//!
+//! ## 典型用法
+//!
+//! ```rust
+//! use monotools_tests::reporter::TestReporter;
+//! use monotools_tests::paths::timestamped_output_path;
+//!
+//! let mut reporter = TestReporter::new("search_engine");
+//! reporter.add_test("索引构建");
+//! reporter.finish_test("索引构建", true, 1234, "成功");
+//!
+//! reporter.save(&timestamped_output_path("search_engine", "summary", "txt"));
+//! ```
+
 use std::path::PathBuf;
 
 pub struct TestReporter {
@@ -26,7 +43,13 @@ pub struct SearchStats {
 }
 
 impl SearchStats {
-    pub fn new(query: &str, total_results: usize, valid_count: usize, avg_time_ms: u64, match_type: &str) -> Self {
+    pub fn new(
+        query: &str,
+        total_results: usize,
+        valid_count: usize,
+        avg_time_ms: u64,
+        match_type: &str,
+    ) -> Self {
         SearchStats {
             query: query.to_string(),
             total_results,
@@ -148,17 +171,27 @@ impl TestReporter {
 
         output.push('\n');
         output.push_str(&"╔════════════════════════════════════════════════════════════════════════════════╗\n");
-        output.push_str(&format!("║ {:^76} ║\n", format!("{} 测试报告", self.module_name)));
+        output.push_str(&format!(
+            "║ {:^76} ║\n",
+            format!("{} 测试报告", self.module_name)
+        ));
         output.push_str(&"╠════════════════════════════════════════════════════════════════════════════════╣\n");
         output.push_str(&format!("║ 输出时间: {:<63} ║\n", self.timestamp));
-        output.push_str(&format!("║ 总耗时:   {:<63} ║\n", format!("{}ms", total_time_ms)));
+        output.push_str(&format!(
+            "║ 总耗时:   {:<63} ║\n",
+            format!("{}ms", total_time_ms)
+        ));
         output.push_str(&format!("║ 测试总数: {:<63} ║\n", total));
         output.push_str(&format!(
             "║ 通过:     {:<63} ║\n",
             format!(
                 "{} ({:.1}%)",
                 passed,
-                if total > 0 { passed as f64 / total as f64 * 100.0 } else { 0.0 }
+                if total > 0 {
+                    passed as f64 / total as f64 * 100.0
+                } else {
+                    0.0
+                }
             )
         ));
         output.push_str(&format!(
@@ -166,7 +199,11 @@ impl TestReporter {
             format!(
                 "{} ({:.1}%)",
                 failed,
-                if total > 0 { failed as f64 / total as f64 * 100.0 } else { 0.0 }
+                if total > 0 {
+                    failed as f64 / total as f64 * 100.0
+                } else {
+                    0.0
+                }
             )
         ));
         output.push_str(&"╠════════════════════════════════════════════════════════════════════════════════╣\n");
@@ -184,7 +221,11 @@ impl TestReporter {
             ));
             output.push_str(&"╠────────────────────────────────────────────────────────────────────────────────╣\n");
 
-            output.push_str(&format!("║   耗时: {}ms                        状态: {} ║\n", test.duration_ms, if test.passed { "通过" } else { "失败" }));
+            output.push_str(&format!(
+                "║   耗时: {}ms                        状态: {} ║\n",
+                test.duration_ms,
+                if test.passed { "通过" } else { "失败" }
+            ));
 
             if !test.message.is_empty() {
                 let lines = self.wrap_text(&test.message, 74);
@@ -260,7 +301,11 @@ impl TestReporter {
     }
 
     pub fn save(&self, path: &PathBuf) {
-        let content = self.generate().replace("\x1b[32m", "").replace("\x1b[31m", "").replace("\x1b[0m", "");
+        let content = self
+            .generate()
+            .replace("\x1b[32m", "")
+            .replace("\x1b[31m", "")
+            .replace("\x1b[0m", "");
         let _ = std::fs::write(path, content);
     }
 }

@@ -1,3 +1,6 @@
+//! 简易测试报告 + 结果表。轻量版 reporter：单纯累积若干 section / item；
+//! 若需要更花哨的边框 + 染色版本见 [`crate::reporter::TestReporter`]。
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 
@@ -75,7 +78,12 @@ impl TestReport {
 
             let max_label_len = section.items.iter().map(|i| i.label.len()).max().unwrap_or(0);
             for item in &section.items {
-                output.push_str(&format!("{:<width$}:{}\n", item.label, item.value, width = max_label_len));
+                output.push_str(&format!(
+                    "{:<width$}:{}\n",
+                    item.label,
+                    item.value,
+                    width = max_label_len
+                ));
             }
         }
 
@@ -88,6 +96,7 @@ impl TestReport {
     }
 }
 
+/// 简单 `{test_name: result}`：在测试体里直接 `add_result(name, pass, msg, dur)` 调用。
 pub struct TestResults {
     results: HashMap<String, TestResult>,
 }
@@ -106,11 +115,14 @@ impl TestResults {
     }
 
     pub fn add_result(&mut self, test_name: &str, passed: bool, message: &str, duration_ms: u64) {
-        self.results.insert(test_name.to_string(), TestResult {
-            passed,
-            message: message.to_string(),
-            duration_ms,
-        });
+        self.results.insert(
+            test_name.to_string(),
+            TestResult {
+                passed,
+                message: message.to_string(),
+                duration_ms,
+            },
+        );
     }
 
     pub fn summary(&self) -> (usize, usize) {
@@ -125,13 +137,21 @@ impl TestResults {
 
         let mut output = format!("测试结果汇总\n");
         output.push_str(&"=".repeat(60));
-        output.push_str(&format!("\n总测试数: {}\n通过: {}\n失败: {}\n", total, passed, failed));
+        output.push_str(&format!(
+            "\n总测试数: {}\n通过: {}\n失败: {}\n",
+            total, passed, failed
+        ));
         output.push_str(&"-".repeat(60));
         output.push('\n');
 
         for (name, result) in &self.results {
             let status = if result.passed { "✓" } else { "✗" };
-            output.push_str(&format!("{} {} ({:.2}ms)\n", status, name, result.duration_ms as f64 / 1_000_000.0));
+            output.push_str(&format!(
+                "{} {} ({:.2}ms)\n",
+                status,
+                name,
+                result.duration_ms as f64 / 1_000_000.0
+            ));
             if !result.message.is_empty() {
                 output.push_str(&format!("  {}\n", result.message));
             }

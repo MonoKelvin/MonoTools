@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { commandApi } from '@/services'
-import { Zap, Trash2, Plus, Play } from "@lucide/vue"
+import { useCommandsStore } from '@/commands'
+import { Zap, Trash2, Plus, Play } from '@lucide/vue'
 import type { CustomCommand } from '@/types/command'
 import MtCard from '@/components/common/MtCard.vue'
 import MtButton from '@/components/common/MtButton.vue'
@@ -15,6 +16,8 @@ const form = ref({
   args: '',
   runAsAdmin: false,
 })
+
+const commandsStore = useCommandsStore()
 
 const load = async () => {
   items.value = (await commandApi.list()) as CustomCommand[]
@@ -43,9 +46,16 @@ const submit = async () => {
 }
 
 const runCmd = async (id: string) => await commandApi.run(id)
-const remove = async (id: string) => { await commandApi.remove(id); await load() }
+const remove = async (id: string) => {
+  await commandApi.remove(id)
+  await load()
+}
 
-onMounted(load)
+onMounted(async () => {
+  // 后端命令由 commands store 单独拉取，这里只管用户自定义命令
+  await commandsStore.loadFromBackend().catch(() => undefined)
+  await load()
+})
 </script>
 
 <template>

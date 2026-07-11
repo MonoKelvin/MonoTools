@@ -1,104 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import type { SearchResult } from '@/types/search'
-
-// --- Canvas-based pixel width measurement (cached) ---
-const _canvas = document.createElement('canvas')
-const _ctx = _canvas.getContext('2d')!
-const _cwCache = new Map<string, number>()
-
-function getCW(ch: string, font: string): number {
-  const key = ch + '\x00' + font
-  const hit = _cwCache.get(key)
-  if (hit !== undefined) return hit
-  const w = _ctx.measureText(ch).width
-  _cwCache.set(key, w)
-  return w
-}
-
-function textW(text: string, font: string): number {
-  let w = 0
-  for (let i = 0; i < text.length; i++) w += getCW(text[i], font)
-  return w
-}
-
-const ELLIPSIS = '...'
-const ELLIPSIS_W = (() => {
-  const w = textW(ELLIPSIS, '14px sans-serif')
-  _cwCache.set('...\x0014px sans-serif', w)
-  return w
-})()
-
-// Pre-compute prefix/suffix width arrays for O(1) lookup
-function buildWidthArrays(text: string, font: string): { pref: number[]; suff: number[] } {
-  const pref = new Array(text.length + 1)
-  const suff = new Array(text.length + 1)
-  pref[0] = 0
-  for (let i = 0; i < text.length; i++) pref[i + 1] = pref[i] + getCW(text[i], font)
-  suff[text.length] = 0
-  for (let i = text.length - 1; i >= 0; i--) suff[i] = suff[i + 1] + getCW(text[i], font)
-  return { pref, suff }
-}
-
-// Binary search: find max left chars such that pref[left] + ellipsisW + suff[text.length - left] <= maxW
-function maxLeftFit(maxW: number, textLen: number, pref: number[], suff: number[]): number {
-  if (maxW <= 0) return 0
-  let lo = 0, hi = Math.floor(textLen / 2)
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1
-    if (pref[mid] + ELLIPSIS_W + suff[textLen - mid] <= maxW) lo = mid
-    else hi = mid - 1
-  }
-  return lo
-}
-
-// --- Middle ellipsis truncation using pixel width ---
-function truncateMiddle(text: string, maxWidth: number, font: string): string {
-  if (maxWidth <= 0) return ELLIPSIS
-  if (textW(text, font) <= maxWidth) return text
-  if (maxWidth <= ELLIPSIS_W) return ELLIPSIS
-
-  const { pref, suff } = buildWidthArrays(text, font)
-  const n = text.length
-  const left = maxLeftFit(maxWidth, n, pref, suff)
-  if (left <= 0) return ELLIPSIS
-
-  return text.substring(0, left) + ELLIPSIS + text.substring(n - left)
-}
-
-// --- Path truncation: preserve drive letter + filename, truncate middle ---
-function truncatePathMiddle(path: string, maxWidth: number, font: string): string {
-  if (maxWidth <= 0) return ELLIPSIS
-  if (textW(path, font) <= maxWidth) return path
-  if (maxWidth <= ELLIPSIS_W) return ELLIPSIS
-
-  const parts = path.split('\\')
-  if (parts.length <= 2) return truncateMiddle(path, maxWidth, font)
-
-  const drive = parts[0] + '\\'
-  const filename = parts[parts.length - 1]
-  const driveW = textW(drive, font)
-  const fileW = textW(filename, font)
-
-  // If even drive + ellipsis + filename doesn't fit, fall back to full middle truncation
-  if (driveW + ELLIPSIS_W + fileW >= maxWidth) {
-    const fileAvail = maxWidth - driveW - ELLIPSIS_W
-    if (fileAvail <= ELLIPSIS_W) return truncateMiddle(path, maxWidth, font)
-    return drive + ELLIPSIS + truncateMiddle(filename, fileAvail, font)
-  }
-
-  // Try to include middle directories
-  const middleParts = parts.slice(1, parts.length - 1)
-  const middleStr = middleParts.join('\\')
-  const middleAvail = maxWidth - driveW - ELLIPSIS_W - fileW
-
-  if (textW(middleStr, font) <= middleAvail) {
-    return drive + middleStr + '\\' + filename
-  }
-
-  // Truncate the middle part
-  return drive + truncateMiddle(middleStr, middleAvail, font) + '\\' + filename
-}
+import { textW, truncateMiddle, truncatePathMiddle } from '@/utils/text'
 
 // --- Component ---
 const props = defineProps<{
@@ -119,44 +22,46 @@ const subtitleRef = ref<HTMLElement | null>(null)
 let ro: ResizeObserver | null = null
 
 function applyTruncation() {
-  const contentEl = contentRef.value
   const titleEl = titleRef.value
   const subtitleEl = subtitleRef.value
-  if (!contentEl || !titleEl) return
+  if (!titleEl) return
 
-  const maxW = contentEl.clientWidth
-  if (maxW <= 0) return
-
-  // Use content element's computed font for accurate measurement
-  const font = getComputedStyle(contentEl).font
-
-  // Title
-  const titleText = props.result.title
-  if (textW(titleText, font) > maxW) {
-    titleEl.textContent = truncateMiddle(titleText, maxW, font)
+  // Title — measure against the title node itself for tighter fit.
+  const titleFont = getComputedStyle(titleEl).font
+  const titleMax = titleEl.clientWidth
+  if (titleMax > 1) {
+    const titleText = props.result.title
+    titleEl.textContent = textW(titleText, titleFont) > titleMax - 1
+      ? truncateMiddle(titleText, titleMax, titleFont)
+      : titleText
   } else {
-    titleEl.textContent = titleText
+    titleEl.textContent = props.result.title
   }
 
-  // Subtitle
+  // Subtitle — same idea: use its own font and clientWidth.
   if (subtitleEl && props.result.subtitle) {
-    const subText = props.result.subtitle
-    if (textW(subText, font) > maxW) {
-      subtitleEl.textContent = truncatePathMiddle(subText, maxW, font)
+    const subFont = getComputedStyle(subtitleEl).font
+    const subMax = subtitleEl.clientWidth
+    if (subMax > 1) {
+      const subText = props.result.subtitle
+      subtitleEl.textContent = textW(subText, subFont) > subMax - 1
+        ? truncatePathMiddle(subText, subMax, subFont)
+        : subText
     } else {
-      subtitleEl.textContent = subText
+      subtitleEl.textContent = props.result.subtitle
     }
   }
 }
 
-watch(() => props.result, () => nextTick(applyTruncation))
+watch(() => props.result, () => nextTick(applyTruncation), { flush: 'post' })
 
 onMounted(async () => {
   await document.fonts.ready
   await nextTick()
-  if (!contentRef.value) return
+  const contentEl = contentRef.value
+  if (!contentEl) return
   ro = new ResizeObserver(() => requestAnimationFrame(applyTruncation))
-  ro.observe(contentRef.value)
+  ro.observe(contentEl)
   applyTruncation()
 })
 
@@ -305,6 +210,7 @@ import {
   overflow: hidden;
   white-space: nowrap;
   line-height: var(--leading-tight);
+  text-rendering: optimizeLegibility;
 }
 
 .result-item__subtitle {
@@ -314,6 +220,7 @@ import {
   font-family: var(--font-mono);
   overflow: hidden;
   white-space: nowrap;
+  text-rendering: optimizeLegibility;
 }
 
 .result-item--active .result-item__subtitle {

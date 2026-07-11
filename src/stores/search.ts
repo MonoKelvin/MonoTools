@@ -20,7 +20,7 @@ export const useSearchStore = defineStore('search', () => {
   const indexMessage = ref('')
   const indexStats = ref({ files: 0, apps: 0, commands: 0 })
 
-  let debounceHandle: number | null = null
+  let debounceHandle: ReturnType<typeof setTimeout> | null = null
 
   const filteredResults = computed(() => {
     if (activeCategory.value === 'all') return results.value
@@ -32,8 +32,8 @@ export const useSearchStore = defineStore('search', () => {
   function setQuery(next: string) {
     query.value = next
     selectedIndex.value = 0
-    if (debounceHandle) window.clearTimeout(debounceHandle)
-    debounceHandle = window.setTimeout(() => runSearch(), DEBOUNCE_MS)
+    if (debounceHandle) clearTimeout(debounceHandle)
+    debounceHandle = setTimeout(() => runSearch(), DEBOUNCE_MS)
   }
 
   async function runSearch(options?: Partial<SearchOptions>) {

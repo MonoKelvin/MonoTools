@@ -105,7 +105,10 @@ onUnmounted(() => {
         <Monitor :size="16" :stroke-width="1.5" />
         <h3>外观</h3>
       </div>
-      <p class="settings-panel__section-desc">当前始终使用深色主题（Raycast 设计语言）。</p>
+      <p class="settings-panel__section-desc">
+        Raycast 风格深色主题。所有交互元素均使用单一紫罗兰 accent。
+        间距、圆角与字阶遵循 [docs/UI_DESIGN-raycast.md](../../docs/UI_DESIGN-raycast.md)。
+      </p>
     </MtCard>
 
     <MtCard class="settings-panel__card">
@@ -192,7 +195,8 @@ onUnmounted(() => {
       </div>
       <p class="settings-panel__about">
         MonoTools v0.1.0<br />
-        轻量级系统效率工具 · 全局搜索 + 自定义命令
+        轻量级系统效率工具 · 全局搜索 + 自定义命令<br />
+        Tauri 2 + Vue 3 · 见 <code>README.md</code> · <code>docs/COMMANDS.md</code>
       </p>
     </MtCard>
   </div>

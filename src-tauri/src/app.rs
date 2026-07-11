@@ -272,6 +272,8 @@ pub mod app {
                 crate::commands::build_file_index,
                 crate::commands::get_index_status,
                 crate::commands::file_search,
+                crate::commands::list_command_specs,
+                crate::commands::dispatch_command,
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");
