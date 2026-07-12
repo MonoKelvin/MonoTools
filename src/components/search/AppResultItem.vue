@@ -9,11 +9,10 @@
  * - **更大标题字号 (14px / 600)**: 强化应用名识别度.
  * - **省略号截断**: 标题超出时自动 ... 显示.
  * - **内置玻璃风格工具提示**: 通过 v-tooltip 显示完整应用名.
- * - **懒加载图片**: 首屏外的图标使用 loading="lazy", 减少初始带宽.
  *
  * 与 ResultItem 共享选中态 / 悬停态 / 快捷键 ↵ 行为, 可直接在列表中替换.
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AppWindow, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/types/search'
 import { useAppIcon, type IconState } from '@/composables/useAppIcon'
@@ -43,6 +42,46 @@ const iconState = ref<IconState>({ kind: 'component', value: AppWindow })
 const imgReady = ref(false)
 
 /**
+ * imgReady 兜底 timer: 在以下场景, `<img>` 的 @load 事件可能丢失,
+ * 导致 imgReady 永远 = false → opacity 0 → 看上去是空白:
+ * - 虚拟列表 v-for 复用 DOM, src 字符串相同时 Chromium 短路不发 load
+ * - WebView2 内部 image state machine 与 DOM patch 顺序耦合
+ * - happy-dom 测试环境根本不实现 img loading
+ * - 缓存命中 + 相同 IconState 引用, Vue setter 跳过更新
+ *
+ * 因此: 每次进入 png/svg 路径时, 启动 350ms 兜底 timer.
+ * 若 @load 在这之前已触发, 提前 clearTimeout 取消兜底.
+ * 若 @load 丢失, 兜底强制显示 (浏览器解码失败也会以 broken image 形式出现,
+ * 至少 opacity = 1 让用户知道有东西在尝试渲染).
+ */
+let imgFallbackTimer: ReturnType<typeof setTimeout> | null = null
+function clearImgFallback() {
+  if (imgFallbackTimer) {
+    clearTimeout(imgFallbackTimer)
+    imgFallbackTimer = null
+  }
+}
+function scheduleImgFallback() {
+  clearImgFallback()
+  imgFallbackTimer = setTimeout(() => {
+    if (!imgReady.value) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[AppResultItem:img] @load timeout (350ms), force ready for id=${props.result?.id}`,
+      )
+      imgReady.value = true
+    }
+  }, 350)
+}
+
+/** 提取 src 字符串以便日志打印 (兼容 png/svg). */
+function srcOf(state: IconState | undefined): string | undefined {
+  if (!state) return undefined
+  if (state.kind === 'png' || state.kind === 'svg') return state.value
+  return undefined
+}
+
+/**
  * 工具提示: 选中态(active)下不显示, 避免键盘导航时 tooltip 跟随高亮
  * 持续闪现造成视觉干扰. 未选中且鼠标悬停时才显示完整应用名.
  */
@@ -64,25 +103,103 @@ let loadToken = 0
 async function refreshIcon() {
   // 用 token 防止 race: 快速切换结果时, 旧请求不应覆盖新结果
   const myToken = ++loadToken
+  // 清理上一次的兜底 timer
+  clearImgFallback()
+  // 诊断: 记录 input
+  // eslint-disable-next-line no-console
+  console.log(
+    `[AppResultItem:refresh] id=${props.result?.id} title="${props.result?.title}" ` +
+      `action=${JSON.stringify(props.result?.action)} ` +
+      `resultType=${props.result?.resultType}`,
+  )
   const next = await loadIcon(props.result)
-  if (myToken !== loadToken) return
+  if (myToken !== loadToken) {
+    // eslint-disable-next-line no-console
+    console.log(`[AppResultItem:refresh] token mismatch for id=${props.result?.id}, discarding`)
+    return
+  }
+
+  // 优化: 如果 next 与当前 iconState 完全相同 (引用相等 / 字符串相等),
+  // 跳过赋值 —— 避免 Vue setter 短路导致 <img>.src 不更新,
+  // 进而在 src 字符串相同时 Chromium 跳过 @load.
+  const prev = iconState.value
+  const isSame =
+    prev === next ||
+    (prev?.kind === next.kind &&
+      (prev.kind === 'component' ? prev.value === (next as any).value : prev.kind === 'monogram' ? prev.letter === (next as any).letter : prev.value === (next as any).value))
+  if (isSame && imgReady.value) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[AppResultItem:refresh] iconState unchanged for id=${props.result?.id}, skip`,
+    )
+    return
+  }
+
   iconState.value = next
+  // 诊断: 记录 output (用 next 自身, 不再读 iconState.value 避免混淆)
+  // eslint-disable-next-line no-console
+  console.log(
+    `[AppResultItem:refresh] -> kind=${next.kind} ` +
+      `src.length=${srcOf(next)?.length ?? 'N/A'} ` +
+      `srcHead="${srcOf(next)?.slice(0, 60) ?? 'component'}"`,
+  )
   // png / svg 用 <img> 加载, 完成后通过 @load 标记 ready
   if (next.kind === 'component' || next.kind === 'monogram') {
     imgReady.value = true
   } else {
+    // 先置 false 让 opacity: 0 占位, 等待 @load 或兜底 timer
     imgReady.value = false
+    // 关键: 等待 Vue 把 src 真正写到 DOM, 再启动兜底 timer.
+    // 否则 timer 触发时, src 还没赋值, 计时意义不对.
+    nextTick(() => {
+      // 验证 DOM 元素拿到了正确的 src
+      const img = document.querySelector(
+        `[data-app-result-id="${props.result?.id}"] img`,
+      ) as HTMLImageElement | null
+      // eslint-disable-next-line no-console
+      console.log(
+        `[AppResultItem:refresh] nextTick dom-check id=${props.result?.id} ` +
+          `img.src.head="${img?.src?.slice(0, 60) ?? 'NOT_FOUND'}" ` +
+          `naturalWidth=${img?.naturalWidth ?? 'N/A'}`,
+      )
+      // 如果 naturalWidth > 0 说明已经解码完成 (浏览器可能同步解码 data URL),
+      // 直接置 ready, 不用等 @load.
+      if (img && img.naturalWidth > 0) {
+        imgReady.value = true
+        return
+      }
+      scheduleImgFallback()
+    })
   }
 }
 
 onMounted(refreshIcon)
 watch(() => props.result?.id, refreshIcon)
+onBeforeUnmount(() => {
+  clearImgFallback()
+})
 
-function onImgLoad() { imgReady.value = true }
-function onImgError() {
+function onImgLoad(ev: Event) {
+  // eslint-disable-next-line no-console
+  console.log(
+    `[AppResultItem:img] @load id=${props.result?.id} ` +
+      `naturalWidth=${(ev.target as HTMLImageElement)?.naturalWidth ?? 'N/A'} ` +
+      `srcHead="${srcOf(iconState.value)?.slice(0, 60) ?? 'N/A'}"`,
+  )
+  imgReady.value = true
+  clearImgFallback()
+}
+function onImgError(ev: Event) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[AppResultItem:img] @error id=${props.result?.id} ` +
+      `srcHead="${srcOf(iconState.value)?.slice(0, 60) ?? 'N/A'}"`,
+    ev,
+  )
   // 图片加载失败, 降级到 Lucide 通用图标, 避免破图
   iconState.value = { kind: 'component', value: AppWindow }
   imgReady.value = true
+  clearImgFallback()
 }
 </script>
 
@@ -90,6 +207,7 @@ function onImgError() {
   <div
     :class="['app-result-item', { 'app-result-item--active': active }]"
     v-tooltip="tooltipOptions"
+    :data-app-result-id="result?.id"
   >
     <div class="app-result-item__icon">
       <img
@@ -99,7 +217,6 @@ function onImgError() {
         :class="{ 'app-result-item__img--ready': imgReady }"
         @load="onImgLoad"
         @error="onImgError"
-        loading="lazy"
         decoding="async"
         draggable="false"
         alt=""

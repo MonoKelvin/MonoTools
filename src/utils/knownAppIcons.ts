@@ -14,24 +14,25 @@
 
 import type { Component } from 'vue'
 import {
-  Monitor, AppWindow, Package, Terminal, FileText, Folder,
+  Monitor, AppWindow, Package, Terminal, FileText, Folder, FolderOpen,
   Music as MusicIcon, Image as ImageIcon, Video, Settings, Mail, Globe,
   MessageCircle, MessagesSquare, MessageSquare,
   Code, CodeXml, GitBranch,
   Cloud, CloudDownload,
-  BookOpen, NotebookPen, FileCode, FileArchive,
+  BookOpen, NotebookPen, FileCode, FileArchive, FileImage, FileVideo, FileMusic, FileSpreadsheet, FilePieChart,
   Calculator, Calendar, Clock,
   Gamepad2, Joystick, Sword,
   ShoppingCart, CreditCard, Wallet,
   Wrench,
-  Shield, Lock,
+  Shield, Lock, Key,
   Database, Server, HardDrive,
   TerminalSquare,
   Sparkles, Bot, Brain, Wand2,
   Headphones, Music2, Disc3, Radio, Mic,
   Play, Film, Tv, Clapperboard, Cast,
   Camera, Brush, Palette, PenTool, Pen,
-  FolderOpen, Newspaper, Bookmark, Map, MapPin, Activity, Boxes,
+  Newspaper, Bookmark, Map, MapPin, Activity, Boxes,
+  FileType, FileQuestion, Hash, StickyNote, File, Files,
 } from '@lucide/vue'
 import type { IconState } from '@/composables/useAppIcon'
 
@@ -253,6 +254,173 @@ export function fallbackIconForResultType(type: string): Component {
 }
 
 // ============================================================================
+// 按"文件类型/扩展名"给图标 —— 替代 monogram 的精确映射
+// ============================================================================
+
+/**
+ * 文件扩展名 → Lucide 组件 映射表.
+ * 优先于 resultType (因为 resultType 是后端归一化过的"大类", 扩展名能区分
+ * 同一类里的子类型, 比如 document 里的 .docx / .pdf / .xlsx).
+ *
+ * 命名: 大类图标 (FileText) 留作 default, 命中具体扩展名时用子类型图标
+ * (FileSpreadsheet / FileCode / FileArchive 等).
+ */
+const FILE_EXT_ICON: Array<[RegExp, Component]> = [
+  // === 目录 ===
+  [/^$/, Folder],
+
+  // === 代码 / 配置文件 ===
+  [/\.(ts|tsx|js|jsx|mjs|cjs|vue|svelte|astro|html?|css|scss|sass|less)$/i, FileCode],
+  [/\.(py|pyw|pyx|pyi|rpy)$/i, FileCode],
+  [/\.(rs|rlib|toml|cargo|lock)$/i, FileCode],
+  [/\.(go|mod|sum)$/i, FileCode],
+  [/\.(c|cc|cpp|cxx|h|hpp|hxx|hh|m|mm)$/i, FileCode],
+  [/\.(java|kt|ktm|scala|groovy|gradle|kts)$/i, FileCode],
+  [/\.(cs|fs|vb|sln|csproj|fsproj|vbproj)$/i, FileCode],
+  [/\.(php|php5|phtml|inc)$/i, FileCode],
+  [/\.(rb|erb|gemspec|ru)$/i, FileCode],
+  [/\.(swift|m|h|mm)$/i, FileCode],
+  [/\.(sh|bash|zsh|ksh|csh|fish|ps1|psm1|psd1|bat|cmd|nsi|ahk)$/i, FileCode],
+  [/\.(json|json5|jsonc|yaml|yml|toml|ini|cfg|conf|config|env|properties|xml|plist)$/i, FileCode],
+  [/\.(sql|dql|hql)$/i, Database],
+  [/\.(lua|vim|vimrc|nix|dockerfile|containerfile|makefile|cmake|gradle)$/i, FileCode],
+  [/\.(md|markdown|rst|adoc|tex|wiki)$/i, FileText],
+  [/\.(log|txt)$/i, FileText],
+
+  // === Office / 文档 ===
+  [/\.pdf$/i, FileText],
+  [/\.(doc|docx|odt|pages|rtf)$/i, FileText],
+  [/\.(xls|xlsx|xlsm|xlsb|ods|numbers|csv|tsv)$/i, FileSpreadsheet],
+  [/\.(ppt|pptx|pps|ppsx|odp|key)$/i, FilePieChart],
+  [/\.(note|notebook|one|onepkg)$/i, NotebookPen],
+
+  // === 媒体 - 图片 ===
+  [/\.(jpe?g|png|gif|webp|bmp|tiff?|heic|heif|ico|avif|jxl|raw|cr2|nef|orf|sr2|dng|arw|rw2|raf|svg|svgz)$/i, FileImage],
+
+  // === 媒体 - 视频 ===
+  [/\.(mp4|m4v|mkv|webm|mov|avi|wmv|flv|f4v|mpe?g|mp2|vob|ogv|3gp|3g2|mts|m2ts|ts|rm|rmvb|asf|amv)$/i, FileVideo],
+
+  // === 媒体 - 音频 ===
+  [/\.(mp3|m4a|aac|flac|wav|ogg|oga|opus|wma|alac|ape|aiff?|mka|caf|mid|midi|amr|awb)$/i, FileMusic],
+
+  // === 压缩包 ===
+  [/\.(zip|rar|7z|tar|gz|tgz|bz2|tbz|xz|txz|lz|lzma|lz4|zst|Z|cab|msp|msu|rpm|iso|img|dmg|wim|esd|deb|pkg|rpm|apk|ipa|appx|msix|jar|war|ear|apk|aar)$/i, FileArchive],
+
+  // === 字体 ===
+  [/\.(ttf|otf|woff2?|eot|ttc)$/i, FileType],
+
+  // === 可执行 / 安装包 ===
+  [/\.(exe|msi|bat|cmd|com|scr|pif|gadget|dll|sys|drv|bin|run|app|dmg|pkg|deb|rpm|apk|ipa|appx|msix|jar|jse|wsf|vbs)$/i, AppWindow],
+
+  // === 数据库 ===
+  [/\.(db|db3|sqlite|sqlite3|mdb|accdb|dbf)$/i, Database],
+]
+
+/**
+ * 应用结果类 → Lucide 组件 兜底.
+ * 用于 `category === 'apps'` 的项, 区分系统/UWP/普通应用.
+ */
+function appFallbackIcon(resultType: string | undefined, title: string, path: string): Component {
+  const t = `${title} ${path}`.toLowerCase()
+  // 系统自带
+  if (/powershell|pwsh/.test(t)) return TerminalSquare
+  if (/^cmd$|command prompt|命令提示符/.test(t)) return Terminal
+  if (/windows terminal/.test(t)) return TerminalSquare
+  if (/explorer|file explorer|此电脑|我的电脑|finder/.test(t)) return FolderOpen
+  if (/设置|settings|control panel|sysdm\.cpl/.test(t)) return Settings
+  if (/task manager|taskmgr|任务管理器/.test(t)) return Activity
+  if (/registry|regedit/.test(t)) return Wrench
+  if (/notepad|记事本/.test(t)) return FileText
+  if (/calculator|计算器|calc/.test(t)) return Calculator
+  if (/clock|闹钟|时间/.test(t)) return Clock
+  if (/calendar|日历/.test(t)) return Calendar
+  if (/mspaint|画图/.test(t)) return Palette
+  if (/snippingtool|截图工具|snip|screenshot/.test(t)) return Camera
+  if (/defragment|磁盘清理|磁盘碎片/.test(t)) return HardDrive
+  if (/task scheduler/.test(t)) return Calendar
+
+  switch (resultType) {
+    case 'system-app':
+      return Monitor
+    case 'uwp-app':
+      return Package
+    case 'command':
+      return Terminal
+    default:
+      return AppWindow
+  }
+}
+
+/**
+ * 按 resultType + 扩展名 给出最合适的 Lucide 文件类型图标.
+ *
+ * 与 `fallbackIconForResultType` 的区别:
+ * - 后端粗粒度 (document / image / video) → 精确扩展名 (xlsx / png / mp4)
+ * - 目录: FolderOpen (打开) 而非 Folder (静态)
+ * - 应用: 用 appFallbackIcon 区分 系统/UWP/普通
+ *
+ * 失败: 返回 File (通用占位, 不再返回 monogram 字母).
+ */
+export function iconForFileKind(result: { title?: string; subtitle?: string; category?: string; resultType?: string }): Component {
+  const title = result.title || ''
+  const subtitle = result.subtitle || ''
+  const path = subtitle || title
+  const resultType = result.resultType || ''
+
+  // === 应用类: 系统/UWP/普通 exe 用 appFallbackIcon ===
+  if (result.category === 'apps') {
+    return appFallbackIcon(resultType, title, path)
+  }
+
+  // === 命令类 ===
+  if (result.category === 'commands' || resultType === 'command') {
+    return Terminal
+  }
+
+  // === 目录: 用 FolderOpen (语义: 可点击进入) ===
+  if (resultType === 'directory') {
+    return FolderOpen
+  }
+
+  // === 取扩展名 (从 path 最后一段) ===
+  const lastSeg = path.split(/[\\/]/).pop() || ''
+  const dot = lastSeg.lastIndexOf('.')
+  // 没有扩展名 或扩展名为空 (例如 .gitignore) → 走 resultType 大类
+  let ext = ''
+  if (dot > 0 && dot < lastSeg.length - 1) {
+    ext = lastSeg.slice(dot + 1).toLowerCase()
+  }
+
+  // === 按扩展名查表 ===
+  if (ext) {
+    for (const [pattern, comp] of FILE_EXT_ICON) {
+      if (pattern.test('.' + ext) || (pattern.test(ext) && pattern.source.startsWith('\\.'))) {
+        return comp
+      }
+    }
+  }
+
+  // === resultType 大类兜底 ===
+  switch (resultType) {
+    case 'image': return FileImage
+    case 'video': return FileVideo
+    case 'audio': return FileMusic
+    case 'document': return FileText
+    case 'archive': return FileArchive
+    case 'executable': return AppWindow
+    case 'code': return FileCode
+    case 'pdf': return FileText
+    case 'spreadsheet': return FileSpreadsheet
+    case 'presentation': return FilePieChart
+    case 'font': return FileType
+    case 'design': return Palette
+    case 'other-file': return File
+    default:
+      return File
+  }
+}
+
+// ============================================================================
 // LobeHub UI 彩色图标 (可选方案)
 // ============================================================================
 
@@ -284,57 +452,6 @@ export function lobehubIconUrl(slug: string, variant: 'mono' | 'colorful' = 'col
 export {
   Monitor, AppWindow, Package, Terminal, FileText, Folder,
   MusicIcon, ImageIcon, Video, Settings, Mail, Globe,
-}
-
-// ============================================================================
-// 单字母 monogram 占位符 —— 当无任何图标 (Lucide + 后端 PNG + 静态命中
-// 全部失败) 时, 用一个字母 + 暖白底色的小方块作为视觉锚点.
-// ============================================================================
-
-/**
- * 从 title 抽取 monogram 单字母. 规则:
- *   - 优先取第一个字母 (英文 / 中文首字)
- *   - 空 title 时按 resultType 推断
- *   - 永远是单个字符, 大写, 可直接渲染.
- */
-export function getMonogram(title: string, resultType?: string): string {
-  const t = (title || '').trim()
-  if (t.length > 0) {
-    // 取第一个非空字符, 转大写
-    const first = t.charAt(0).toUpperCase()
-    // 中文 / 拉丁字符都直接返回
-    if (/[A-Z0-9\u4e00-\u9fff]/.test(first)) return first
-  }
-  // fallback by resultType
-  switch (resultType) {
-    case 'directory': return 'D'
-    case 'executable': return 'E'
-    case 'document': return 'F'
-    case 'image': return 'I'
-    case 'video': return 'V'
-    case 'audio': return 'A'
-    case 'archive': return 'Z'
-    case 'code': return 'C'
-    case 'pdf': return 'P'
-    default: return '?'
-  }
-}
-
-/**
- * 根据 title 哈希出一个稳定的 monogram 背景色 (低饱和度, 与单色 UI 协调).
- * 同一 title 永远得到同一颜色, 跨刷新稳定.
- */
-export function getMonogramColor(title: string): string {
-  let hash = 0
-  for (let i = 0; i < title.length; i++) {
-    hash = ((hash << 5) - hash) + title.charCodeAt(i)
-    hash |= 0
-  }
-  // 用 3 个低饱和度暖色: #f5f1e8 / #e8e5dc / #d8d4c8
-  const palette = [
-    'rgba(245, 241, 232, 0.18)', // warm white
-    'rgba(232, 229, 220, 0.22)', // beige
-    'rgba(216, 212, 200, 0.20)', // muted tan
-  ]
-  return palette[Math.abs(hash) % palette.length]
+  File, FileCode, FileArchive, FileImage, FileVideo, FileMusic, FileSpreadsheet, FilePieChart, FileType,
+  FolderOpen,
 }

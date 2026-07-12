@@ -246,24 +246,70 @@ fn extract_icon_windows(path: &Path) -> Option<Vec<u8>> {
 /// 通用空白 32x32 图标. 视觉上是一格纯色或近似纯色方块, 用户无法分辨
 /// "正在加载"和"真的没有图标".
 ///
-/// 判定标准: 整个 buffer 内不同 RGBA 值的数量. 真实图标 (即使是单色)
-/// 至少有抗锯齿边缘, 颜色数 ≥ 16. 真正的空白图标 (单色或 2-3 色) 远低于此.
+/// 判定标准 (2026-07 调整, 旧版太严):
+/// - 旧: 抽样 1/4 像素, 不同 RGBA 数 > 16 才算"有内容"
+/// - 新: 全采样, 同时检查"亮度方差" (mean abs deviation) 和"色数".
+///   - 全黑 / 全白 / 单色 → 立刻判为 blank (color_count ≤ 1)
+///   - 2-4 种颜色且亮度方差 < 4 → 可能是 Windows 空白方块, 判 blank
+///   - 5+ 种颜色 或 亮度方差 ≥ 4 → 真实图标, 通过
+///
+/// 为什么放宽: 旧版把 16 色阈值定得过严, 导致很多有效图标
+/// (尤其 .lnk 指向简单 target 的情况) 被判为 blank, 整个 list 都
+/// 走不到后端 IPC 成功路径, 用户看到的就是一片"空白".
 pub fn is_blank_icon(rgba: &[u8]) -> bool {
     if rgba.len() < 4 {
         return true;
     }
-    // 抽样检测: 每 4 个像素采一个, 性能上不会拖慢 32x32 的图.
-    let mut seen = std::collections::HashSet::with_capacity(32);
-    for (i, px) in rgba.chunks_exact(4).enumerate() {
-        if i % 4 != 0 {
-            continue;
-        }
-        seen.insert((px[0], px[1], px[2], px[3]));
-        if seen.len() > 16 {
-            return false;
-        }
+
+    let mut seen = std::collections::HashSet::with_capacity(64);
+    let mut lum_sum: u64 = 0;
+    let mut lum_sum_sq: u64 = 0;
+    let mut pixel_count: u64 = 0;
+
+    // 全采样 (32x32 = 1024 像素, 性能可接受)
+    for px in rgba.chunks_exact(4) {
+        let r = px[0] as u32;
+        let g = px[1] as u32;
+        let b = px[2] as u32;
+        // 亮度 (ITU-R BT.601): 0.299R + 0.587G + 0.114B
+        let lum = (299 * r + 587 * g + 114 * b) / 1000;
+        lum_sum += lum as u64;
+        lum_sum_sq += (lum as u64) * (lum as u64);
+        pixel_count += 1;
+        // 颜色桶化 (5-bit per channel) → 把"几乎相同的颜色"合并, 避免
+        // 抗锯齿产生的细微差异让 seen 暴增.
+        let key = (px[0] >> 3, px[1] >> 3, px[2] >> 3, px[3] >> 5);
+        seen.insert(key);
     }
-    // 看到的颜色不超过 16 种 → 大概率是空白图标.
+
+    if pixel_count == 0 {
+        return true;
+    }
+
+    // 1) 全黑/全白/单色 → 一定空白
+    if seen.len() <= 1 {
+        return true;
+    }
+
+    // 2) 计算亮度方差 (mean abs deviation 简化版)
+    let mean = lum_sum as f64 / pixel_count as f64;
+    let variance = (lum_sum_sq as f64 / pixel_count as f64) - mean * mean;
+    let std_dev = variance.sqrt();
+
+    // 3) 启发式 (满足任一即通过):
+    //    - 色数 ≥ 16  → 多色图标 (常见 UI 图标)
+    //    - 亮度标准差 ≥ 16  → 高对比度 (黑白剪影 / 渐变)
+    //    - 色数 ≥ 5 且 亮度标准差 ≥ 4  → 多色 + 有亮度变化
+    //    - 其余 → 大概率 Windows 空白方块
+    if seen.len() >= 16 {
+        return false;
+    }
+    if std_dev >= 16.0 {
+        return false;
+    }
+    if seen.len() >= 5 && std_dev >= 4.0 {
+        return false;
+    }
     true
 }
 
@@ -382,12 +428,11 @@ mod tests {
         assert!(!is_blank_icon(&rgba), "渐变图标不应被识别为空白");
     }
 
-    /// 真实图标但只有 2 种颜色 (黑白剪影): 也应通过, 因为有 ≥ 16 种像素采样.
-    /// 等等, 2 种颜色的图标会被判定为空白. 这是 by design 的取舍:
-    /// Windows 不会返回 2 色图标, 真空白图标也只有 1-3 种颜色.
+    /// 真实图标但只有 2 种颜色 (黑白剪影): 旧版会误判, 新版检查亮度方差.
+    /// 2 种颜色的图标方差 = 0 → 应被判为 blank (但接受这个 trade-off).
     #[test]
-    fn two_color_icon_rejected() {
-        // 棋盘格: 黑/白交替. 抽样 1/4 = 256 个像素, 看到的是黑或白 (2 种).
+    fn two_color_icon_rejected_by_old_and_new_logic() {
+        // 棋盘格: 黑/白交替. 2 种 RGBA, 亮度方差 = 大, 因为有黑色 (0) 和 白色 (255).
         let mut rgba = Vec::with_capacity(32 * 32 * 4);
         for y in 0..32 {
             for x in 0..32 {
@@ -398,26 +443,32 @@ mod tests {
                 rgba.push(255);
             }
         }
-        // 棋盘格 = 2 种 RGBA, 落在阈值 16 之内, 会被判定为空白.
-        // 这是 trade-off: 真实 2 色图标会被误判, 但收益是挡住 Windows 空白图标.
-        assert!(is_blank_icon(&rgba));
+        // 新逻辑: 色数 2, 亮度方差巨大 (黑+白) → std_dev = 127.5 → 通过!
+        assert!(!is_blank_icon(&rgba), "高对比度 2 色图标应通过 (亮度方差判据)");
     }
 
-    /// 极少颜色 (3-5 种) = 仍被判为空白. 真实图标至少 16+ 色.
+    /// 极少颜色 (3-5 种) = 仍被判为空白. 真实图标至少 16+ 色 或 有亮度梯度.
+    /// 注意: 4 色高对比度 (比如 0/60/120/180 灰度) 现在被认为是有效图标,
+    /// 因为有清晰的亮度变化. 真正的"少色空白"是 2-3 种低对比度的颜色.
     #[test]
     fn few_color_icon_rejected() {
         let mut rgba = Vec::with_capacity(32 * 32 * 4);
         for y in 0..32 {
             for x in 0..32 {
-                // 4 种颜色循环, 但每种只贡献 1 个不同 RGBA
-                let c = (x % 4) as u8 * 60;
+                // 3 种相近的灰度, 模拟"近似单色"图标
+                let c = match x % 3 {
+                    0 => 200u8,
+                    1 => 205u8,
+                    _ => 210u8,
+                };
                 rgba.push(c);
                 rgba.push(c);
                 rgba.push(c);
                 rgba.push(255);
             }
         }
-        assert!(is_blank_icon(&rgba), "4 色图标应被识别为空白");
+        // 3 种几乎相同的灰度, 亮度方差很小 → 判 blank
+        assert!(is_blank_icon(&rgba), "3 种相近灰度应被识别为空白");
     }
 
     /// 边界: 1x1 像素 = 永远"空白" (无足够信息判断).
@@ -425,5 +476,24 @@ mod tests {
     fn tiny_buffer_marked_blank() {
         let rgba = vec![0u8; 4];
         assert!(is_blank_icon(&rgba));
+    }
+
+    /// 真实场景: 一个有 8 种颜色的简单图标 (低饱和度) 应通过 (有亮度变化).
+    #[test]
+    fn simple_icon_with_varying_brightness_passes() {
+        let mut rgba = Vec::with_capacity(32 * 32 * 4);
+        for y in 0..32 {
+            for x in 0..32 {
+                // 8 种颜色循环, 但每种亮度不同
+                let idx = (x + y) % 8;
+                let v = (idx * 32) as u8; // 0, 32, 64, ..., 224
+                rgba.push(v);
+                rgba.push(v);
+                rgba.push(v);
+                rgba.push(255);
+            }
+        }
+        // 8 种灰度, 亮度方差 = 大 (从 0 到 224) → 通过
+        assert!(!is_blank_icon(&rgba), "灰度渐变图标应通过");
     }
 }

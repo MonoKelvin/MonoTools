@@ -1,9 +1,9 @@
 /**
- * useAppIcon 组合式函数测试 —— 覆盖 Section 4 的 monogram fallback + 缓存 + 批量加载.
+ * useAppIcon 组合式函数测试 —— 覆盖 Section 4 的 Lucide 兜底 + 缓存 + 批量加载.
  *
  * 关键验证点:
- * 1. 应用类型 → 全部失败时, 返回 'monogram' 状态.
- * 2. 非应用类型 (文件/命令) → 全部失败时, 返回 'component' 兜底.
+ * 1. 应用类型 → 全部失败时, 返回 Lucide 'component' (不再用 monogram).
+ * 2. 文件类型 → 按扩展名/resultType 给出精确 Lucide 图标.
  * 3. 同一 id 多次调用 → 命中缓存.
  * 4. loadIconsBatch 走 IPC 后写回缓存.
  * 5. 空 path 不触发 IPC, 直接 fallback.
@@ -44,12 +44,19 @@ function mk(over: Partial<SearchResult> = {}): SearchResult {
     subtitle: '',
     icon: null,
     category: 'apps',
-    resultType: 'exe-app',
+    resultType: 'user-app',
     action: { type: 'launch', data: 'C:\\path\\to\\app.exe' },
     score: 0.5,
     ...over,
   }
 }
+
+/**
+ * 真实有效的 1x1 红色 PNG 的 base64 编码 (96 chars).
+ * 用于 IPC 校验 ≥ 64 chars 阈值的测试, 防止短 base64 误判为无效.
+ */
+const VALID_PNG_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
 
 describe('useAppIcon', () => {
   beforeEach(() => {
@@ -64,16 +71,13 @@ describe('useAppIcon', () => {
     mockEnv.isTauri = false
   })
 
-  it('returns monogram for app result when all sources fail (non-Tauri)', async () => {
+  it('returns Lucide component fallback for app result when all sources fail (non-Tauri)', async () => {
     const { loadIcon } = useAppIcon()
     // 用一个不在 knownAppIcons 关键词表中的名字, 避免 lookupKnownIcon 命中
-    const result = mk({ id: 'app-1', title: 'RandomUnknown', category: 'apps', resultType: 'exe-app' })
+    const result = mk({ id: 'app-1', title: 'RandomUnknown', category: 'apps', resultType: 'user-app' })
     const state = await loadIcon(result)
-    expect(state.kind).toBe('monogram')
-    if (state.kind === 'monogram') {
-      expect(state.letter).toBe('R')
-      expect(typeof state.color).toBe('string')
-    }
+    // 不再用 monogram, 走 Lucide 通用 AppWindow
+    expect(state.kind).toBe('component')
   })
 
   it('returns Lucide component fallback for non-app result', async () => {
@@ -97,13 +101,66 @@ describe('useAppIcon', () => {
       resultType: 'system-app',
     })
     const state = await loadIcon(result)
-    // system-app 用 Lucide 兜底, 不用 monogram
+    // system-app 用 Lucide 兜底 (Monitor), 不用 monogram
+    expect(state.kind).toBe('component')
+  })
+
+  it('PDF file result uses FileText (not monogram) icon', async () => {
+    const { loadIcon } = useAppIcon()
+    const result = mk({
+      id: 'pdf-1',
+      title: 'report.pdf',
+      subtitle: 'C:\\Users\\MONO\\Documents\\report.pdf',
+      category: 'files',
+      resultType: 'document',
+    })
+    const state = await loadIcon(result)
+    expect(state.kind).toBe('component')
+  })
+
+  it('image file result uses FileImage icon', async () => {
+    const { loadIcon } = useAppIcon()
+    const result = mk({
+      id: 'img-1',
+      title: 'photo.png',
+      subtitle: 'C:\\Users\\MONO\\Pictures\\photo.png',
+      category: 'files',
+      resultType: 'image',
+    })
+    const state = await loadIcon(result)
+    expect(state.kind).toBe('component')
+  })
+
+  it('archive file result uses FileArchive icon', async () => {
+    const { loadIcon } = useAppIcon()
+    const result = mk({
+      id: 'zip-1',
+      title: 'project.zip',
+      subtitle: 'C:\\Users\\MONO\\Downloads\\project.zip',
+      category: 'files',
+      resultType: 'archive',
+    })
+    const state = await loadIcon(result)
+    expect(state.kind).toBe('component')
+  })
+
+  it('directory file result uses FolderOpen icon', async () => {
+    const { loadIcon } = useAppIcon()
+    const result = mk({
+      id: 'dir-1',
+      title: 'MyFolder',
+      subtitle: 'C:\\Users\\MONO\\Documents\\MyFolder',
+      category: 'files',
+      resultType: 'directory',
+    })
+    const state = await loadIcon(result)
     expect(state.kind).toBe('component')
   })
 
   it('caches result by id — second loadIcon returns same value (no extra IPC)', async () => {
     mockEnv.isTauri = true
-    vi.mocked(appIconApi.get).mockResolvedValue('iVBORw0KGgo=')
+    // 真实 1x1 PNG base64 (96 chars), 满足 useAppIcon 的 ≥ 64 chars 校验
+    vi.mocked(appIconApi.get).mockResolvedValue(VALID_PNG_BASE64)
     const { loadIcon } = useAppIcon()
     const result = mk({
       id: 'cache-1',
@@ -127,7 +184,8 @@ describe('useAppIcon', () => {
       action: { type: 'launch', data: '' },
     })
     const state = await loadIcon(result)
-    expect(state.kind).toBe('monogram') // 应用类, 无 path, 走 monogram
+    // 应用类, 无 path, 走 Lucide 通用 AppWindow, 不再用 monogram
+    expect(state.kind).toBe('component')
     expect(vi.mocked(appIconApi.get)).not.toHaveBeenCalled()
   })
 
@@ -140,7 +198,8 @@ describe('useAppIcon', () => {
 
   it('loadIconsBatch calls IPC and populates cache when in Tauri', async () => {
     mockEnv.isTauri = true
-    vi.mocked(appIconApi.getBatch).mockResolvedValueOnce(['iVBORw0KGgo=' /* fake base64 */, null])
+    // 真实 PNG base64, 满足 useAppIcon 的 ≥ 64 chars 校验
+    vi.mocked(appIconApi.getBatch).mockResolvedValueOnce([VALID_PNG_BASE64, null])
     const { loadIconsBatch, loadIcon } = useAppIcon()
     const items = [
       mk({ id: 'b-good', action: { type: 'launch', data: 'C:\\a.exe' } }),
@@ -151,9 +210,9 @@ describe('useAppIcon', () => {
     // 成功项 → png
     const good = await loadIcon(items[0])
     expect(good.kind).toBe('png')
-    // 失败项 → fallback (monogram for app)
+    // 失败项 → fallback (Lucide 组件, 不再用 monogram)
     const bad = await loadIcon(items[1])
-    expect(bad.kind).toBe('monogram')
+    expect(bad.kind).toBe('component')
   })
 
   it('loadIconsBatch deduplicates identical paths', async () => {
@@ -178,15 +237,16 @@ describe('useAppIcon', () => {
     ]
     await expect(loadIconsBatch(items)).resolves.toBeUndefined()
     // batch 失败后, 单个 loadIcon 仍能拿到 fallback (不挂)
+    // 现在统一走 Lucide 组件, 不再用 monogram
     const state = await loadIcon(items[0])
-    expect(['monogram', 'component']).toContain(state.kind)
+    expect(state.kind).toBe('component')
   })
 
   it('result with empty id returns fallback without throwing', async () => {
     const { loadIcon } = useAppIcon()
     const result = mk({ id: '', title: 'NoId' })
     const state = await loadIcon(result)
-    expect(['monogram', 'component']).toContain(state.kind)
+    expect(state.kind).toBe('component')
   })
 })
 
@@ -228,10 +288,11 @@ describe('useAppIcon — 监控 trace', () => {
       id: 'trace-fallback',
       title: 'SomeUnknown',
       category: 'apps',
-      resultType: 'exe-app',
+      resultType: 'user-app',
     })
     const state = await loadIcon(result)
-    expect(state.kind).toBe('monogram')
+    // 不再用 monogram, 走 Lucide 通用 AppWindow
+    expect(state.kind).toBe('component')
     const { useIconLog } = await import('@/stores/iconLog')
     const log = useIconLog()
     expect(log.counts.value.fallback).toBeGreaterThanOrEqual(1)
@@ -239,7 +300,8 @@ describe('useAppIcon — 监控 trace', () => {
 
   it('ipc 命中会让 counts.ipc 增长', async () => {
     mockEnv.isTauri = true
-    vi.mocked(appIconApi.get).mockResolvedValue('iVBORw0KGgo=')
+    // 真实 PNG base64, 满足 useAppIcon 的 ≥ 64 chars 校验
+    vi.mocked(appIconApi.get).mockResolvedValue(VALID_PNG_BASE64)
     const { loadIcon } = useAppIcon()
     const result = mk({
       id: 'trace-ipc',
@@ -254,7 +316,8 @@ describe('useAppIcon — 监控 trace', () => {
 
   it('resetTrace 后 counts 全部归零', async () => {
     mockEnv.isTauri = true
-    vi.mocked(appIconApi.get).mockResolvedValue('iVBORw0KGgo=')
+    // 真实 PNG base64, 满足 useAppIcon 的 ≥ 64 chars 校验
+    vi.mocked(appIconApi.get).mockResolvedValue(VALID_PNG_BASE64)
     const { loadIcon, resetTrace } = useAppIcon()
     await loadIcon(
       mk({

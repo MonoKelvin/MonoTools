@@ -23,7 +23,11 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.vue",
+    "tests/**/*.ts",
+    "tests/**/*.tsx",
+    "tests/**/*.vue",
     "vite.config.ts",
+    "vitest.config.ts",
     "tailwind.config.ts"
   ],
   "exclude": ["node_modules", "dist", "src-tauri"]

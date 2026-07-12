@@ -24,8 +24,7 @@ import type { SearchResult } from '@/types/search'
 import {
   lookupKnownIcon,
   fallbackIconForResultType,
-  getMonogram,
-  getMonogramColor,
+  iconForFileKind,
 } from '@/utils/knownAppIcons'
 import { lobehubFuzzyMatch } from '@/utils/lobehubIcons'
 import { appIconApi } from '@/services/api'
@@ -94,41 +93,38 @@ function extractPath(result: SearchResult): string {
 function makeFallback(result: SearchResult): IconState {
   let comp: Component
   try {
-    comp = fallbackIconForResultType(result.resultType)
+    // 优先用文件类型 → 图标 的精确映射 (按后端 resultType / 扩展名)
+    // 这样文件夹/图片/视频/音频/压缩包/代码/可执行文件 都有正确的视觉锚点,
+    // 不再退化为通用图标.
+    comp = iconForFileKind(result)
   } catch (e) {
     debugWarn('fallback-resolve', result, String(e))
-    comp = AppWindow
+    try {
+      comp = fallbackIconForResultType(result.resultType)
+    } catch (e2) {
+      debugWarn('fallback-resolve', result, String(e2))
+      comp = AppWindow
+    }
   }
   if (!comp) comp = AppWindow
   return { kind: 'component', value: comp }
 }
 
 /**
- * 单字母 monogram 占位符 —— 当无任何真实图标可用, 且 result 是一个
- * "应用" 类型结果 (让字母比通用窗口图标更有视觉识别度) 时使用.
- * 32x32 暖色背景 + 大写首字母, 与整体黑白灰 UI 协调.
- */
-function makeMonogram(result: SearchResult): IconState {
-  try {
-    const letter = getMonogram(result.title || '', result.resultType)
-    const color = getMonogramColor(result.title || result.id || '?')
-    return { kind: 'monogram', letter, color }
-  } catch (e) {
-    debugWarn('monogram-resolve', result, String(e))
-    return { kind: 'monogram', letter: '?', color: 'rgba(245, 241, 232, 0.18)' }
-  }
-}
-
-/**
- * 决定 fallback 形态: 应用类用 monogram (更强视觉锚点),
- * 其他类 (文件/命令/系统应用) 用 Lucide 通用组件.
+ * 决定 fallback 形态 —— 始终使用 Lucide 组件, **不再使用 monogram 单字母占位符**.
+ *
+ * 旧版选择: 应用类 → monogram (暖色背景 + 首字母), 其他类 → Lucide 通用.
+ * 问题: 字母占位符在结果列表里没有"这是应用"的语义, 视觉上和文件夹/图片
+ * 的 Lucide 图标不一致. 用户反馈: "请使用普通的 lucide 中的表示普通文件、
+ * 文件夹、图片等对应类型的图标, 不要使用名称字母".
+ *
+ * 新版策略:
+ * - 任何 category/resultType → 优先用 iconForFileKind 给出"按文件类型"的
+ *   精确图标 (Folder / Image / Video / Music / FileCode / FileArchive ...).
+ * - 应用类兜底: 系统应用 → Monitor, UWP → Package, 普通 exe → AppWindow.
+ * - 全部通过 component 路径, 零延迟, 风格统一.
  */
 function chooseFallback(result: SearchResult): IconState {
-  // 仅对"普通应用" (非系统/非 UWP) 用 monogram. 系统应用通常 Windows
-  // 自带合理图标, 用 Lucide 通用图标就够; 文件类用扩展名更合适.
-  if (result.category === 'apps' && result.resultType !== 'system-app' && result.resultType !== 'uwp-app') {
-    return makeMonogram(result)
-  }
   return makeFallback(result)
 }
 
@@ -230,17 +226,52 @@ export function useAppIcon() {
       // 2.3 后端 IPC 提取 PNG (仅在 Tauri 环境)
       if (isTauri && path) {
         try {
+          const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now()
           const base64 = await appIconApi.get(path)
-          if (base64 && typeof base64 === 'string' && base64.length > 0) {
+          const t1 = typeof performance !== 'undefined' ? performance.now() : Date.now()
+          // 诊断: 打印返回的 base64 长度 + 前后 40 字符
+          // eslint-disable-next-line no-console
+          console.log(
+            `[useAppIcon:ipc] path=${path} -> base64.length=${base64?.length ?? 'null'} ` +
+              `t=${(t1 - t0).toFixed(1)}ms ` +
+              `head="${(base64 ?? '').slice(0, 40)}" tail="${(base64 ?? '').slice(-20)}"`,
+          )
+          // === 严格校验返回的 base64 ===
+          // - 必须是 string, 长度 > 0
+          // - 长度至少 64 (32x32 RGBA PNG 大约 200-400 base64 chars, 64 是安全下限)
+          // - 必须只含 base64 合法字符 (A-Z a-z 0-9 + / =)
+          // 这些校验防止: (1) 后端错误返回空字符串被拼成无效 data URL
+          // (2) 后端返回非 PNG 数据, 浏览器解析失败
+          // (3) Unicode / 换行残留, Chromium 静默失败不发任何事件
+          if (typeof base64 !== 'string' || base64.length < 64) {
+            debugWarn(
+              'appIconApi-empty',
+              result,
+              `后端返回无效 base64: type=${typeof base64} length=${base64?.length ?? 'null'} (期望 ≥ 64)`,
+            )
+          } else if (!/^[A-Za-z0-9+/=]+$/.test(base64)) {
+            debugWarn(
+              'appIconApi-invalid',
+              result,
+              `base64 含有非法字符 (可能含换行/Unicode), length=${base64.length}`,
+            )
+          } else {
             // 后端返回纯 base64 字符串, 拼上 data URL 前缀
             trace.level = 'ipc'
             trace.note = path.length > 60 ? `…${path.slice(-60)}` : path
+            const dataUrl = `data:image/png;base64,${base64}`
+            // 诊断: 校验 data URL 长度 + 检查 PNG magic
+            const pngMagic = base64.startsWith('iVBORw0KGgo') // base64 of 89 50 4E 47 0D 0A 1A 0A
+            // eslint-disable-next-line no-console
+            console.log(
+              `[useAppIcon:ipc] dataUrl.length=${dataUrl.length}, ` +
+                `head="${dataUrl.slice(0, 60)}", pngMagic=${pngMagic}`,
+            )
             return {
               kind: 'png',
-              value: `data:image/png;base64,${base64}`,
+              value: dataUrl,
             } satisfies IconState
           }
-          debugWarn('appIconApi-empty', result, '后端返回 null/空字符串 (文件不存在 / 非 PE / 权限被拒)')
         } catch (e) {
           debugWarn('appIconApi-throw', result, String(e))
         }
@@ -339,17 +370,22 @@ export function useAppIcon() {
       for (let i = 0; i < targets.length; i++) {
         const t = targets[i]
         const raw = raws[i]
-        if (raw && typeof raw === 'string' && raw.length > 0) {
+        // 严格校验: 同单条路径, base64 必须合法
+        if (
+          typeof raw === 'string' &&
+          raw.length >= 64 &&
+          /^[A-Za-z0-9+/=]+$/.test(raw)
+        ) {
           const dataUrl = `data:image/png;base64,${raw}`
           const state: IconState = { kind: 'png', value: dataUrl }
           cache.set(t.item.id, Promise.resolve(state))
         } else {
-          // 后端返回空: 文件不存在 / 空白图标 / 提取失败
+          // 后端返回空 / 非法 base64: 文件不存在 / 空白图标 / 提取失败
           knownMissingPaths.add(t.path)
           debugWarn(
             'appIconApi-empty',
             t.item,
-            'batch 后端返回 null/空字符串',
+            `batch 后端返回无效 base64: type=${typeof raw} length=${(raw as any)?.length ?? 'null'} (期望 ≥ 64)`,
           )
           cache.set(t.item.id, Promise.resolve(chooseFallback(t.item)))
         }

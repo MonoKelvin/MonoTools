@@ -1,6 +1,13 @@
 import type { SearchResult } from '@/types/search'
 
-export function sortByScoreDesc(a: SearchResult, b: SearchResult): number {
+/**
+ * 按 score 降序比较. 入参 `a/b` 只需要含 `score?: number` 形状,
+ * 不强制必须是完整 SearchResult —— 让单测能用极简 `{ id, score }` 桩.
+ */
+export function sortByScoreDesc(
+  a: Pick<SearchResult, 'score'>,
+  b: Pick<SearchResult, 'score'>,
+): number {
   return (b.score ?? 0) - (a.score ?? 0)
 }
 

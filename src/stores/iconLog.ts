@@ -29,7 +29,7 @@ export type IconLogStage =
  * - known:    lookupKnownIcon 命中 (Lucide 组件 / 静态 SVG).
  * - lobehub:  LobeHub CDN 命中 (彩色 SVG data URL).
  * - ipc:      后端 appIconApi 命中 (PNG data URL).
- * - fallback: 走到兜底, 包含 monogram (无图标) 和 component (Lucide 通用).
+ * - fallback: 走到兜底, 一律用 Lucide 组件 (iconForFileKind), 不再是 monogram.
  */
 export type IconLogLevel = 'cache' | 'known' | 'lobehub' | 'ipc' | 'fallback'
 
