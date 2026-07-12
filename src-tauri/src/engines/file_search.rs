@@ -11,6 +11,7 @@
 //! 2. 利用 USN Journal 实现实时增量更新
 //! 3. 使用前缀索引优化搜索性能
 
+use crate::config::{fs as fs_cfg, search as search_cfg};
 use crate::error::Result;
 use crate::models::{FileResult, ResultType, SearchAction, SearchCategory, SearchResult};
 use crate::platform::windows::usn::{NtfsIndexer, UsnRecord};
@@ -21,12 +22,11 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
-const DB_NAME: &str = "monotools_file_index.db";
-
 /// 空查询时 (例如首屏未输入关键字), 后端一次性返回的最多文件数.
 /// 限制: 防止索引极大 (几十万文件) 时单次 IPC 序列化阻塞 UI.
 /// 经验值: 100k 索引时, 取 500 ≈ 200KB JSON, IPC < 30ms.
-const ALL_FILES_EMPTY_QUERY_CAP: u32 = 500;
+/// 常量集中在 `config::search::ALL_FILES_EMPTY_QUERY_CAP`.
+const ALL_FILES_EMPTY_QUERY_CAP: u32 = search_cfg::ALL_FILES_EMPTY_QUERY_CAP;
 
 pub struct FileSearchEngine {
     db: Arc<Mutex<Connection>>,
@@ -48,6 +48,14 @@ impl FileSearchEngine {
 
     pub fn new_with_db_path(db_path: PathBuf) -> Result<Self> {
         Self::new_with_db_path_and_roots(db_path, Vec::new())
+    }
+
+    /// 仅供测试: 构造一个空 engine (用临时 DB 路径, 不打开磁盘).
+    pub fn new_with_db_path_for_tests() -> Result<Self> {
+        use std::env::temp_dir;
+        let mut p = temp_dir();
+        p.push(format!("mt-test-{}.db", std::process::id()));
+        Self::new_with_db_path(p)
     }
 
     /**
@@ -161,8 +169,7 @@ impl FileSearchEngine {
     ///   - 新增 `index_state` 表为 USN 增量索引铺路
     ///   FTS5 schema 嵌入到索引结构, 不能 in-place 升级, 一律 delete + rebuild.
     fn db_needs_migration(path: &std::path::Path) -> bool {
-        const CURRENT_VERSION: i64 = 9;
-        const REQUIRED_PAGE_SIZE: i64 = 4096;
+        // CURRENT_VERSION / REQUIRED_PAGE_SIZE 取自 config::fs::*.
         let conn = match Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -172,24 +179,26 @@ impl FileSearchEngine {
         };
         let ver: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap_or(0);
         let psize: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap_or(0);
-        ver < CURRENT_VERSION || psize != REQUIRED_PAGE_SIZE
+        ver < fs_cfg::SCHEMA_VERSION || psize != fs_cfg::REQUIRED_PAGE_SIZE
     }
 
     fn init_db(conn: &Connection) -> Result<()> {
-        conn.execute_batch(
+        // PRAGMA 字面量全部来自 `config::fs::*` —— 改一处全工程生效.
+        // 与前端 `ICON_CONFIG.cache_size` 等常量建立跨前后端同步约定.
+        conn.execute_batch(&format!(
             r#"
             PRAGMA journal_mode=WAL;
             PRAGMA synchronous=NORMAL;
-            -- 负值 = KB 数; -65536 = 64 MB (旧值 -262144 = 256 MB, 内存过高).
-            PRAGMA cache_size=-65536;
+            -- 负值 = KB 数; 来自 fs::CACHE_SIZE_KB. 旧值 -262144 = 256 MB, 内存过高.
+            PRAGMA cache_size={};
             -- FILE: FTS5 重建时的排序临时表落盘, 避免在内存中堆积.
             PRAGMA temp_store=FILE;
-            -- 4 KB 页 (旧值 65536/64KB 是 DB 体积膨胀到 2GB 的主因: 内部碎片 16x).
-            PRAGMA page_size=4096;
-            -- 64 MB mmap (旧值 256 MB, 过高).
-            PRAGMA mmap_size=67108864;
-            -- 自动 checkpoint WAL, 防止 WAL 无限膨胀 (旧配置无此设置, WAL 达 5.4 GB).
-            PRAGMA wal_autocheckpoint=5000;
+            -- page_size 来自 fs::PAGE_SIZE (旧值 65536/64KB 是 DB 体积膨胀到 2GB 的主因).
+            PRAGMA page_size={};
+            -- 来自 fs::MMAP_SIZE_BYTES.
+            PRAGMA mmap_size={};
+            -- 来自 fs::WAL_AUTOCHECKPOINT, 防止 WAL 无限膨胀.
+            PRAGMA wal_autocheckpoint={};
             -- INCREMENTAL: 维护空闲页链表, 配合 finalize_batch_insert 中的
             -- PRAGMA incremental_vacuum 回收 DELETE/FTS5 rebuild 产生的空闲页.
             -- 必须在 CREATE TABLE 之前设置, 且仅对空库生效 (迁移会删除旧库重建).
@@ -243,9 +252,14 @@ impl FileSearchEngine {
                 updated_at INTEGER NOT NULL DEFAULT 0
             );
 
-            PRAGMA user_version = 9;
+            PRAGMA user_version = {};
             "#,
-        )?;
+            fs_cfg::CACHE_SIZE_KB,
+            fs_cfg::PAGE_SIZE,
+            fs_cfg::MMAP_SIZE_BYTES,
+            fs_cfg::WAL_AUTOCHECKPOINT,
+            fs_cfg::SCHEMA_VERSION,
+        ))?;
         Ok(())
     }
 
@@ -462,26 +476,26 @@ impl FileSearchEngine {
     fn should_skip_path(&self, record: &UsnRecord) -> bool {
         let name = record.file_name.to_lowercase();
 
+        // 1) 隐藏文件: .git / .vscode 例外, 其他以 . 开头 (含空扩展名) 一律跳过
         if name.starts_with('.') && !name.starts_with(".git") && !name.starts_with(".vscode") {
             return true;
         }
 
+        // 2) NTFS 系统流 ($MFT, $Bitmap 等) 跳过
         if name.starts_with('$') {
             return true;
         }
 
-        if name == "thumbs.db"
-            || name == "desktop.ini"
-            || name == "pagefile.sys"
-            || name == "hiberfil.sys"
-        {
+        // 3) 单一真源: 集中跳过名单 (thumbs.db / desktop.ini / pagefile.sys 等)
+        if fs_cfg::SKIP_NAMES.iter().any(|s| name == *s) {
             return true;
         }
 
+        // 4) 单一真源: 集中跳过路径片段 (winsxs / system32\config / recycle bin 等)
         let path_str = record.full_path.to_string_lossy().to_lowercase();
-        if path_str.contains("\\windows\\winsxs")
-            || path_str.contains("\\windows\\system32\\config")
-            || path_str.contains("\\windows\\softwaredistribution")
+        if fs_cfg::SKIP_PATH_FRAGMENTS
+            .iter()
+            .any(|frag| path_str.contains(*frag))
         {
             return true;
         }
@@ -921,52 +935,9 @@ impl FileSearchEngine {
         results
     }
 
-    /// 旧版"最近文件"实现: 无排序 `LIMIT N` 切片.
-    /// 当前未使用, 保留以备未来"最近 N 个访问"等场景. (2026-07 改用 [`Self::all_files`])
-    #[allow(dead_code)]
-    fn recent_files(&self, limit: u32) -> Vec<FileResult> {
-        let conn = self.db.lock();
-        let mut results = Vec::new();
-
-        let sql = r#"
-            SELECT d.full_path, f.name
-            FROM files f
-            JOIN dirs d ON d.id = f.dir_id
-            LIMIT ?1
-        "#;
-
-        if let Ok(mut stmt) = conn.prepare(sql) {
-            if let Ok(iter) = stmt.query_map(rusqlite::params![limit], |row| {
-                let dir_path: String = row.get(0)?;
-                let name: String = row.get(1)?;
-                let full_path = PathBuf::from(dir_path).join(&name);
-                let ext = name.rsplit('.').next().and_then(|e| {
-                    if e.len() < 5 && e.len() > 0 && !name.starts_with('.') {
-                        Some(e.to_string())
-                    } else {
-                        None
-                    }
-                });
-                Ok(FileResult {
-                    path: full_path,
-                    name,
-                    extension: ext,
-                    size: 0,
-                    modified_at: 0,
-                    is_directory: false,
-                    id: None,
-                })
-            }) {
-                results = iter.filter_map(|x| x.ok()).collect();
-            }
-        }
-
-        results
-    }
-
     /// 空查询时的"全量文件"列表: 按文件名排序, 取前 N 个, 让首屏
-    /// 默认展示可搜索/索引的全部文件 (而非 recent_files 那种无序片段).
-    /// N 通过 [`ALL_FILES_EMPTY_QUERY_CAP`] 限制, 防止索引极大时单帧 IPC 阻塞.
+    /// 默认展示可搜索/索引的全部文件. N 通过 [`ALL_FILES_EMPTY_QUERY_CAP`]
+    /// 限制, 防止索引极大时单帧 IPC 阻塞.
     fn all_files(&self, limit: u32) -> Vec<FileResult> {
         let conn = self.db.lock();
         let mut results = Vec::new();
@@ -1029,11 +1000,32 @@ impl FileSearchEngine {
     }
 }
 
+impl crate::engines::search_source::SearchSource for FileSearchEngine {
+    fn name(&self) -> &'static str {
+        "file"
+    }
+    fn category(&self) -> crate::models::SearchCategory {
+        crate::models::SearchCategory::Files
+    }
+    fn search(&self, query: &str, limit: u32) -> Vec<crate::models::SearchResult> {
+        self.search(query, limit)
+    }
+    fn search_after(&self, query: &str, after_id: i64, limit: u32) -> Vec<crate::models::SearchResult> {
+        self.search_after(query, after_id, limit)
+    }
+    fn total(&self) -> usize {
+        self.total()
+    }
+    fn category_weight(&self) -> f32 {
+        crate::config::search::CATEGORY_WEIGHT_FILES
+    }
+}
+
 fn get_db_path() -> PathBuf {
     if let Ok(app_data) = std::env::var("APPDATA") {
-        PathBuf::from(app_data).join("MonoTools").join(DB_NAME)
+        PathBuf::from(app_data).join("MonoTools").join(fs_cfg::DB_NAME)
     } else {
-        PathBuf::from(DB_NAME)
+        PathBuf::from(fs_cfg::DB_NAME)
     }
 }
 
@@ -1335,6 +1327,107 @@ mod tests {
             !FileSearchEngine::db_needs_migration(&db_path),
             "user_version=9 + page_size=4096 应跳过迁移"
         );
+    }
+
+    // === should_skip_path 单测 (验证单一真源 fs::SKIP_* 已生效) ===
+
+    fn make_engine_for_skip_tests() -> FileSearchEngine {
+        FileSearchEngine::new(vec![]).expect("构造 FileSearchEngine 应成功")
+    }
+
+    fn make_record(name: &str, path: &str) -> UsnRecord {
+        UsnRecord {
+            file_name: name.to_string(),
+            full_path: std::path::PathBuf::from(path),
+            file_reference_number: 0,
+            parent_file_reference: 0,
+            file_size: 0,
+            last_write_time: 0,
+            is_directory: false,
+            extension: None,
+            reason: crate::platform::windows::usn::UsnChangeReason::Modified,
+            usn: 0,
+        }
+    }
+
+    #[test]
+    fn should_skip_thumbs_db() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("thumbs.db", r"C:\Users\foo\Pictures\thumbs.db");
+        assert!(e.should_skip_path(&r), "thumbs.db 应被跳过");
+    }
+
+    #[test]
+    fn should_skip_desktop_ini() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("desktop.ini", r"C:\Windows\System32\desktop.ini");
+        assert!(e.should_skip_path(&r), "desktop.ini 应被跳过");
+    }
+
+    #[test]
+    fn should_skip_pagefile_sys() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("pagefile.sys", r"C:\pagefile.sys");
+        assert!(e.should_skip_path(&r), "pagefile.sys 应被跳过");
+    }
+
+    #[test]
+    fn should_skip_winsxs_path() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("manifest.txt", r"C:\Windows\Winsxs\manifest.txt");
+        assert!(e.should_skip_path(&r), r"\Windows\Winsxs 路径应被跳过");
+    }
+
+    #[test]
+    fn should_skip_system32_config_path() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("SYSTEM", r"C:\Windows\System32\config\SYSTEM");
+        assert!(e.should_skip_path(&r), r"system32\config 路径应被跳过");
+    }
+
+    #[test]
+    fn should_skip_softwaredistribution_path() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("data.dat", r"C:\Windows\SoftwareDistribution\data.dat");
+        assert!(e.should_skip_path(&r), "softwaredistribution 路径应被跳过");
+    }
+
+    #[test]
+    fn should_skip_recycle_bin_path() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("file.txt", r"C:\$Recycle.Bin\file.txt");
+        assert!(e.should_skip_path(&r), r"\$Recycle.Bin 路径应被跳过");
+    }
+
+    #[test]
+    fn should_not_skip_normal_files() {
+        let e = make_engine_for_skip_tests();
+        let r = make_record("readme.md", r"D:\projects\mono\readme.md");
+        assert!(!e.should_skip_path(&r), "正常文件不应被跳过");
+    }
+
+    #[test]
+    fn should_not_skip_git_dir() {
+        // .git 例外, 不应被跳过
+        let e = make_engine_for_skip_tests();
+        let r = make_record(".git", r"D:\projects\mono\.git");
+        assert!(!e.should_skip_path(&r), ".git 目录不应被跳过 (用户可能想搜)");
+    }
+
+    #[test]
+    fn should_not_skip_vscode_dir() {
+        // .vscode 例外
+        let e = make_engine_for_skip_tests();
+        let r = make_record(".vscode", r"D:\projects\mono\.vscode");
+        assert!(!e.should_skip_path(&r), ".vscode 目录不应被跳过");
+    }
+
+    #[test]
+    fn should_skip_ntfs_system_streams() {
+        // $MFT 等 NTFS 系统流
+        let e = make_engine_for_skip_tests();
+        let r = make_record("$MFT", r"C:\$MFT");
+        assert!(e.should_skip_path(&r), "NTFS 系统流 ($MFT) 应被跳过");
     }
 
     fn tempdir_in_target() -> std::path::PathBuf {

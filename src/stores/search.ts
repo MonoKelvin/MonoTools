@@ -3,6 +3,8 @@ import { computed, ref, watch } from 'vue'
 import type { SearchResult, SearchOptions } from '@/types/search'
 import { searchApi } from '@/services/searchApi'
 import { pinApi } from '@/services/api'
+import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS, SEARCH_LIMITS_VISIBLE } from '@/config'
+import { getFileKind } from '@/utils/fileKinds'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
@@ -11,13 +13,15 @@ export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
  * 输入防抖: 30ms. 既消除每键击穿的连发 IPC, 又几乎无感.
  * 0ms 时用户连打 "chrome" 6 个字符 = 6 次 IPC, 在弱机上会卡顿;
  * 30ms 是 "字符级" 体验的甜蜜点 (低于人眼可感知延迟).
+ *
+ * 常量值来自 `src/config/search.ts::SEARCH_DEBOUNCE_MS`, 集中管理.
  */
-const DEBOUNCE_MS = 30
+const DEBOUNCE_MS = SEARCH_DEBOUNCE_MS
 
 /** 固定项目最多展示多少个 (避免分组过高). */
-const PINNED_MAX = 8
+const PINNED_MAX = SEARCH_LIMITS_VISIBLE.pinnedMax
 /** 最近访问展示多少个. */
-const RECENT_MAX = 10
+const RECENT_MAX = SEARCH_LIMITS_VISIBLE.recentMax
 
 // ============================================================================
 // 分组 (group) 标识 —— 单一真源. VGR 和 store 共享同一组 ID, 确保
@@ -106,9 +110,6 @@ export const useSearchStore = defineStore('search', () => {
     if (activeCategory.value === 'all') return results.value
     return results.value.filter((r) => r.category === activeCategory.value)
   })
-
-  /** 兼容旧 API —— 历史 UI 顶部固定推荐位. */
-  const topResults = computed(() => filteredResults.value.slice(0, 8))
 
   /**
    * "固定项目" 分组: 仅含用户**手动** pin 的项. 不再从 launch_count 推算.
@@ -323,10 +324,7 @@ export const useSearchStore = defineStore('search', () => {
    * 注: 文件分组在未搜索状态下做了 `fileVisibleLimit` 截断, 避免 500+
    * 个 DOM 节点同屏 paint. hiddenCount 用来展示"显示更多 (+N)".
    */
-  const FILE_VISIBLE_INITIAL = 80
-  const FILE_VISIBLE_STEP = 50
-  const FILE_HARD_CAP = 1000
-  const fileVisibleLimit = ref(FILE_VISIBLE_INITIAL)
+  const fileVisibleLimit = ref<number>(SEARCH_LIMITS_VISIBLE.fileVisibleInitial)
 
   /**
    * 对 files 分组应用文件类型过滤: 仅保留命中 selectedFileKinds 的项.
@@ -334,51 +332,8 @@ export const useSearchStore = defineStore('search', () => {
    */
   function applyFileKindFilter(items: SearchResult[], kinds: Set<string>): SearchResult[] {
     if (kinds.size === 0) return items
-    // 匹配 FILE_KIND_DISPLAY_ORDER 中的 FileKind 值
+    // 统一调用 fileKinds.getFileKind, 避免在此处重复定义 typeMap / ext Set.
     return items.filter((r) => kinds.has(getFileKind(r)))
-  }
-
-  /** 从 SearchResult 推导 FileKind (用于文件类型过滤). */
-  function getFileKind(r: SearchResult): string {
-    // 优先 resultType (后端分类更准)
-    const typeMap: Record<string, string> = {
-      'directory': 'other',
-      'document': 'document',
-      'image': 'image',
-      'video': 'video',
-      'audio': 'audio',
-      'executable': 'executable',
-      'archive': 'archive',
-      'other-file': 'other',
-      'code': 'code',
-      'pdf': 'pdf',
-      'font': 'font',
-      'design': 'design',
-      'spreadsheet': 'spreadsheet',
-      'presentation': 'presentation',
-    }
-    if (typeMap[r.resultType]) return typeMap[r.resultType]
-    // 回退: 从扩展名推断
-    const ext = (r.subtitle || r.title || '').split(/[\\/]/).pop() || ''
-    const dot = ext.lastIndexOf('.')
-    const raw = dot >= 0 ? ext.slice(dot + 1).toLowerCase() : ext.toLowerCase()
-    if (!raw) return 'other'
-
-    const DOC_EXT = new Set(['txt','md','markdown','rtf','log','rst','doc','docx','odt','pages','epub','mobi','azw','azw3','fb2','djvu','tex'])
-    const IMAGE_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','heic','heif','ico','avif','jxl','raw','cr2','nef','orf','sr2','dng','arw','rw2','raf'])
-    const VIDEO_EXT = new Set(['mp4','m4v','mkv','webm','mov','avi','wmv','flv','f4v','mpeg','mpg','mp2','mpe','vob','ogv','3gp','3g2','mts','m2ts','ts','rm','rmvb'])
-    const AUDIO_EXT = new Set(['mp3','m4a','aac','flac','wav','ogg','oga','opus','wma','alac','ape','aiff','aif','aifc','mka','caf','mid','midi','amr','awb'])
-    const EXECUTABLE_EXT = new Set(['exe','msi','bat','cmd','com','scr','pif','gadget','dll','sys','drv','bin','run','app','dmg','pkg','deb','rpm','apk','ipa','appx','msix','jar','jse','wsf','vbs','ps1','psm1','sh','bash','zsh','ksh','csh'])
-    const ARCHIVE_EXT = new Set(['zip','rar','7z','tar','gz','tgz','bz2','tbz','xz','txz','lz','lzma','lz4','zst','Z','cab','msp','msu','rpm','iso','img','dmg','wim','esd'])
-
-    if (raw === 'pdf') return 'pdf'
-    if (DOC_EXT.has(raw)) return 'document'
-    if (IMAGE_EXT.has(raw)) return 'image'
-    if (VIDEO_EXT.has(raw)) return 'video'
-    if (AUDIO_EXT.has(raw)) return 'audio'
-    if (EXECUTABLE_EXT.has(raw)) return 'executable'
-    if (ARCHIVE_EXT.has(raw)) return 'archive'
-    return 'other'
   }
 
   const allAppsSorted = computed<SearchResult[]>(() => {
@@ -396,13 +351,13 @@ export const useSearchStore = defineStore('search', () => {
   const commandsItems = computed<SearchResult[]>(() => {
     return filteredResults.value
       .filter((r) => r.category === 'commands')
-      .slice(0, 12)
+      .slice(0, SEARCH_LIMITS_VISIBLE.commandsMax)
   })
 
   const filesAllUnfiltered = computed<SearchResult[]>(() => {
     return filteredResults.value
       .filter((r) => r.category === 'files')
-      .slice(0, query.value ? 80 : 2000)
+      .slice(0, query.value ? SEARCH_LIMITS.realtime : SEARCH_LIMITS.emptyQuery)
   })
 
   const allAppsItems = computed<SearchResult[]>(() => {
@@ -489,7 +444,7 @@ export const useSearchStore = defineStore('search', () => {
       filesItems = applyFileKindFilter(allFiles, fileKindFilter.value)
       hiddenCount = 0
     } else {
-      const limit = Math.min(fileVisibleLimit.value, FILE_HARD_CAP)
+      const limit = Math.min(fileVisibleLimit.value, SEARCH_LIMITS_VISIBLE.fileVisibleHardCap)
       filesItems = applyFileKindFilter(allFiles.slice(0, limit), fileKindFilter.value)
       hiddenCount = Math.max(0, allFiles.length - limit)
     }
@@ -536,12 +491,12 @@ export const useSearchStore = defineStore('search', () => {
   }
 
   /**
-   * "所有文件" 分组增量展开: 每次 +50 个 (硬上限 1000).
+   * "所有文件" 分组增量展开: 每次 +50 个 (硬上限由 SEARCH_LIMITS_VISIBLE.fileVisibleHardCap 控制).
    */
   function showMoreFiles() {
     fileVisibleLimit.value = Math.min(
-      fileVisibleLimit.value + FILE_VISIBLE_STEP,
-      FILE_HARD_CAP,
+      fileVisibleLimit.value + SEARCH_LIMITS_VISIBLE.fileVisibleStep,
+      SEARCH_LIMITS_VISIBLE.fileVisibleHardCap,
     )
   }
 
@@ -683,7 +638,6 @@ export const useSearchStore = defineStore('search', () => {
     pinnedIds,
     collapsedGroups,
     filteredResults,
-    topResults,
     pinned,
     recent,
     isPinned,

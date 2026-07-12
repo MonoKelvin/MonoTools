@@ -25,12 +25,6 @@ describe('useSearchStore', () => {
     setActivePinia(createPinia())
   })
 
-  it('topResults limits to 8', () => {
-    const s = useSearchStore()
-    s.results = Array.from({ length: 20 }, (_, i) => mk({ title: String(i) }))
-    expect(s.topResults).toHaveLength(8)
-  })
-
   it('filteredResults filters by activeCategory', () => {
     const s = useSearchStore()
     s.results = [

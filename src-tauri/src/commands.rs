@@ -1,20 +1,12 @@
 //! Tauri IPC Commands - 前端 ↔ 后端
 
+use crate::config::{ipc_events, search, window};
 use crate::models::SearchAction;
 use crate::models::{CustomCommand, SearchResult, Settings};
 use crate::platform::windows::shell;
 use crate::services::app_state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, LogicalSize, Manager, State};
-
-const WINDOW_DEFAULT_WIDTH: f64 = 640.0;
-const WINDOW_MIN_HEIGHT: u32 = 320;
-const WINDOW_MAX_HEIGHT: u32 = 580;
-
-/// 搜索时单次返回结果上限. 80 太低会导致 "搜 s" 漏掉大量文件, 提升到 200
-/// 既能覆盖大多数本地索引规模 (200k 文件以内), 又不会让 UI 卡顿.
-/// 真正"巨型索引"用户可手动点 "显示更多" (loadMore) 增量加载.
-const SEARCH_LIMIT: u32 = 200;
 
 #[tauri::command]
 pub async fn search_cmd(
@@ -30,8 +22,8 @@ pub async fn search_cmd(
     let limit = options
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
-        .map(|n| n.min(2000) as u32)
-        .unwrap_or(if query.is_empty() { 2000 } else { SEARCH_LIMIT });
+        .map(|n| n.min(search::MAX_CLIENT_OVERRIDE as u64) as u32)
+        .unwrap_or(if query.is_empty() { search::EMPTY_QUERY_LIMIT } else { search::REALTIME_LIMIT });
     let results = state.search_engine.search(&query, limit);
     Ok(results)
 }
@@ -48,8 +40,8 @@ pub async fn search_more_cmd(
     let limit = options
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
-        .map(|n| n.min(500) as u32)
-        .unwrap_or(50);
+        .map(|n| n.min(search::LOAD_MORE_MAX as u64) as u32)
+        .unwrap_or(search::LOAD_MORE_LIMIT);
     let results = state.search_engine.search_after(&query, after_id, limit);
     Ok(results)
 }
@@ -65,7 +57,7 @@ pub async fn build_file_index(
     tauri::async_runtime::spawn(async move {
         // 显式声明驱动盘符探测: 让懒枚举 NtfsIndexer 在后台触发.
         let _ = app_clone.emit(
-            "index_progress",
+            ipc_events::INDEX_PROGRESS,
             serde_json::json!({
                 "status": "building",
                 "message": "正在检测 NTFS 卷...",
@@ -88,7 +80,7 @@ pub async fn build_file_index(
                     )
                 };
                 let _ = app_for_progress.emit(
-                    "index_progress",
+                    ipc_events::INDEX_PROGRESS,
                     serde_json::json!({
                         "status": "building",
                         "message": msg,
@@ -105,7 +97,7 @@ pub async fn build_file_index(
             Err(e) => {
                 log::error!("索引构建失败: {}", e);
                 let _ = app_clone.emit(
-                    "index_progress",
+                    ipc_events::INDEX_PROGRESS,
                     serde_json::json!({
                         "status": "error",
                         "message": e.to_string(),
@@ -115,7 +107,7 @@ pub async fn build_file_index(
             Ok(_) => {
                 let stats = state_clone.search_engine.total_indexed();
                 let _ = app_clone.emit(
-                    "index_progress",
+                    ipc_events::INDEX_PROGRESS,
                     serde_json::json!({
                         "status": "completed",
                         "files": stats.files,
@@ -178,7 +170,7 @@ pub async fn frontend_ready(
         if !state.file_search.is_indexing() {
             let stats = state.search_engine.total_indexed();
             let _ = app.emit(
-                "index_progress",
+                ipc_events::INDEX_PROGRESS,
                 serde_json::json!({
                     "status": "completed",
                     "files": stats.files,
@@ -407,9 +399,9 @@ pub async fn set_window_height(app: tauri::AppHandle, height: u32) -> Result<(),
         return Ok(());
     };
     // 高度上下界, 防止前端误算导致窗口过大/过小.
-    let height = height.clamp(WINDOW_MIN_HEIGHT, WINDOW_MAX_HEIGHT);
-    // 只改高度，宽度固定为 WINDOW_DEFAULT_WIDTH, 永远不重新读取当前 width
-    let _ = w.set_size(LogicalSize::new(WINDOW_DEFAULT_WIDTH, height as f64));
+    let height = height.clamp(window::MIN_HEIGHT, window::MAX_HEIGHT);
+    // 只改高度，宽度固定为 window::DEFAULT_WIDTH, 永远不重新读取当前 width
+    let _ = w.set_size(LogicalSize::new(window::DEFAULT_WIDTH, height as f64));
     Ok(())
 }
 

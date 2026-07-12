@@ -141,6 +141,29 @@ export function classifyByResultType(resultType: string | undefined): FileKind |
   }
 }
 
+/**
+ * 从 SearchResult 推导 FileKind, 统一入口.
+ *
+ * 优先级:
+ * 1. resultType (后端分类更准, 包括目录等无扩展名场景)
+ * 2. subtitle/title 文件名后缀 (前端兜底)
+ *
+ * 不在表内 → 'other'.
+ *
+ * 抽到此处作为"分类表单一真源": stores/search.ts 与任何 UI 组件
+ * 都通过此函数获取 FileKind, 避免各组件重复定义扩展名集合.
+ */
+export function getFileKind(r: { resultType?: string; title?: string; subtitle?: string }): FileKind {
+  if (r.resultType) {
+    const k = classifyByResultType(r.resultType)
+    if (k) return k
+  }
+  // 回退: 从扩展名推断
+  const path = r.subtitle || r.title || ''
+  const name = path.split(/[\\/]/).pop() || ''
+  return classify(name)
+}
+
 export interface FileKindMeta {
   id: FileKind
   label: string

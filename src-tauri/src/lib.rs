@@ -3,6 +3,7 @@
 
 pub mod app;
 pub mod command;
+pub mod config;
 pub mod engines;
 pub mod error;
 pub mod models;

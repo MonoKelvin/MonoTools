@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { ChevronUp, ChevronDown, CornerDownLeft, Keyboard, Loader2, CheckCircle, AlertCircle } from "@lucide/vue"
 import type { SearchResult } from '@/types/search'
+import { ACTION_BAR_TIMEOUTS, FONT_SIZES, ICON_CONFIG } from '@/config'
+import { resultTypeMeta } from '@/utils/resultTypeMeta'
 
 const props = defineProps<{
   results: SearchResult[]
@@ -38,7 +40,7 @@ watch(() => props.indexStatus, (newStatus) => {
     }
     autoHideTimer.value = window.setTimeout(() => {
       showIndexStatus.value = false
-    }, 5000)
+    }, ACTION_BAR_TIMEOUTS.completedMs)
   } else if (newStatus === 'error') {
     showIndexStatus.value = true
     if (autoHideTimer.value) {
@@ -46,7 +48,7 @@ watch(() => props.indexStatus, (newStatus) => {
     }
     autoHideTimer.value = window.setTimeout(() => {
       showIndexStatus.value = false
-    }, 8000)
+    }, ACTION_BAR_TIMEOUTS.errorMs)
   }
 })
 
@@ -58,22 +60,8 @@ const statusText = computed(() => {
   const selected = props.results[props.selectedIndex]
 
   if (selected) {
-    const typeLabels: Record<string, string> = {
-      'system-app': '系统程序',
-      'user-app': '用户程序',
-      'uwp-app': 'UWP 应用',
-      'directory': '文件夹',
-      'document': '文档',
-      'image': '图片',
-      'video': '视频',
-      'audio': '音频',
-      'executable': '可执行文件',
-      'archive': '压缩文件',
-      'other-file': '其他文件',
-      'command': '命令',
-    }
-
-    const typeLabel = typeLabels[selected.resultType] || selected.resultType
+    // 单一真源: 标签从 RESULT_TYPE_META 查, 避免与 ResultItem / ResultItemTypeMeta drift.
+    const typeLabel = resultTypeMeta(selected.resultType)?.labelFull ?? selected.resultType
     return `已选择: ${selected.title} · ${typeLabel}`
   }
 
@@ -130,7 +118,7 @@ const displayText = computed(() => {
       <button
         class="action-bar__hotkey-btn"
         @click="emit('showHotkeys')"
-        v-tooltip="{ value: '查看快捷键', showDelay: 280, position: 'top' }"
+        v-tooltip="{ value: '查看快捷键', showDelay: ICON_CONFIG.tooltipDelayMs, position: 'top' }"
       >
         <Keyboard :size="14" :stroke-width="2" />
       </button>
@@ -189,7 +177,7 @@ const displayText = computed(() => {
   align-items: center;
   gap: 5px;
   color: var(--text-tertiary);
-  font-size: 11.5px;
+  font-size: v-bind('FONT_SIZES.sm + "px"');
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
@@ -261,7 +249,7 @@ const displayText = computed(() => {
   height: 16px;
   padding: 0 4px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: v-bind('FONT_SIZES.xxs + "px"');
   color: var(--text-tertiary);
   background: var(--inset);
   border: 1px solid var(--border-subtle);

@@ -8,6 +8,7 @@ import { isTauri } from '@/services/env'
 import { useRouter } from 'vue-router'
 import { listenEvent } from '@/services/tauri'
 import type { SearchResult } from '@/types/search'
+import { WINDOW_DIMENSIONS, UI_DELAYS, SEARCH_LIMITS_VISIBLE } from '@/config'
 
 import SearchInput from '@/components/common/SearchInput.vue'
 import VirtualGroupedResults from '@/components/search/VirtualGroupedResults.vue'
@@ -35,10 +36,10 @@ let pendingHeight = 0
 let resyncTimer: ReturnType<typeof setTimeout> | null = null
 let unlistenIndexProgress: (() => void) | null = null
 
-const WINDOW_FIXED_WIDTH = 640
+const WINDOW_FIXED_WIDTH = WINDOW_DIMENSIONS.fixedWidth
 
 /** 窗口最大高度 (不含顶部输入框 + 底部状态栏) */
-const CONTENT_AREA_MAX = 460
+const CONTENT_AREA_MAX = WINDOW_DIMENSIONS.contentAreaMax
 
 const fixWindowWidth = async () => {
   if (!isTauri) return
@@ -118,13 +119,13 @@ const handleIndexProgress = (progress: {
 const { loadIconsBatch } = useAppIcon()
 let iconBatchTimer: ReturnType<typeof setTimeout> | null = null
 watch(
-  () => search.displayList.slice(0, 60), // 只预取首屏 ±20 项, 滚动再追加
+  () => search.displayList.slice(0, SEARCH_LIMITS_VISIBLE.iconBatchPrefetch),
   (items) => {
     if (!isTauri || items.length === 0) return
     if (iconBatchTimer) clearTimeout(iconBatchTimer)
     iconBatchTimer = setTimeout(() => {
       loadIconsBatch(items).catch(() => undefined)
-    }, 200)
+    }, UI_DELAYS.iconBatchDebounceMs)
   },
   { deep: false },
 )
@@ -226,21 +227,11 @@ async function handleGlobalKeydown(event: KeyboardEvent) {
 //
 // 原因: store.displayList 已经是"折叠 + 分类 + 文件类型过滤"后的
 // 最终可见列表. SearchPage 再次做一层过滤 (排除 pinned/recent) 造成
-// displayResults.length ≠ displayList.length, 键盘上下方向键可以
-// 指向当前不可见的项 (因为 filteredResults 排除了 pinned/recent).
+// 长度不一致, 键盘上下方向键可以指向当前不可见的项.
 //
 // 现在所有选择逻辑统一使用 store.displayList, 确保键盘导航
 // 与 VGR 渲染严格 1:1.
 // ============================================================================
-
-/**
- * 实际传给 VirtualGroupedResults 的扁平结果集.
- * 保留此 computed 仅为向后兼容 (模板中可能引用),
- * 内部直接返回 store.displayList 保证一致性.
- */
-const displayResults = computed<SearchResult[]>(() =>
-  search.displayList,
-)
 
 /**
  * 给 VirtualGroupedResults 的分组结构.
@@ -403,6 +394,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
   border-top: 1px solid var(--glass-border);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
   overflow: hidden;
+  /* 220ms 对齐 ICON_CONFIG.fadeInMs (见 @/config/icon.ts). 改 SCSS 同步改 TS. */
   animation: search-container-fade-in 220ms var(--ease-out);
 }
 

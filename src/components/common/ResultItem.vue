@@ -1,5 +1,21 @@
 <script setup lang="ts">
-import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
+/**
+ * ResultItem —— 通用搜索结果项 (file / directory / document / image / ...).
+ *
+ * 用途: "所有文件" 组, 以及 resultType 不是 user-app/system-app/uwp-app
+ * 的 fallback 渲染场景. 历史上 .url / .lnk / 含图标的文件走这里,
+ * 因此需要接入 useAppIcon 加载真实 PNG, 详见
+ * `tests/ui/components/ResultItem.test.ts`.
+ *
+ * 与 AppResultItem 的差异:
+ * - 副标题显示完整路径
+ * - 图标小 (16-18px), 文字略小
+ * - 标题截断由外部 contentRef/contentWidth 控制
+ *
+ * 图标渲染委托给 `useIconRenderer` composable, 与 AppResultItem 共享
+ * 同一套 4-tier 加载链 + 350ms 兜底 timer + loadToken race 防护.
+ */
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import type { SearchResult } from '@/types/search'
 import { textW, truncateMiddle, truncatePathMiddle } from '@/utils/text'
 import {
@@ -8,6 +24,9 @@ import {
   Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
   FileArchive, File, CornerDownLeft
 } from "@lucide/vue"
+import { useIconRenderer } from '@/composables/useIconRenderer'
+import { resultTypeMeta } from '@/utils/resultTypeMeta'
+import { ICON_CONFIG } from '@/config'
 
 // --- Component ---
 // 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
@@ -88,7 +107,7 @@ const titleTooltip = computed(() => {
   return {
     value: props.result.title,
     class: 'mono-tooltip',
-    showDelay: 280,
+    showDelay: ICON_CONFIG.tooltipDelayMs,
     position: 'top' as const,
     autoHide: true,
     escape: true,
@@ -103,7 +122,7 @@ const subtitleTooltip = computed(() => {
   return {
     value: props.result.subtitle,
     class: 'mono-tooltip',
-    showDelay: 280,
+    showDelay: ICON_CONFIG.tooltipDelayMs,
     position: 'top' as const,
     autoHide: true,
     escape: true,
@@ -112,47 +131,82 @@ const subtitleTooltip = computed(() => {
 
 watch(() => props.result, () => nextTick(applyTruncation), { flush: 'post' })
 
+/**
+ * 通用兜底 Lucide 图标: 从 resultTypeMeta 查 icon, 没查到用 Command.
+ * 集中定义在 src/utils/resultTypeMeta.ts, 新增 type 单点改动.
+ */
+const IconComponent = computed(() => {
+  return resultTypeMeta(props.result?.resultType)?.icon ?? Command
+})
+
+/**
+ * 角标短标签 (ResultItem 用 label, ActionBar 用 labelFull).
+ */
+const resultTypeLabel = computed(() => {
+  return resultTypeMeta(props.result?.resultType)?.label ?? ''
+})
+
+/**
+ * 图标渲染 composable —— 与 AppResultItem 共享同一套图标状态机.
+ * 关键修复: 之前 .url / .lnk 等"所有文件"组项目, 后端 IPC 提取的 PNG
+ * 写进 useAppIcon.cache 但没人读, 显示 Lucide 兜底. 现在 ResultItem
+ * 也接入 useAppIcon, 真实 PNG 会被消费.
+ */
+const { iconState, imgReady, refresh, onImgLoad, onImgError, dispose } = useIconRenderer({
+  fallbackComponent: IconComponent.value,
+  containerSelector: (id) => `[data-result-id="${id}"] img`,
+  debugTag: 'ResultItem',
+})
+
 onMounted(async () => {
-  await document.fonts.ready
+  // happy-dom 不实现 FontFaceSet, 防御性地 await
+  try {
+    if (typeof document !== 'undefined' && (document as any).fonts?.ready) {
+      await (document as any).fonts.ready
+    }
+  } catch {
+    // 忽略 fonts.ready 异常 (happy-dom / jsdom 不支持)
+  }
   await nextTick()
   const contentEl = contentRef.value
   if (!contentEl) return
   ro = new ResizeObserver(() => requestAnimationFrame(applyTruncation))
   ro.observe(contentEl)
   applyTruncation()
+  // 挂载时调 refresh, 触发真实 PNG 图标加载 (与 AppResultItem 一致)
+  refresh(props.result)
 })
 
+watch(() => props.result?.id, () => refresh(props.result))
 onBeforeUnmount(() => {
+  dispose()
   if (ro) { ro.disconnect(); ro = null }
-})
-
-const IconComponent = computed(() => {
-  const typeMap: Record<string, any> = {
-    'system-app': Monitor, 'user-app': AppWindow, 'uwp-app': Package,
-    'directory': FolderOpen, 'document': FileText, 'image': FileImage,
-    'video': FileVideo, 'audio': FileAudio, 'executable': FileCode,
-    'archive': FileArchive, 'other-file': File, 'command': Terminal,
-  }
-  return typeMap[props.result.resultType] || Command
-})
-
-const resultTypeLabel = computed(() => {
-  const labels: Record<string, string> = {
-    'system-app': '系统', 'user-app': '用户', 'uwp-app': 'UWP',
-    'directory': '文件夹', 'document': '文档', 'image': '图片',
-    'video': '视频', 'audio': '音频', 'executable': '可执行',
-    'archive': '压缩', 'other-file': '其他', 'command': '命令',
-  }
-  return labels[props.result.resultType] || ''
 })
 </script>
 
 <template>
   <div
     :class="['result-item', { 'result-item--active': active }]"
+    :data-result-id="result?.id"
   >
     <div class="result-item__icon">
-      <component :is="IconComponent" :size="16" :stroke-width="2" />
+      <img
+        v-if="iconState.kind === 'svg' || iconState.kind === 'png'"
+        :src="iconState.value"
+        class="result-item__img"
+        :class="{ 'result-item__img--ready': imgReady }"
+        @load="onImgLoad"
+        @error="onImgError"
+        decoding="async"
+        draggable="false"
+        alt=""
+      />
+      <component
+        v-else
+        :is="iconState.value || IconComponent"
+        :size="16"
+        :stroke-width="2"
+      />
     </div>
 
     <div class="result-item__content" ref="contentRef">
@@ -244,6 +298,26 @@ const resultTypeLabel = computed(() => {
     background var(--dur-fast) var(--ease-out),
     transform var(--dur-fast) var(--ease-out);
   position: relative;
+}
+
+/**
+ * PNG 真实图标 (ResultItem 也读 useAppIcon cache, 让"所有文件"组的
+ * .url / .lnk / 含图标的文件能显示真实 PNG).
+ * - 与 Lucide 通用图标 16x16 视觉对齐, 居中放置
+ * - opacity 0 → 1 渐入与 AppResultItem 一致
+ * - 350ms 兜底 timer 在 happy-dom / WebView2 不会丢失显示
+ */
+.result-item__img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 220ms var(--ease-out);
+  pointer-events: none;
+  user-select: none;
+}
+.result-item__img--ready {
+  opacity: 1;
 }
 
 .result-item:hover .result-item__icon {

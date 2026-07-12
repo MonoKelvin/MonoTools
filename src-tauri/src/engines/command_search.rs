@@ -12,6 +12,12 @@ impl CommandSearchEngine {
         Self { command_repo }
     }
 
+    /// 仅供测试: 构造一个空 engine (不连真实 repository). 真实测试用 mock CommandRepo.
+    pub fn new_empty_for_tests() -> Self {
+        use crate::repositories::command_repo::InMemoryCommandRepo;
+        Self { command_repo: Arc::new(InMemoryCommandRepo::new()) }
+    }
+
     pub fn total(&self) -> usize {
         self.command_repo.list_enabled().len()
     }
@@ -85,5 +91,23 @@ impl CommandSearchEngine {
         }
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         results
+    }
+}
+
+impl crate::engines::search_source::SearchSource for CommandSearchEngine {
+    fn name(&self) -> &'static str {
+        "command"
+    }
+    fn category(&self) -> crate::models::SearchCategory {
+        crate::models::SearchCategory::Commands
+    }
+    fn search(&self, query: &str, limit: u32) -> Vec<crate::models::SearchResult> {
+        self.search(query, limit)
+    }
+    fn total(&self) -> usize {
+        self.total()
+    }
+    fn category_weight(&self) -> f32 {
+        crate::config::search::CATEGORY_WEIGHT_COMMANDS
     }
 }

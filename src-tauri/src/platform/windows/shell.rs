@@ -33,16 +33,17 @@ pub fn launch_as_admin(path: &str, args: &[String]) -> Result<()> {
 ///   - 显式 "/select,<path>" 作为单一参数, Windows 会忽略多余空格.
 #[cfg(windows)]
 pub fn open_path(path: &PathBuf) -> Result<()> {
+    use crate::config::paths;
     use std::os::windows::process::CommandExt;
     // CREATE_NO_WINDOW 防止在 GUI 之外再开一个 console window.
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // 取自 config::paths::CREATE_NO_WINDOW (单一真源).
 
     let path_str = path.to_string_lossy().into_owned();
     let select_arg = format!("/select,{}", path_str);
 
-    std::process::Command::new("explorer.exe")
+    std::process::Command::new(paths::EXPLORER_EXE)
         .arg(&select_arg)
-        .creation_flags(CREATE_NO_WINDOW)
+        .creation_flags(paths::CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| AppError::Other(format!("打开路径失败: {e}")))?;
     Ok(())

@@ -13,21 +13,84 @@
 //!
 //! 进程内 `OnceLock<Mutex<HashMap>>` 缓存 (path -> Option<Vec<u8>>),
 //! key 用归一化路径 (小写 + canonicalize 回退), 避免重复 SHGetFileInfoW 调用.
+//!
+//! ## 扩展性
+//!
+//! [`IconExtractor`] trait 把"平台特定"的图标提取能力抽象成可替换的
+//! impl. 当前只有 [`WindowsIconExtractor`]; 未来 Linux (libunity /
+//! freedesktop) / macOS (NSWorkspace) 可加 impl 后挂到全局 registry.
+//! 调用方 (commands / services) 始终通过 [`get_extractor()`] 拿
+//! 默认实例, 不直接 import Windows 平台代码.
 
 use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::OnceLock;
 
-/// 图标尺寸 (像素). 与 ResultItem 视觉对齐 + 留 1.5x 高分屏余量.
-const ICON_PX: i32 = 32;
+use crate::config::icon as icon_cfg;
+
+/// 平台无关的图标提取器接口.
+///
+/// 实现方必须遵守"永不抛错"协议: 任何内部错误 (文件不存在 / 访问被拒 /
+/// 非 PE / 编码失败) 一律返回 `None`, 由调用方决定是否走兜底.
+pub trait IconExtractor: Send + Sync {
+    /// 平台名, 用于诊断日志 (`[icon] platform=windows ...`).
+    fn platform_name(&self) -> &'static str;
+
+    /// 提取图标. size 是边长像素 (Windows 常用 16 / 32 / 48).
+    /// 失败返回 `None` 而非 `Err`: 这是 trait 约定.
+    fn extract(&self, path: &Path, size: i32) -> Option<Vec<u8>>;
+
+    /// 是否"愿意"尝试这个 path. 默认 true; Linux 端可限定 `.desktop` 等.
+    /// 注意: 返回 false 不等于 "一定能拿到" (例如 .lnk 的 target 已删),
+    /// 真正的失败语义仍由 [`IconExtractor::extract`] 表达.
+    fn supports(&self, path: &Path) -> bool {
+        let _ = path;
+        true
+    }
+}
+
+/// Windows 平台实现. 使用 Win32 SHGetFileInfoW + GDI GetDIBits.
+pub struct WindowsIconExtractor;
+
+impl IconExtractor for WindowsIconExtractor {
+    fn platform_name(&self) -> &'static str {
+        "windows"
+    }
+
+    fn extract(&self, path: &Path, size: i32) -> Option<Vec<u8>> {
+        extract_icon_windows(path, size)
+    }
+
+    fn supports(&self, path: &Path) -> bool {
+        // 没扩展名的 PE 也算 (如 POSIX 子系统的裸 binary);
+        // .exe / .lnk / .url / .ico / .msi 是 Windows 上能 SHGetFileInfo 出图标的常见格式.
+        match path.extension().and_then(|e| e.to_str()) {
+            None => true,
+            Some(ext) => {
+                let e = ext.to_ascii_lowercase();
+                matches!(e.as_str(), "exe" | "lnk" | "url" | "ico" | "msi" | "scr")
+            }
+        }
+    }
+}
 
 type IconCache = HashMap<String, Option<Vec<u8>>>;
 
 static ICON_CACHE: OnceLock<Mutex<IconCache>> = OnceLock::new();
 
+static ICON_EXTRACTOR: OnceLock<Box<dyn IconExtractor>> = OnceLock::new();
+
 fn cache() -> &'static Mutex<IconCache> {
     ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 全局默认 IconExtractor. 第一次访问时构造 `WindowsIconExtractor`,
+/// 进程内复用. 未来多平台只需在 init 分支里加 cfg 判别.
+pub fn get_extractor() -> &'static dyn IconExtractor {
+    ICON_EXTRACTOR
+        .get_or_init(|| Box::new(WindowsIconExtractor))
+        .as_ref()
 }
 
 /// 归一化路径作为缓存 key. 小写 + canonicalize (失败时退回原路径).
@@ -57,12 +120,21 @@ pub fn get_or_extract_cached(path: &str) -> crate::error::Result<Option<Vec<u8>>
         }
     }
 
-    let extracted = extract_icon_bytes(p);
+    // 走 trait 抽象的默认实现 (Windows 平台). 调用方不感知具体 impl.
+    let extracted = get_extractor().extract(p, icon_cfg::SIZE);
+
     if extracted.is_none() {
-        log_icon_debug("extract-failed", path, "extract_icon_bytes returned None");
-        log::warn!("[icon] extract-failed path={} (file exists but extraction returned None)", path);
+        log_icon_debug("extract-failed", path, "extractor returned None");
+        log::warn!(
+            "[icon] extract-failed path={} (file exists but extraction returned None)",
+            path
+        );
     } else {
-        log::info!("[icon] extracted path={} bytes={}", path, extracted.as_ref().unwrap().len());
+        log::info!(
+            "[icon] extracted path={} bytes={}",
+            path,
+            extracted.as_ref().unwrap().len()
+        );
     }
     let mut cache = cache().lock();
     cache.insert(key, extracted.clone());
@@ -83,20 +155,12 @@ fn log_icon_debug(stage: &str, path: &str, detail: &str) {
 }
 
 /// 实际提取. 任意步骤失败 -> None (不抛错).
-fn extract_icon_bytes(path: &Path) -> Option<Vec<u8>> {
-    #[cfg(windows)]
-    {
-        extract_icon_windows(path)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = path;
-        None
-    }
-}
-
+///
+/// size: 边长像素. 现在统一用 `icon_cfg::SIZE` (32), 但签名已抽象
+/// 以便未来 `IconExtractor` impl 走不同尺寸 (例如 macOS NSWorkspace
+/// 可按 16/32/64 任意).
 #[cfg(windows)]
-fn extract_icon_windows(path: &Path) -> Option<Vec<u8>> {
+fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
     use windows::Win32::Graphics::Gdi::{
         CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
         BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
@@ -143,7 +207,7 @@ fn extract_icon_windows(path: &Path) -> Option<Vec<u8>> {
         return None;
     }
 
-    let hbm = unsafe { CreateCompatibleBitmap(screen_dc, ICON_PX, ICON_PX) };
+    let hbm = unsafe { CreateCompatibleBitmap(screen_dc, size, size) };
     if hbm.is_invalid() {
         log_icon_debug("create-bitmap-failed", &path.to_string_lossy(), "CreateCompatibleBitmap returned invalid HBITMAP");
         unsafe {
@@ -164,8 +228,8 @@ fn extract_icon_windows(path: &Path) -> Option<Vec<u8>> {
             0,
             0,
             hicon,
-            ICON_PX,
-            ICON_PX,
+            size,
+            size,
             0,
             None,
             di_flags,
@@ -184,21 +248,24 @@ fn extract_icon_windows(path: &Path) -> Option<Vec<u8>> {
     // 3) GetDIBits -> RGBA
     let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
     bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-    bmi.bmiHeader.biWidth = ICON_PX;
+    bmi.bmiHeader.biWidth = size;
     // 负值高度 = top-down DIB, 我们要的就是 top-down
-    bmi.bmiHeader.biHeight = -ICON_PX;
+    bmi.bmiHeader.biHeight = -size;
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB.0;
 
-    let mut buffer: Vec<u8> = vec![0u8; (ICON_PX * ICON_PX * 4) as usize];
+    // buffer 长度按 size 算, 不再硬写 32*32*4; 防止未来 macOS impl
+    // 传非 32 时 OOB.
+    let byte_len = (size as usize) * (size as usize) * 4;
+    let mut buffer: Vec<u8> = vec![0u8; byte_len];
 
     let scan = unsafe {
         GetDIBits(
             screen_dc,
             hbm,
             0,
-            ICON_PX as u32,
+            size as u32,
             Some(buffer.as_mut_ptr() as *mut _),
             &mut bmi,
             DIB_RGB_COLORS,
@@ -231,13 +298,13 @@ fn extract_icon_windows(path: &Path) -> Option<Vec<u8>> {
     // 现在检测到后返回 None, 让前端走 Lucide 兜底.
     if is_blank_icon(&rgba) {
         log_icon_debug("blank-icon-rejected", &path.to_string_lossy(),
-            "icon appears blank (< 16 distinct colors), likely missing .lnk target");
+            "icon appears blank (low color count or low luma variance), likely missing .lnk target");
         log::warn!("[icon] blank-icon-rejected path={} (Windows returned blank icon, likely .lnk with missing target)", path.to_string_lossy());
         return None;
     }
 
     // 6) PNG 编码
-    encode_png(&rgba, ICON_PX as u32, ICON_PX as u32)
+    encode_png(&rgba, size as u32, size as u32)
 }
 
 /// 检测 RGBA buffer 是否是"空白图标".
@@ -297,17 +364,20 @@ pub fn is_blank_icon(rgba: &[u8]) -> bool {
     let std_dev = variance.sqrt();
 
     // 3) 启发式 (满足任一即通过):
-    //    - 色数 ≥ 16  → 多色图标 (常见 UI 图标)
-    //    - 亮度标准差 ≥ 16  → 高对比度 (黑白剪影 / 渐变)
-    //    - 色数 ≥ 5 且 亮度标准差 ≥ 4  → 多色 + 有亮度变化
+    //    - 色数 ≥ COLOR_COUNT_RICH  → 多色图标 (常见 UI 图标)
+    //    - 亮度标准差 ≥ LUMA_STD_RICH  → 高对比度 (黑白剪影 / 渐变)
+    //    - 色数 ≥ COLOR_COUNT_MID 且 亮度标准差 ≥ LUMA_STD_MID  → 多色 + 有亮度变化
     //    - 其余 → 大概率 Windows 空白方块
-    if seen.len() >= 16 {
+    //
+    // 阈值集中在 `config::icon::blank_detection::*`, 改一处全工程生效.
+    use icon_cfg::blank_detection as bd;
+    if seen.len() >= bd::COLOR_COUNT_RICH {
         return false;
     }
-    if std_dev >= 16.0 {
+    if std_dev >= bd::LUMA_STD_RICH {
         return false;
     }
-    if seen.len() >= 5 && std_dev >= 4.0 {
+    if seen.len() >= bd::COLOR_COUNT_MID && std_dev >= bd::LUMA_STD_MID {
         return false;
     }
     true
@@ -337,18 +407,6 @@ fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
         return None;
     }
     Some(out)
-}
-
-/// 解析 .lnk 快捷方式真实目标路径. 失败 -> None.
-///
-/// 当前实现仅做基础检查: 大多数情况下 SHGetFileInfoW 对 .lnk 自身已能返回
-/// 正确图标 (Shell 自动解析并提取目标图标), 故此函数可作为后续增强占位.
-#[allow(dead_code)]
-pub fn resolve_shortcut_target(lnk_path: &Path) -> Option<PathBuf> {
-    // 简化: 不依赖完整 COM, 让 .lnk 自身走 SHGetFileInfoW 即可拿到目标图标.
-    // 大部分 .lnk 的图标与其目标的可执行文件一致.
-    let _ = lnk_path;
-    None
 }
 
 /// 仅供测试/调试使用: 清除进程内图标缓存.
@@ -453,7 +511,7 @@ mod tests {
     #[test]
     fn few_color_icon_rejected() {
         let mut rgba = Vec::with_capacity(32 * 32 * 4);
-        for y in 0..32 {
+        for _y in 0..32 {
             for x in 0..32 {
                 // 3 种相近的灰度, 模拟"近似单色"图标
                 let c = match x % 3 {
@@ -495,5 +553,67 @@ mod tests {
         }
         // 8 种灰度, 亮度方差 = 大 (从 0 到 224) → 通过
         assert!(!is_blank_icon(&rgba), "灰度渐变图标应通过");
+    }
+
+    // === IconExtractor trait 单元测试 ===
+
+    /// trait 注册表: 默认 extractor 必须是 Windows impl.
+    #[test]
+    fn get_extractor_returns_windows_impl() {
+        let ex = get_extractor();
+        assert_eq!(ex.platform_name(), "windows");
+    }
+
+    /// supports: Windows 支持的常见 PE / 快捷方式 / URL 格式.
+    #[test]
+    fn windows_extractor_supports_common_types() {
+        let ex = WindowsIconExtractor;
+        assert!(ex.supports(Path::new("C:/x/y.exe")));
+        assert!(ex.supports(Path::new("C:/x/y.lnk")));
+        assert!(ex.supports(Path::new("C:/x/y.url")));
+        assert!(ex.supports(Path::new("C:/x/y.ico")));
+        assert!(ex.supports(Path::new("C:/x/y.msi")));
+        assert!(ex.supports(Path::new("C:/x/y.scr")));
+    }
+
+    /// supports: 大小写不敏感 (大写扩展名也能识别).
+    #[test]
+    fn windows_extractor_supports_uppercase_extensions() {
+        let ex = WindowsIconExtractor;
+        assert!(ex.supports(Path::new("C:/x/Y.EXE")));
+        assert!(ex.supports(Path::new("C:/x/Y.Lnk")));
+    }
+
+    /// supports: 不在白名单的扩展名 (.txt) 返回 false; 没扩展名的路径
+    /// 返回 true (例如 POSIX 子系统裸 binary, 让 extract 内部自行判断).
+    /// 这把"快速拒绝明显无关文件"和"对未知格式保持宽容"区分开.
+    #[test]
+    fn windows_extractor_supports_filters_unrelated_extensions() {
+        let ex = WindowsIconExtractor;
+        // 已知白名单 → true
+        assert!(ex.supports(Path::new("C:/x/y.exe")));
+        // 不在白名单 → false (快速拒绝)
+        assert!(!ex.supports(Path::new("C:/x/y.txt")));
+        assert!(!ex.supports(Path::new("C:/x/y.unknown")));
+        // 没扩展名 → true (宽容路径)
+        assert!(ex.supports(Path::new("C:/x/y")));
+    }
+
+    /// 端到端: 通过 trait 默认 extractor 提取, 行为与旧 `get_or_extract_cached` 一致.
+    /// 不存在的文件永远返回 None (符合"永不抛错"协议).
+    #[test]
+    fn trait_extractor_path_returns_none_for_missing_file() {
+        let ex = get_extractor();
+        let result = ex.extract(Path::new("C:/does/not/exist/totally_fake.exe"), 32);
+        assert!(result.is_none());
+    }
+
+    /// Mock extractor: 用于将来在测试中替换默认实现.
+    /// 验证 trait 是 dyn-compatible (object-safe) — `dyn IconExtractor` 可正常工作.
+    #[test]
+    fn trait_object_safety_allows_dyn_dispatch() {
+        let ex: Box<dyn IconExtractor> = Box::new(WindowsIconExtractor);
+        let platform = ex.platform_name();
+        assert_eq!(platform, "windows");
     }
 }
