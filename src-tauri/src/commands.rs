@@ -7,7 +7,9 @@ use crate::services::app_state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, LogicalSize, Manager, State};
 
-const WINDOW_DEFAULT_WIDTH: f64 = 680.0;
+const WINDOW_DEFAULT_WIDTH: f64 = 640.0;
+const WINDOW_MIN_HEIGHT: u32 = 320;
+const WINDOW_MAX_HEIGHT: u32 = 580;
 
 #[tauri::command]
 pub async fn search_cmd(
@@ -15,7 +17,10 @@ pub async fn search_cmd(
     query: String,
     _options: Option<serde_json::Value>,
 ) -> Result<Vec<SearchResult>, String> {
-    let limit = if query.is_empty() { 50u32 } else { 20u32 };
+    // 实时搜索: 关键字搜索时 cap=80; 空查询 (首屏) cap=2000 让所有文件
+    // 分组在未输入关键字时也能展示完整索引列表 (受后端 ALL_FILES_EMPTY_QUERY_CAP
+    // = 500 实际限制, 2000 只是 IPC 层的最大可能上限).
+    let limit = if query.is_empty() { 2000u32 } else { 80u32 };
     let results = state.search_engine.search(&query, limit);
     Ok(results)
 }
@@ -29,26 +34,70 @@ pub async fn build_file_index(
     let app_clone = app.clone();
 
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = state_clone.file_search.build_index().await {
-            log::error!("索引构建失败: {}", e);
-            let _ = app_clone.emit(
-                "index_progress",
-                serde_json::json!({
-                    "status": "error",
-                    "message": e.to_string(),
-                }),
-            );
-        } else {
-            let stats = state_clone.search_engine.total_indexed();
-            let _ = app_clone.emit(
-                "index_progress",
-                serde_json::json!({
-                    "status": "completed",
-                    "files": stats.files,
-                    "apps": stats.apps,
-                    "commands": stats.commands,
-                }),
-            );
+        // 显式声明驱动盘符探测: 让懒枚举 NtfsIndexer 在后台触发.
+        let _ = app_clone.emit(
+            "index_progress",
+            serde_json::json!({
+                "status": "building",
+                "message": "正在检测 NTFS 卷...",
+                "files": 0usize,
+                "volumes": 0usize,
+            }),
+        );
+
+        let app_for_progress = app_clone.clone();
+        let build_result = state_clone
+            .file_search
+            .build_index_with_volume_progress(move |volume, idx, cumulative, total_volumes| {
+                let drive = crate::platform::windows::usn::drive_label(volume);
+                let msg = if total_volumes == 0 {
+                    format!("正在索引 {}", drive)
+                } else {
+                    format!(
+                        "索引中 {}/{} · {} — 已索引 {} 个文件",
+                        idx, total_volumes, drive, cumulative
+                    )
+                };
+                let _ = app_for_progress.emit(
+                    "index_progress",
+                    serde_json::json!({
+                        "status": "building",
+                        "message": msg,
+                        "files": cumulative,
+                        "volumes": total_volumes,
+                        "current_volume": drive,
+                        "current_index": idx,
+                    }),
+                );
+            })
+            .await;
+
+        match build_result {
+            Err(e) => {
+                log::error!("索引构建失败: {}", e);
+                let _ = app_clone.emit(
+                    "index_progress",
+                    serde_json::json!({
+                        "status": "error",
+                        "message": e.to_string(),
+                    }),
+                );
+            }
+            Ok(_) => {
+                let stats = state_clone.search_engine.total_indexed();
+                let _ = app_clone.emit(
+                    "index_progress",
+                    serde_json::json!({
+                        "status": "completed",
+                        "files": stats.files,
+                        "apps": stats.apps,
+                        "commands": stats.commands,
+                        "volumes": 0usize,
+                        "current_volume": "",
+                        "current_index": 0,
+                    }),
+                );
+            }
         }
     });
 
@@ -65,6 +114,52 @@ pub async fn get_index_status(
         "apps": stats.apps,
         "commands": stats.commands,
     }))
+}
+
+/// 标记前端 UI 渲染完成,可以显示窗口.
+///
+/// 我们**不**在 Tauri 启动完成后立即显示窗口: 原因是 webview 拿到的前端 bundle
+/// 在 cold-start 时要解析 + 执行, 此时窗口已"visible=true"会出现短暂白屏.
+/// 因此启动时窗口 visible=false; 当前端根 mount 完成 + 首屏数据回来后,
+/// 调用本 IPC 让 Rust 显式 show 窗口.
+///
+/// 一次性触发, 反复调用幂等.
+#[tauri::command]
+pub async fn frontend_ready(
+    app: tauri::AppHandle,
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    log::info!("[boot] frontend_ready: 显示窗口并标记初始化完成");
+    // 无论前端主动调用几次, 都只触发一次窗口显示.
+    use parking_lot::Mutex;
+    use std::sync::OnceLock;
+    static SHOWN: OnceLock<Mutex<bool>> = OnceLock::new();
+    let m = SHOWN.get_or_init(|| Mutex::new(false));
+    let mut shown = m.lock();
+    if !*shown {
+        *shown = true;
+        drop(shown);
+        if let Some(w) = app.get_webview_window("search") {
+            let _ = w.show();
+            let _ = w.set_focus();
+        }
+        // 前端 ready 时, 若文件索引**未在构建中**, 推一次当前统计让 ActionBar 显示
+        // "已索引 N 个文件"; 若正在构建则不 emit, 避免把 building 状态覆盖成 completed
+        // (索引任务自身会在完成时 emit completed).
+        if !state.file_search.is_indexing() {
+            let stats = state.search_engine.total_indexed();
+            let _ = app.emit(
+                "index_progress",
+                serde_json::json!({
+                    "status": "completed",
+                    "files": stats.files,
+                    "apps": stats.apps,
+                    "commands": stats.commands,
+                }),
+            );
+        }
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -293,10 +388,9 @@ pub async fn set_window_height(app: tauri::AppHandle, height: u32) -> Result<(),
     let Some(w) = app.get_webview_window("search") else {
         return Ok(());
     };
-    if height < 180 || height > 900 {
-        return Ok(());
-    }
-    // 只改高度，宽度固定来自配置，永远不重新读取当前 width
+    // 高度上下界, 防止前端误算导致窗口过大/过小.
+    let height = height.clamp(WINDOW_MIN_HEIGHT, WINDOW_MAX_HEIGHT);
+    // 只改高度，宽度固定为 920, 永远不重新读取当前 width
     let _ = w.set_size(LogicalSize::new(WINDOW_DEFAULT_WIDTH, height as f64));
     Ok(())
 }
@@ -338,15 +432,16 @@ pub async fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// 前端命令面板使用：列出全部已注册命令（含别名）。
+/// 前端命令面板使用：列出全部已注册命令（不含别名）。
 ///
 /// 返回 `Vec<CommandSpec>` 序列化后的精简结构（与 Rust 端 [`crate::command::CommandSpec`] 字段对齐）。
+/// 只返回主命令名（主键），别名在 dispatch 时自动解析。
 #[tauri::command]
 pub async fn list_command_specs() -> Result<serde_json::Value, String> {
     use crate::command::build_default_registry;
     let reg = build_default_registry();
-    let mut names = reg.names();
-    names.sort();
+    // 只遍历主命令（cmds key set），跳过别名
+    let names = reg.main_names();
     let mut specs: Vec<serde_json::Value> = Vec::with_capacity(names.len());
     for name in names {
         let Some(cmd) = reg.lookup(&name) else {
@@ -378,4 +473,20 @@ pub async fn dispatch_command(
     registry_dispatch(&command_id, &arg_list, &ctx)
         .await
         .map_err(|e| e.to_string())
+}
+
+/// 获取可执行文件图标 (base64 编码 PNG).
+///
+/// 用于应用搜索结果展示:
+/// - 前端拿到 base64 字符串后可以直接 `<img src="data:image/png;base64,...">`.
+/// - 返回 `Ok(None)` 表示提取失败 (文件不存在 / 非 PE / 访问被拒), 前端降级到 Lucide 通用图标.
+/// - 内部已经过 `parking_lot::Mutex<HashMap>` 缓存, 同路径重复调用 < 1ms.
+#[tauri::command]
+pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    let bytes = crate::platform::windows::icon::get_or_extract_cached(&path)
+        .map_err(|e| e.to_string())?;
+
+    Ok(bytes.map(|v| BASE64.encode(&v)))
 }

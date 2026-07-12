@@ -18,11 +18,17 @@ pub struct AppSearchEngine {
 }
 
 impl AppSearchEngine {
-    pub async fn new(settings: Arc<dyn SettingsRepo>) -> Result<Self> {
-        Ok(Self {
+    /// 同步构造空缓存引擎，不执行任何 I/O。用于启动阶段避免阻塞 setup。
+    /// 真正的索引构建通过 `refresh_index()` 在后台进行。
+    pub fn new_empty(settings: Arc<dyn SettingsRepo>) -> Self {
+        Self {
             settings,
             cache: RwLock::new(HashMap::new()),
-        })
+        }
+    }
+
+    pub async fn new(settings: Arc<dyn SettingsRepo>) -> Result<Self> {
+        Ok(Self::new_empty(settings))
     }
 
     /// 重建索引；扫描开始菜单、桌面快捷方式、启动文件夹
@@ -112,16 +118,24 @@ impl AppSearchEngine {
         }
         let q = query.to_lowercase();
         if q.is_empty() {
-            // 空查询返回前 N 个
+            // 空查询: 返回全部应用 (按 launch_count 倒序), 不截断 limit.
+            // 这样首屏"所有应用"分组能展示所有已索引的桌面应用, 而非前 N 个片段.
             let mut v: Vec<AppEntry> = cache.values().cloned().collect();
-            v.sort_by(|a, b| b.launch_count.cmp(&a.launch_count));
-            v.truncate(limit as usize);
+            v.sort_by(|a, b| {
+                b.launch_count
+                    .cmp(&a.launch_count)
+                    .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            });
             return v
                 .into_iter()
                 .map(|a| SearchResult {
                     id: a.id.clone(),
                     title: a.name.clone(),
-                    subtitle: a.path.to_string_lossy().to_string(),
+                    // 应用结果明确不暴露文件路径; 前端 AppResultItem 不显示副标题.
+                    subtitle: String::new(),
+                    // 应用没有次级元信息 (不使用文件大小等).
+                    meta: None,
+                    // icon 由前端走三级兜底: 后端 IPC / 静态资源 / Lucide 通用图标.
                     icon: None,
                     category: crate::models::SearchCategory::Apps,
                     result_type: app_type_of(&a.path),
@@ -164,7 +178,9 @@ impl AppSearchEngine {
             .map(|(s, a)| SearchResult {
                 id: a.id.clone(),
                 title: a.name.clone(),
-                subtitle: a.path.to_string_lossy().to_string(),
+                // 应用结果明确不暴露文件路径; 前端 AppResultItem 不显示副标题.
+                subtitle: String::new(),
+                meta: None,
                 icon: None,
                 category: crate::models::SearchCategory::Apps,
                 result_type: app_type_of(&a.path),

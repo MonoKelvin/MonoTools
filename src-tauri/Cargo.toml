@@ -47,6 +47,9 @@ glob-match = "0.2"
 rand = "0.8"
 clap = { version = "4.6", features = ["derive"] }
 anyhow = "1.0"
+futures = "0.3"
+png = "0.18.1"
+base64 = "0.22.1"
 
 # Windows only
 [target.'cfg(windows)'.dependencies]
@@ -58,7 +61,12 @@ windows = { version = "0.62", features = [
     "Win32_System_Registry",
     "Win32_System_Threading",
     "Win32_System_Performance",
+    "Win32_System_LibraryLoader",
+    "Win32_System_SystemInformation",
     "Win32_Security",
+    "Win32_UI_Shell",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
 ] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
@@ -72,14 +80,10 @@ windows-sys = { version = "0.61", features = [
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
 
-# Integration tests live at the repo root under `tests/`. Each `[[test]]`
-# entry points at a file inside `tests/` while `CARGO_MANIFEST_DIR` still
-# resolves to `src-tauri/`; the helper code inside `./tests/rust/common/...`
-# walks one level up to locate `<repo>/tests/rust`.
+# Integration tests live at the repo root under `tests/`. The single `[[test]]`
+# target runs `tests/run.rs` which orchestrates the in-tree test modules; the
+# Rust default `#[test]` harness is reused (do *not* set `harness = false`,
+# otherwise `main` is required and our modules stop compiling).
 [[test]]
-name = "run"
-path = "../tests/run.rs"
-
-[[test]]
-name = "all_tests"
+name = "monotools_it"
 path = "../tests/run.rs"

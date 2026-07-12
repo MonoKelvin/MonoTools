@@ -43,7 +43,8 @@ async function mockBackend<T>(cmd: string, args?: Record<string, unknown>): Prom
   await new Promise((r) => setTimeout(r, 12))
   switch (cmd) {
     case 'search':
-      return mockSearch(args?.query as string) as T
+    case 'search_cmd':
+      return mockSearch((args?.query as string) ?? '') as T
     case 'get_setting':
       return mockGet(args?.key as string) as T
     case 'set_setting':
@@ -70,6 +71,12 @@ async function mockBackend<T>(cmd: string, args?: Record<string, unknown>): Prom
       return true as T
     case 'register_hotkey':
       return true as T
+    case 'frontend_ready':
+      return true as T
+    case 'get_index_status':
+      return { files: 2297401, apps: 186, commands: 6 } as T
+    case 'build_file_index':
+      return '索引构建已启动' as T
     default:
       return ([] as unknown) as T
   }
@@ -77,22 +84,65 @@ async function mockBackend<T>(cmd: string, args?: Record<string, unknown>): Prom
 
 function mockSearch(query: string) {
   const lower = query.toLowerCase()
-  const sample = [
-    { name: 'Google Chrome', subtitle: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', category: 'apps' },
-    { name: 'VS Code', subtitle: 'C:\\Users\\...\\Code.exe', category: 'apps' },
-    { name: 'Spotify', subtitle: 'C:\\Users\\...\\Spotify.exe', category: 'apps' },
-    { name: 'README.md', subtitle: 'E:\\work\\code\\MTools\\README.md', category: 'files' },
-    { name: 'git commit', subtitle: 'Shell Command', category: 'commands' },
+  const allApps = [
+    { name: 'Google Chrome', subtitle: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Visual Studio Code', subtitle: 'C:\\Users\\MONO\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Spotify', subtitle: 'C:\\Users\\MONO\\AppData\\Roaming\\Spotify\\Spotify.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Microsoft Edge', subtitle: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Windows Terminal', subtitle: 'C:\\Program Files\\WindowsApps\\Microsoft.WindowsTerminal\\wt.exe', category: 'apps', resultType: 'uwp-app' },
+    { name: 'File Explorer', subtitle: 'C:\\Windows\\explorer.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Notepad', subtitle: 'C:\\Windows\\System32\\notepad.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Calculator', subtitle: 'C:\\Windows\\System32\\calc.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Paint', subtitle: 'C:\\Windows\\System32\\mspaint.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Settings', subtitle: 'C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'PowerShell', subtitle: 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Task Manager', subtitle: 'C:\\Windows\\System32\\Taskmgr.exe', category: 'apps', resultType: 'system-app' },
+    { name: 'Discord', subtitle: 'C:\\Users\\MONO\\AppData\\Local\\Discord\\Update.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Slack', subtitle: 'C:\\Users\\MONO\\AppData\\Local\\slack\\slack.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Adobe Photoshop', subtitle: 'C:\\Program Files\\Adobe\\Photoshop\\Photoshop.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Figma', subtitle: 'C:\\Users\\MONO\\AppData\\Local\\Figma\\Figma.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Obsidian', subtitle: 'C:\\Users\\MONO\\AppData\\Local\\Obsidian\\Obsidian.exe', category: 'apps', resultType: 'user-app' },
+    { name: 'Notion', subtitle: 'C:\\Users\\MONO\\AppData\\Local\\Notion\\Notion.exe', category: 'apps', resultType: 'user-app' },
   ]
-  return sample
-    .filter((s) => !query.trim() || s.name.toLowerCase().includes(lower))
+  const allFiles = [
+    { name: 'README.md', subtitle: 'E:\\work\\code\\MonoTools\\README.md', category: 'files', resultType: 'document' },
+    { name: 'package.json', subtitle: 'E:\\work\\code\\MonoTools\\package.json', category: 'files', resultType: 'code' },
+    { name: 'index.html', subtitle: 'E:\\work\\code\\MonoTools\\index.html', category: 'files', resultType: 'code' },
+    { name: 'design.png', subtitle: 'D:\\design\\hero\\design.png', category: 'files', resultType: 'image' },
+    { name: 'screenshot.jpg', subtitle: 'D:\\design\\screenshots\\screenshot.jpg', category: 'files', resultType: 'image' },
+    { name: 'logo.svg', subtitle: 'E:\\work\\code\\MonoTools\\src\\logo.svg', category: 'files', resultType: 'design' },
+    { name: 'data.csv', subtitle: 'D:\\data\\exports\\data.csv', category: 'files', resultType: 'spreadsheet' },
+    { name: 'report.pdf', subtitle: 'D:\\documents\\reports\\report.pdf', category: 'files', resultType: 'pdf' },
+    { name: 'presentation.pptx', subtitle: 'D:\\documents\\presentation.pptx', category: 'files', resultType: 'presentation' },
+    { name: 'main.rs', subtitle: 'E:\\work\\code\\MonoTools\\src-tauri\\src\\main.rs', category: 'files', resultType: 'code' },
+    { name: 'app.vue', subtitle: 'E:\\work\\code\\MonoTools\\src\\App.vue', category: 'files', resultType: 'code' },
+    { name: 'demo.mp4', subtitle: 'D:\\videos\\demo.mp4', category: 'files', resultType: 'video' },
+    { name: 'song.mp3', subtitle: 'D:\\music\\song.mp3', category: 'files', resultType: 'audio' },
+    { name: 'archive.zip', subtitle: 'D:\\downloads\\archive.zip', category: 'files', resultType: 'archive' },
+    { name: 'installer.exe', subtitle: 'D:\\downloads\\installer.exe', category: 'files', resultType: 'executable' },
+    { name: 'image.bmp', subtitle: 'C:\\Users\\MONO\\Pictures\\image.bmp', category: 'files', resultType: 'image' },
+    { name: 'notes.txt', subtitle: 'C:\\Users\\MONO\\Documents\\notes.txt', category: 'files', resultType: 'document' },
+    { name: 'config.json', subtitle: 'E:\\work\\config.json', category: 'files', resultType: 'code' },
+  ]
+  const allCommands = [
+    { name: 'git status', subtitle: 'Show working tree status', category: 'commands', resultType: 'command' },
+    { name: 'git commit -m ""', subtitle: 'Record changes to the repository', category: 'commands', resultType: 'command' },
+    { name: 'pnpm install', subtitle: 'Install dependencies', category: 'commands', resultType: 'command' },
+    { name: 'pnpm dev', subtitle: 'Run dev server', category: 'commands', resultType: 'command' },
+    { name: 'pnpm build', subtitle: 'Build for production', category: 'commands', resultType: 'command' },
+    { name: 'cargo build', subtitle: 'Compile Rust project', category: 'commands', resultType: 'command' },
+  ]
+  const all = [...allApps, ...allFiles, ...allCommands]
+  return all
+    .filter((s) => !query.trim() || s.name.toLowerCase().includes(lower) || s.subtitle.toLowerCase().includes(lower))
     .map((s, idx) => ({
       id: String(idx),
       title: s.name,
       subtitle: s.subtitle,
       icon: null,
       category: s.category,
+      resultType: (s as any).resultType || 'other-file',
       action: { type: 'launch', data: s.subtitle },
-      score: 1 - idx * 0.1,
+      score: 1 - idx * 0.01,
     }))
 }

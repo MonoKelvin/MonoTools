@@ -106,8 +106,8 @@ onUnmounted(() => {
         <h3>外观</h3>
       </div>
       <p class="settings-panel__section-desc">
-        Raycast 风格深色主题。所有交互元素均使用单一紫罗兰 accent。
-        间距、圆角与字阶遵循 [docs/UI_DESIGN-raycast.md](../../docs/UI_DESIGN-raycast.md)。
+        极简黑白灰主题。所有交互元素均使用单一暖白 accent (#f5f1e8) 作为关键交互点缀。
+        间距、圆角与字阶遵循 Raycast 风格设计规范。
       </p>
     </MtCard>
 
@@ -343,11 +343,14 @@ onUnmounted(() => {
 .settings-panel__toggle input:checked + .settings-panel__toggle-track {
   background: var(--accent);
   border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--accent-soft),
+    0 0 12px var(--accent-glow);
 }
 
 .settings-panel__toggle input:checked + .settings-panel__toggle-track .settings-panel__toggle-thumb {
   left: 20px;
-  background: #fff;
+  background: var(--accent-on-accent, #15151a);
 }
 
 .settings-panel__toggle:hover .settings-panel__toggle-track {

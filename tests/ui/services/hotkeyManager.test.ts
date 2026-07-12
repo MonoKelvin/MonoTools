@@ -25,13 +25,10 @@ describe('hotkeyManager', () => {
     expect(hotkeyManager.getById('h1')?.id).toBe('h1')
   })
 
-  it('register is idempotent (warns + ignores)', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  it('register is idempotent (silently ignores)', () => {
     hotkeyManager.register(binding('dup'))
     hotkeyManager.register(binding('dup'))
     expect(hotkeyManager.getAll()).toHaveLength(1)
-    expect(warn).toHaveBeenCalled()
-    warn.mockRestore()
   })
 
   it('unregister removes a binding', () => {

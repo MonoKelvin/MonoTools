@@ -1,5 +1,6 @@
 export {
   searchApi,
+  appIconApi,
   commandApi,
   settingsApi,
   hotkeyApi,

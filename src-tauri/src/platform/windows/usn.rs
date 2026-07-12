@@ -8,7 +8,6 @@
 //! 参考：https://learn.microsoft.com/en-us/windows/win32/api/winioctl/
 
 use crate::error::{AppError, Result};
-use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::ffi::{c_void, OsString};
 use std::os::windows::ffi::OsStringExt;
@@ -86,48 +85,104 @@ fn extract_drive_letter(volume: &str) -> char {
     }
 }
 
+/// 仅用于 UI 显示：从 volume 路径里提取盘符字母（带 ":"），如 `C:`、`D:`.
+/// 当 volume 字符串无法解析时回退到 `"?"`。
+pub fn drive_label(volume: &str) -> String {
+    let c = extract_drive_letter(volume);
+    format!("{}:", c.to_ascii_uppercase())
+}
+
 pub struct NtfsIndexer {
-    volumes: Vec<String>,
-    last_usn: RwLock<HashMap<String, u64>>,
-    path_cache: Arc<RwLock<HashMap<u64, PathBuf>>>,
+    /// 已枚举到的盘符列表。初始为 `lazy_initial`，第一次访问时才真正调用 `enumerate_ntfs_volumes`。
+    /// - 用 `std::sync::Once` + `parking_lot::Mutex` 保证只枚举一次。
+    volumes: parking_lot::Mutex<Vec<String>>,
+    /// 已经"懒初始化"过的标记; 配合 `initialize_now()` 调用一次后即就绪.
+    initialized: std::sync::atomic::AtomicBool,
+    last_usn: parking_lot::RwLock<HashMap<String, u64>>,
+    path_cache: Arc<parking_lot::RwLock<HashMap<u64, PathBuf>>>,
+    /// 指定盘符(非懒加载路径): 启动时同步枚举.
+    explicit_drives: Option<Vec<char>>,
 }
 
 impl NtfsIndexer {
-    pub fn new() -> Result<Self> {
-        let volumes = Self::enumerate_ntfs_volumes(None)?;
-
-        log::info!(
-            "NTFS索引器已创建，检测到 {} 个NTFS卷。注意：完整的MFT索引需要管理员权限。",
-            volumes.len()
-        );
-
+    /// 不进行任何 I/O 的空构造 —— 真正的盘符枚举会在第一次访问 `get_volumes()` 时进行。
+    pub fn new_lazy() -> Result<Self> {
         Ok(Self {
-            volumes,
-            last_usn: RwLock::new(HashMap::new()),
-            path_cache: Arc::new(RwLock::new(HashMap::new())),
+            volumes: parking_lot::Mutex::new(Vec::new()),
+            initialized: std::sync::atomic::AtomicBool::new(false),
+            last_usn: parking_lot::RwLock::new(HashMap::new()),
+            path_cache: Arc::new(parking_lot::RwLock::new(HashMap::new())),
+            explicit_drives: None,
+        })
+    }
+
+    /// 用户**显式指定**了盘符: 懒枚举(同步只在用户显式调用 `initialize_now()` 时).
+    pub fn new_with_drives_lazy(drives: Vec<char>) -> Self {
+        Self {
+            volumes: parking_lot::Mutex::new(Vec::new()),
+            initialized: std::sync::atomic::AtomicBool::new(false),
+            last_usn: parking_lot::RwLock::new(HashMap::new()),
+            path_cache: Arc::new(parking_lot::RwLock::new(HashMap::new())),
+            explicit_drives: Some(drives),
+        }
+    }
+
+    /// 兼容旧路径: 同步枚举所有 NTFS 卷。
+    pub fn new() -> Result<Self> {
+        log::info!("[usn] NtfsIndexer::new(): 同步枚举 NTFS 卷（仅用于显式 legacy 路径）");
+        let vols = Self::enumerate_ntfs_volumes(None)?;
+        log::info!("[usn] NTFS索引器已创建，检测到 {} 个NTFS卷", vols.len());
+        Ok(Self {
+            volumes: parking_lot::Mutex::new(vols),
+            initialized: std::sync::atomic::AtomicBool::new(true),
+            last_usn: parking_lot::RwLock::new(HashMap::new()),
+            path_cache: Arc::new(parking_lot::RwLock::new(HashMap::new())),
+            explicit_drives: None,
         })
     }
 
     pub fn new_with_drives(drives: Vec<char>) -> Result<Self> {
-        let volumes = Self::enumerate_ntfs_volumes(Some(drives))?;
-
-        log::info!(
-            "NTFS索引器已创建（指定盘符），检测到 {} 个NTFS卷: {:?}",
-            volumes.len(),
-            volumes
-        );
-
+        log::info!("[usn] NtfsIndexer::new_with_drives(): 同步枚举指定盘符");
+        let vols = Self::enumerate_ntfs_volumes(Some(drives.clone()))?;
         Ok(Self {
-            volumes,
-            last_usn: RwLock::new(HashMap::new()),
-            path_cache: Arc::new(RwLock::new(HashMap::new())),
+            volumes: parking_lot::Mutex::new(vols),
+            initialized: std::sync::atomic::AtomicBool::new(true),
+            last_usn: parking_lot::RwLock::new(HashMap::new()),
+            path_cache: Arc::new(parking_lot::RwLock::new(HashMap::new())),
+            explicit_drives: Some(drives),
         })
+    }
+
+    /// 主动触发**且仅触发一次**的真正 NTFS 卷枚举。
+    /// 必须在后台线程中调用 —— `enumerate_ntfs_volumes` 是同步阻塞 API。
+    /// 之后的 `get_volumes()` 会直接返回缓存，不会重复枚举。
+    pub fn ensure_enumerated(&self) {
+        use std::sync::atomic::Ordering;
+        if self.initialized.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        log::info!("[usn] ensure_enumerated: 第一次访问, 同步枚举 NTFS 卷");
+
+        let result = if let Some(drives) = self.explicit_drives.as_ref() {
+            Self::enumerate_ntfs_volumes(Some(drives.clone()))
+        } else {
+            Self::enumerate_ntfs_volumes(None)
+        };
+        match result {
+            Ok(v) => {
+                log::info!("[usn] ensure_enumerated 完成: {} 个卷", v.len());
+                *self.volumes.lock() = v;
+            }
+            Err(e) => {
+                log::error!("[usn] ensure_enumerated 失败: {}, 后续将无法构建索引", e);
+                // 失败也标记为 initialized=true 避免反复触发; volume 列表保持空.
+            }
+        }
     }
 
     fn enumerate_ntfs_volumes(drives: Option<Vec<char>>) -> Result<Vec<String>> {
         use windows_sys::Win32::Storage::FileSystem::{
-            FindFirstVolumeW, FindNextVolumeW, FindVolumeClose, GetLogicalDriveStringsW,
-            GetVolumeInformationW,
+            FindFirstVolumeW, FindNextVolumeW, FindVolumeClose, GetVolumeInformationW,
         };
 
         let mut volumes = Vec::new();
@@ -244,56 +299,19 @@ impl NtfsIndexer {
 
             unsafe { FindVolumeClose(hfind) };
 
+            // Fallback：直接枚举所有逻辑盘符（动态发现，不依赖盘符前缀白名单）。
+            // 之所以保留 fallback，是因为在某些虚拟机 / 容器 / 安全软件拦截下
+            // `FindFirstVolumeW` 可能返回 0 个 NTFS 卷，但 `GetLogicalDriveStringsW` 仍可工作。
+            // Fallback 策略：尝试**所有**卷(不强制 NTFS), 因为:
+            //   1. 不依赖 FS 类型, 系统其它格式(exFAT/FAT32 等)虽然不能用 USN, 但其它可枚举;
+            //   2. GetVolumeInformationW 失败 / 权限不足的盘符也加入列表,
+            //      由 FileSearchEngine::enumerate_volume 自行跳过无权访问的卷。
+            //
+            // 注: 缓冲区 512 字符在我们机器上够用, 但 Windows API 在多盘 + 长 mount path
+            // 场景下需要大得多的 buffer. 我们**总是**走"多次重试直到装下"策略, 而不是
+            // 只用 512 字符固定大小。这样能稳健拿到 C/D/E/F/...
             if volumes.is_empty() {
-                let mut buf: [u16; 512] = [0; 512];
-                let len = unsafe { GetLogicalDriveStringsW(buf.len() as u32, buf.as_mut_ptr()) };
-                if len > 0 {
-                    let mut i = 0;
-                    while i < len as usize {
-                        let start = i;
-                        while i < len as usize && buf[i] != 0 {
-                            i += 1;
-                        }
-                        if i > start {
-                            let name = OsString::from_wide(&buf[start..i]);
-                            let s = name.to_string_lossy().to_string();
-                            if s.starts_with("C:\\")
-                                || s.starts_with("D:\\")
-                                || s.starts_with("E:\\")
-                                || s.starts_with("F:\\")
-                                || s.starts_with("G:\\")
-                                || s.starts_with("H:\\")
-                            {
-                                let drive_letter = s.chars().next().unwrap();
-                                let mut fs_name: [u16; 256] = [0; 256];
-                                let wide_path: Vec<u16> =
-                                    s.encode_utf16().chain(std::iter::once(0)).collect();
-
-                                let success = unsafe {
-                                    GetVolumeInformationW(
-                                        wide_path.as_ptr(),
-                                        std::ptr::null_mut(),
-                                        0,
-                                        std::ptr::null_mut(),
-                                        std::ptr::null_mut(),
-                                        std::ptr::null_mut(),
-                                        fs_name.as_mut_ptr(),
-                                        fs_name.len() as u32,
-                                    )
-                                };
-
-                                if success != 0 {
-                                    let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
-                                    if fs.eq_ignore_ascii_case("NTFS") {
-                                        let volume = format!("\\\\.\\{}:", drive_letter);
-                                        log::info!("检测到NTFS卷: {}", volume);
-                                        volumes.push(volume);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                Self::enumerate_logical_drives(&mut volumes);
             }
         }
 
@@ -303,6 +321,80 @@ impl NtfsIndexer {
             volumes
         );
         Ok(volumes)
+    }
+
+    /**
+     * 通过 `GetLogicalDriveStringsW` 枚举所有逻辑盘符（C:、D:、E: ...），
+     * 自适应缓冲区大小 — 直到能装下所有路径为止。
+     */
+    fn enumerate_logical_drives(out: &mut Vec<String>) {
+        use windows_sys::Win32::Storage::FileSystem::GetLogicalDriveStringsW;
+
+        let mut buf_len: u32 = 512;
+        let mut buf: Vec<u16> = vec![0u16; buf_len as usize];
+        loop {
+            let len = unsafe { GetLogicalDriveStringsW(buf_len, buf.as_mut_ptr()) };
+            if len == 0 {
+                return;
+            }
+            if len <= buf_len {
+                // len 不含结尾 0; 解析路径列表.
+                let mut i = 0usize;
+                while i < len as usize {
+                    let start = i;
+                    while i < len as usize && buf[i] != 0 {
+                        i += 1;
+                    }
+                    if i > start {
+                        let name = std::ffi::OsString::from_wide(&buf[start..i]);
+                        let s = name.to_string_lossy().to_string();
+                        if s.len() >= 3
+                            && s.as_bytes()[0].is_ascii_alphabetic()
+                            && s.as_bytes()[1] == b':'
+                            && s.as_bytes()[2] == b'\\'
+                        {
+                            let drive_letter = s.chars().next().unwrap();
+                            // 该卷是否 NTFS?
+                            let mut fs_name: [u16; 256] = [0; 256];
+                            let wide_path: Vec<u16> =
+                                s.encode_utf16().chain(std::iter::once(0)).collect();
+                            let success = unsafe {
+                                windows_sys::Win32::Storage::FileSystem::GetVolumeInformationW(
+                                    wide_path.as_ptr(),
+                                    std::ptr::null_mut(),
+                                    0,
+                                    std::ptr::null_mut(),
+                                    std::ptr::null_mut(),
+                                    std::ptr::null_mut(),
+                                    fs_name.as_mut_ptr(),
+                                    fs_name.len() as u32,
+                                )
+                            };
+                            if success != 0 {
+                                let fs = String::from_utf16_lossy(&fs_name).trim().to_string();
+                                let volume = format!("\\\\.\\{}:", drive_letter);
+                                log::info!(
+                                    "fallback 检测到卷 {} (FS: {})",
+                                    volume,
+                                    fs
+                                );
+                                out.push(volume);
+                            }
+                        }
+                    }
+                    if i < len as usize && buf[i] == 0 {
+                        i += 1;
+                    }
+                }
+                return;
+            }
+            // 不够装: 翻倍扩容再试 (Windows 文档: 0 = error, > buffer_size = 重新分配).
+            buf_len = (buf_len as usize * 2).min(16384) as u32;
+            if buf_len == 0 {
+                return;
+            }
+            buf = vec![0u16; buf_len as usize];
+        }
     }
 
     pub fn get_journal_state(&self, volume: &str) -> Option<UsnJournalState> {
@@ -958,13 +1050,15 @@ impl NtfsIndexer {
     pub fn get_all_changes(&self) -> Result<Vec<UsnRecord>> {
         let mut changes = Vec::new();
         let mut last_usn = self.last_usn.write();
+        // 拷贝一份本地的 volumes,避免与 self.volumes 同时持锁.
+        let volumes_snapshot = self.volumes.lock().clone();
 
-        for volume in &self.volumes {
+        for volume in &volumes_snapshot {
             let start_usn = last_usn.get(volume).copied().unwrap_or(0);
             if let Ok(volume_changes) = self.read_usn_changes(volume, start_usn) {
                 changes.extend(volume_changes);
                 if let Some(record) = changes.last() {
-                    *last_usn.entry(volume.clone()).or_insert(0) = record.usn;
+                    last_usn.insert(volume.to_string(), record.usn);
                 }
             }
         }
@@ -972,8 +1066,15 @@ impl NtfsIndexer {
         Ok(changes)
     }
 
-    pub fn get_volumes(&self) -> &[String] {
-        &self.volumes
+    /// Returns the list of NTFS volumes currently known.
+    /// - **调用前请确认这一函数是在 spawn_blocking 或后台线程中执行**, 因为它会触发一次同步盘符枚举.
+    /// - 若盘符已被枚举过(`once` 已就绪), 直接返回缓存.
+    /// Returns the list of NTFS volumes currently known.
+    /// - 第一次访问会触发一次同步盘符枚举（即便在 spawn_blocking 中也请评估成本）。
+    /// - 已枚举过时，直接返回缓存 `.to_vec()`。
+    pub fn get_volumes(&self) -> Vec<String> {
+        self.ensure_enumerated();
+        self.volumes.lock().clone()
     }
 
     pub fn get_usn_journal_state(&self, volume: &str) -> Option<UsnJournalState> {

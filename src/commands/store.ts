@@ -12,8 +12,9 @@
  *   - 不再有 in-memory list（除非 mock 模式） —— 全部从后端拉
  */
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import * as tauriSvc from '@/services/tauri'
+import { hotkeyManager } from '@/services/hotkeyManager'
 import { normalizeShortcut } from './bindings'
 import { builtinCommandSpecs as builtinSpecs } from './specs'
 import type { CommandCategory, CommandExecutionResult, CommandSpec } from './types'
@@ -27,11 +28,6 @@ const invokeCmd: <T>(cmd: string, args: Record<string, unknown>) => Promise<T> =
       cmd: string,
       args?: Record<string, unknown>,
     ) => Promise<T>)(cmd, args)
-
-function asStringArray(v: unknown): string[] | undefined {
-  if (!Array.isArray(v)) return undefined
-  return v.every((x) => typeof x === 'string') ? (v as string[]) : undefined
-}
 
 /**
  * 是否在 Tauri 上下文：测试可临时删除 `window.__TAURI__` 强制走 mock 路径。
@@ -69,6 +65,15 @@ export const useCommandsStore = defineStore('commands', () => {
   // 公开 `lastError` 让外部能看到失败原因：
   // null = 还没尝试过加载；string = 最近一次错误信息（"" 表示加载成功）
   const lastError = ref<string | null>(null)
+
+  /** 把当前 specs 的 shortcut 同步到 hotkeyManager（用于 HotkeyModal 显示）。 */
+  function syncHotkeyManager() {
+    hotkeyManager.clear()
+    hotkeyManager.registerFromSpecs(specs.value)
+  }
+
+  // specs 变化触发 hotkeyManager 同步，无论来自 loadFromBackend / override / reset
+  watch(specs, syncHotkeyManager, { deep: false })
 
   function snapshot(): CommandSpec[] {
     return specs.value.slice()
@@ -109,7 +114,7 @@ export const useCommandsStore = defineStore('commands', () => {
       isLoaded.value = true
       const msg = err instanceof Error ? err.message : String(err)
       lastError.value = msg || 'unknown'
-      console.warn('[commands] load failed:', err)
+      // 后端拉取失败已经在 lastError 中记录，UI 层（CommandsPanel 等）会展示；控制台不再重复 warn
     }
   }
 
@@ -211,8 +216,3 @@ export const useCommandsStore = defineStore('commands', () => {
     onError,
   }
 })
-
-export const commandsStoreHelpers = {
-  /** 适配器：对 hitspecs 给定 combo 做归一并匹配。 */
-  asStringArray,
-}

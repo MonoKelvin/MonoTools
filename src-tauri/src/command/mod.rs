@@ -5,7 +5,6 @@
 //! - 前端 `src/commands/` 仅保留 UI metadata（spec 列表 + 响应键盘/菜单的 dispatch）。
 //!   - 每个 id 与后端命令一一对应；"执行" 全部委托给后端 Tauri IPC 命令。
 
-pub mod command_engine;
 pub mod command_registry;
 pub mod command_trait;
 
@@ -19,7 +18,6 @@ pub mod cmd_search;
 pub mod cmd_stats;
 pub mod cmd_version;
 
-pub use command_engine::CommandEngine;
 pub use command_registry::{CommandRegistry, build_default_registry, dispatch, registry_dispatch};
 pub use command_trait::{Command, CommandSpec};
 

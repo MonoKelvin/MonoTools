@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated } from 'vue'
-import { Search } from '@lucide/vue'
+import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed } from 'vue'
+import { Search, Sparkles, HardDrive, FileText } from '@lucide/vue'
 import { useSearchStore } from '@/stores/search'
 import { useSettingsStore } from '@/stores/settings'
 import { hotkeyApi, windowApi, shellApi } from '@/services'
@@ -10,8 +10,7 @@ import { listenEvent } from '@/services/tauri'
 import type { SearchResult } from '@/types/search'
 
 import SearchInput from '@/components/common/SearchInput.vue'
-import CategoryTabs from '@/components/search/CategoryTabs.vue'
-import SearchResults from '@/components/search/SearchResults.vue'
+import VirtualGroupedResults from '@/components/search/VirtualGroupedResults.vue'
 import ActionBar from '@/components/search/ActionBar.vue'
 import ContextMenu from '@/components/search/ContextMenu.vue'
 import HotkeyModal from '@/components/common/HotkeyModal.vue'
@@ -22,6 +21,7 @@ const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuItem = ref<SearchResult | null>(null)
 const showHotkeyModal = ref(false)
+const useGroupedView = ref(true)
 
 const search = useSearchStore()
 const settings = useSettingsStore()
@@ -35,7 +35,10 @@ let pendingHeight = 0
 let resyncTimer: ReturnType<typeof setTimeout> | null = null
 let unlistenIndexProgress: (() => void) | null = null
 
-const WINDOW_FIXED_WIDTH = 680
+const WINDOW_FIXED_WIDTH = 640
+
+/** 窗口最大高度 (不含顶部输入框 + 底部状态栏) */
+const CONTENT_AREA_MAX = 460
 
 const fixWindowWidth = async () => {
   if (!isTauri) return
@@ -53,7 +56,10 @@ const syncWindowHeight = () => {
   if (!isTauri) return
   if (!containerRef.value) return
   const rect = containerRef.value.getBoundingClientRect()
-  const h = Math.round(rect.height)
+  // 容器原始高度 (不限制) - 用于在容器溢出时计算滚动区
+  const naturalH = Math.round(rect.height)
+  // 限制为最大高度, 防止搜索结果过多时窗口过高
+  const h = Math.min(naturalH, CONTENT_AREA_MAX + 88)
   if (Math.abs(h - pendingHeight) < 2) return
   pendingHeight = h
   if (resyncTimer) clearTimeout(resyncTimer)
@@ -72,7 +78,6 @@ const onHover = (idx: number) => {
   search.selectedIndex = idx
 }
 const onQueryChange = (val: string) => search.setQuery(val)
-const onCategorySelect = (cat: any) => search.setCategory(cat)
 
 const tryRegisterHotkey = async () => {
   if (!isTauri) return
@@ -81,8 +86,17 @@ const tryRegisterHotkey = async () => {
   } catch {}
 }
 
-const handleIndexProgress = (progress: { status: string; message?: string; files?: number }) => {
+const handleIndexProgress = (progress: {
+  status: string
+  message?: string
+  files?: number
+  phase?: string
+}) => {
   search.setIndexProgress(progress)
+  // 应用索引就绪后, 若当前是空查询, 自动刷新一次让应用出现在首屏
+  if (progress.phase === 'apps' && progress.status === 'completed' && !search.query) {
+    search.runSearch().catch(() => undefined)
+  }
 }
 
 const handleContextMenu = (e: MouseEvent, item?: SearchResult) => {
@@ -154,10 +168,6 @@ const revealSelected = async () => {
   } catch {}
 }
 
-/**
- * 集中处理 keydown：UI-only (search.cmd.*) 命令优先 → 走本地实现；
- * 后端命令由 `commandsStore.execute(id)` 委托 IPC。
- */
 async function handleGlobalKeydown(event: KeyboardEvent) {
   const id = dispatchKeyEvent(event, commandsStore.list() as any)
   if (!id) return
@@ -172,26 +182,47 @@ async function handleGlobalKeydown(event: KeyboardEvent) {
     await router.push(go).catch(() => {})
     return
   }
-  // 其他命令：发往后端
   event.preventDefault()
   await commandsStore.execute(id).catch(() => undefined)
 }
 
+// === 未搜索状态数据 (默认推荐内容) ===
+// 当 query 为空时, 把整个 results 列表传给分组组件 (内部会按
+// 类别/类型拆分到 "系统应用" / "所有应用" / "所有文件" / "命令" 分组里)。
+// 固定项目和最近访问分组由 VirtualGroupedResults 内部根据 search.pinned / search.recent 决定。
+const defaultResults = computed<SearchResult[]>(() => {
+  if (search.query) return []
+  // 排除固定项目 + 最近访问(它们已有独立分组), 避免在下方重复展示.
+  const excludedIds = new Set([
+    ...search.pinned.map((p) => p.id),
+    ...search.recent.map((p) => p.id),
+  ])
+  return search.filteredResults.filter((r) => !excludedIds.has(r.id))
+})
+
 onMounted(async () => {
-  await commandsStore.loadFromBackend().catch(() => undefined)
+  commandsStore.loadFromBackend().catch(() => undefined)
   window.addEventListener('keydown', handleGlobalKeydown)
-  await settings.load()
-  await tryRegisterHotkey()
-  await fixWindowWidth()
-  await search.loadIndexStatus()
-
-  unlistenIndexProgress = await listenEvent('index_progress', handleIndexProgress)
-
   if (containerRef.value) {
     containerRef.value.addEventListener('contextmenu', handleContextMenu)
   }
 
+  unlistenIndexProgress = await listenEvent('index_progress', handleIndexProgress)
+
   await nextTick()
+  try {
+    const { call } = await import('@/services/tauri')
+    await call('frontend_ready', {})
+  } catch {
+    // 非 tauri 环境(浏览器 mock)忽略即可.
+  }
+
+  search.initialLoad().catch(() => undefined)
+  settings.load().catch(() => undefined)
+  tryRegisterHotkey().catch(() => undefined)
+  fixWindowWidth().catch(() => undefined)
+  search.loadIndexStatus().catch(() => undefined)
+
   if (containerRef.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(syncWindowHeight)
     resizeObserver.observe(containerRef.value)
@@ -216,6 +247,10 @@ onBeforeUnmount(() => {
 })
 
 watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
+
+// 计算: 搜索结果区域高度 = 容器高 - 输入框 - 状态栏
+// (无分类横幅, 无 status 区域, 仅输入框 + 列表 + 状态栏)
+const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 </script>
 
 <template>
@@ -232,12 +267,16 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
         autofocus
       />
 
-      <CategoryTabs :active="search.activeCategory" @select="onCategorySelect" />
-
-      <SearchResults
-        :results="search.filteredResults"
+      <!-- Raycast 风格统一分组列表 (黑白灰, 简单分隔, 无卡片化) -->
+      <VirtualGroupedResults
+        v-if="useGroupedView"
+        :results="search.query ? search.filteredResults : defaultResults"
         :loading="search.loading"
         :selected-index="search.selectedIndex"
+        :height="contentHeight"
+        :pinned="search.pinned"
+        :recent="search.recent"
+        :has-query="!!search.query"
         @select="onSelect"
         @hover="onHover"
         @contextmenu="handleContextMenu"
@@ -256,7 +295,7 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
             </template>
           </div>
         </template>
-      </SearchResults>
+      </VirtualGroupedResults>
 
       <ActionBar
         :results="search.filteredResults"
@@ -264,6 +303,9 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
         :index-building="search.indexStatus === 'building'"
         :index-status="search.indexStatus"
         :index-message="search.indexMessage"
+        :index-volumes-total="search.indexVolumesTotal"
+        :index-volume-index="search.indexVolumeIndex"
+        :index-current-volume="search.indexCurrentVolume"
         @show-hotkeys="onShowHotkeys"
       />
     </div>
@@ -287,107 +329,45 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  background: var(--canvas);
+  background: transparent;
   overflow: hidden;
   position: relative;
 }
 
+/* 容器: 黑白灰 + 极轻玻璃 + 圆角 (上对齐, 无多余装饰) */
 .search-container {
   width: 100%;
-  max-width: 720px;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: 0;
-  box-shadow: var(--shadow-xl);
+  border-top: 1px solid var(--glass-border);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
   overflow: hidden;
-  animation: search-container-fade-in var(--dur-normal) var(--ease-out);
+  animation: search-container-fade-in 220ms var(--ease-out);
+}
+
+/* 当 Mica 不支持 (Win10 及以下) 时, 退化为柔化背景 */
+@supports not ((backdrop-filter: blur(40px)) or (-webkit-backdrop-filter: blur(40px))) {
+  .search-container {
+    background: var(--canvas);
+  }
 }
 
 @keyframes search-container-fade-in {
-  from {
-    0% {
-      opacity: 0;
-      transform: translateY(-12px) scale(0.97);
-      filter: blur(8px);
-    }
-  }
-  100% {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-      filter: blur(0);
-    }
-  }
-
-.index-status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  background: linear-gradient(90deg, rgba(255, 107, 107, 0.1) 0%, rgba(255, 107, 107, 0.05) 100%);
-  border-bottom: 1px solid rgba(255, 107, 107, 0.2);
-  animation: status-bar-slide-in 0.3s var(--ease-out);
-}
-
-@keyframes status-bar-slide-in {
-  from {
   0% {
     opacity: 0;
-    transform: translateY(-100%);
+    transform: translateY(-8px) scale(0.985);
+    filter: blur(6px);
   }
-}
-  to {
+  100% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
-}
-
-.index-status-bar__left {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.index-status-bar__icon {
-  flex-shrink: 0;
-}
-
-.index-status-bar__icon--loading {
-  color: var(--accent);
-  animation: spin 1s linear infinite;
-}
-
-.index-status-bar__icon--success {
-  color: #10b981;
-}
-
-.index-status-bar__icon--error {
-  color: #ef4444;
-}
-
-.index-status-bar__text {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.index-status-bar__action {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: var(--text-primary);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all var(--dur-fast) var(--ease-out);
-}
-
-.index-status-bar__action:hover {
-  background: rgba(255, 255, 255, 0.15);
-  border-color: rgba(255, 255, 255, 0.25);
 }
 
 .empty-state {
@@ -395,7 +375,7 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-4);
+  gap: var(--sp-3);
   padding: var(--sp-10) var(--sp-5);
 }
 
@@ -406,34 +386,26 @@ watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))
   align-items: center;
   justify-content: center;
   color: var(--text-quaternary);
-  opacity: 0.4;
+  opacity: 0.35;
   transition: all var(--dur-normal) var(--ease-out);
 }
 
 .empty-state:hover .empty-state__icon {
-  opacity: 0.6;
+  opacity: 0.55;
   transform: scale(1.05);
 }
 
 .empty-state__text {
-  color: var(--text-tertiary);
-  font-size: var(--text-base);
-  font-weight: 400;
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.005em;
 }
 
 .empty-state__hint {
   color: var(--text-quaternary);
-  font-size: var(--text-sm);
-}
-
-.empty-state__action {
-  margin-top: var(--sp-4);
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .slide-down-enter-active,

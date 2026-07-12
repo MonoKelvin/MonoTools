@@ -2,6 +2,12 @@
 import { computed, onMounted, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 import type { SearchResult } from '@/types/search'
 import { textW, truncateMiddle, truncatePathMiddle } from '@/utils/text'
+import {
+  FolderOpen, FileText, Terminal, Command, Grid3x3,
+  Monitor, User, Package, Image, Video, Music, Archive, Cpu,
+  Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
+  FileArchive, FileBraces, File
+} from "@lucide/vue"
 
 // --- Component ---
 const props = defineProps<{
@@ -70,23 +76,13 @@ onBeforeUnmount(() => {
 })
 
 const IconComponent = computed(() => {
-  const typeMap: Record<string, typeof FolderOpen> = {
+  const typeMap: Record<string, any> = {
     'system-app': Monitor, 'user-app': AppWindow, 'uwp-app': Package,
-    'directory': Folder, 'document': FileCode, 'image': FileImage,
+    'directory': Folder, 'document': FileText, 'image': FileImage,
     'video': FileVideo, 'audio': FileAudio, 'executable': FileBraces,
     'archive': FileArchive, 'other-file': File, 'command': Terminal,
   }
   return typeMap[props.result.resultType] || Command
-})
-
-const categoryColor = computed(() => {
-  const typeMap: Record<string, string> = {
-    'system-app': '#6366f1', 'user-app': '#3b82f6', 'uwp-app': '#8b5cf6',
-    'directory': '#f59e0b', 'document': '#06b6d4', 'image': '#ec4899',
-    'video': '#84cc16', 'audio': '#f97316', 'executable': '#ef4444',
-    'archive': '#10b981', 'other-file': '#6b7280', 'command': '#14b8a6',
-  }
-  return typeMap[props.result.resultType] || 'var(--accent)'
 })
 
 const resultTypeLabel = computed(() => {
@@ -98,13 +94,6 @@ const resultTypeLabel = computed(() => {
   }
   return labels[props.result.resultType] || ''
 })
-
-import {
-  FolderOpen, FileText, Terminal, Command, Grid3x3,
-  Monitor, User, Package, Image, Video, Music, Archive, Cpu,
-  Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
-  FileArchive, FileBraces, File
-} from "@lucide/vue"
 </script>
 
 <template>
@@ -114,7 +103,7 @@ import {
     @mouseenter="emit('mouseover', index)"
     @contextmenu="(e) => emit('contextmenu', e, result)"
   >
-    <div class="result-item__icon" :style="{ '--category-color': categoryColor }">
+    <div class="result-item__icon">
       <component :is="IconComponent" :size="16" :stroke-width="2" />
     </div>
 
@@ -129,7 +118,8 @@ import {
     </div>
 
     <div class="result-item__meta">
-      <span v-if="resultTypeLabel" class="result-item__badge" :style="{ '--badge-color': categoryColor }">{{ resultTypeLabel }}</span>
+      <span v-if="result.meta" class="result-item__meta-text">{{ result.meta }}</span>
+      <span v-if="resultTypeLabel" class="result-item__badge">{{ resultTypeLabel }}</span>
       <span class="result-item__shortcut">
         <span class="kbd">↵</span>
       </span>
@@ -142,60 +132,77 @@ import {
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: 10px;
+  padding: 7px 12px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
   user-select: none;
   background: transparent;
   position: relative;
   overflow: hidden;
-}
-
-.result-item::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-
-.result-item:hover::before,
-.result-item--active::before {
-  opacity: 1;
+  border: none;
 }
 
 .result-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  transform: translateX(4px);
+  background: var(--list-hover-bg);
 }
 
 .result-item--active {
-  background: var(--surface-overlay);
+  background: var(--list-selected-bg);
+}
+
+.result-item--active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  animation: active-bar-in 280ms var(--ease-spring);
+}
+
+@keyframes active-bar-in {
+  0% {
+    transform: scaleY(0.4);
+    opacity: 0;
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
 }
 
 .result-item__icon {
   flex-shrink: 0;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--category-color) 12%, transparent);
-  color: var(--category-color);
-  transition: opacity var(--dur-fast) var(--ease-out);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-tertiary);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
   position: relative;
-  border: 1px solid color-mix(in srgb, var(--category-color) 20%, transparent);
 }
 
 .result-item:hover .result-item__icon {
-  background: color-mix(in srgb, var(--category-color) 16%, transparent);
+  color: var(--text-secondary);
+  transform: scale(1.04);
 }
 
 .result-item--active .result-item__icon {
-  background: color-mix(in srgb, var(--category-color) 20%, transparent);
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+  transform: scale(1.04);
 }
 
 .result-item__content {
@@ -204,57 +211,77 @@ import {
 }
 
 .result-item__title {
-  font-size: var(--text-sm);
+  font-size: 13.5px;
   font-weight: 500;
   color: var(--text-primary);
   overflow: hidden;
   white-space: nowrap;
-  line-height: var(--leading-tight);
+  line-height: 1.35;
   text-rendering: optimizeLegibility;
+  letter-spacing: -0.005em;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .result-item__subtitle {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.4);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
   margin-top: 2px;
   font-family: var(--font-mono);
   overflow: hidden;
   white-space: nowrap;
   text-rendering: optimizeLegibility;
+  letter-spacing: 0;
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .result-item--active .result-item__subtitle {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--text-secondary);
 }
 
 .result-item__meta {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 8px;
   flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* 文件大小等次级元信息: 灰色, 比 type badge 更轻的视觉权重 */
+.result-item__meta-text {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-quaternary);
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+
+.result-item--active .result-item__meta-text {
+  color: var(--text-tertiary);
 }
 
 .result-item__badge {
-  padding: 3px 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  color: var(--badge-color, var(--accent));
-  background: color-mix(in srgb, var(--badge-color, var(--accent)) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--badge-color, var(--accent)) 20%, transparent);
-  border-radius: 12px;
-  transition: all var(--dur-fast) var(--ease-out);
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-quaternary);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
 
 .result-item--active .result-item__badge {
-  background: color-mix(in srgb, var(--badge-color, var(--accent)) 15%, transparent);
-  border-color: color-mix(in srgb, var(--badge-color, var(--accent)) 30%, transparent);
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .result-item__shortcut {
   opacity: 0;
-  transform: translateX(8px);
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(6px);
+  transition: opacity var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out);
 }
 
 .result-item:hover .result-item__shortcut,
@@ -267,22 +294,22 @@ import {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
   font-family: var(--font-mono);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
   line-height: 1;
-  transition: all var(--dur-fast) var(--ease-out);
+  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
 
 .result-item--active .kbd {
-  background: rgba(255, 107, 107, 0.2);
-  border-color: rgba(255, 107, 107, 0.3);
+  background: var(--accent-soft);
+  border-color: var(--accent);
   color: var(--accent);
 }
 </style>

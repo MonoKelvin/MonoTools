@@ -61,7 +61,12 @@ pub enum SearchAction {
 pub struct SearchResult {
     pub id: String,
     pub title: String,
+    /// 主副标题: 常规文件显示**绝对路径**; 应用为空字符串; 命令显示"command args".
     pub subtitle: String,
+    /// 次级元信息 (右侧灰色文本): 文件显示人类可读大小, 其他类型可空.
+    /// 与 subtitle 解耦, 让"路径"是路径, "大小"是大小, 视觉不混淆.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<String>,
     pub icon: Option<String>,
     pub category: SearchCategory,
     pub result_type: ResultType,

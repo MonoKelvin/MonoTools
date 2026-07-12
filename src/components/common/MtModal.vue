@@ -75,7 +75,7 @@ const bodyMaxHeight = computed(() => {
             </button>
           </div>
 
-          <div class="mt-modal__body" :style="{ maxHeight: bodyMaxHeight }">
+          <div class="mt-modal__body" :style="{ maxHeight: bodyMaxHeight, overflowY: 'auto' }">
             <slot></slot>
           </div>
         </div>
@@ -166,6 +166,22 @@ const bodyMaxHeight = computed(() => {
 .mt-modal__body {
   padding: var(--sp-4) var(--sp-5);
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* 玻璃感滚动条: 仅 webkit 系可见, 不影响 Windows 默认外观整体性 */
+.mt-modal__body::-webkit-scrollbar {
+  width: 8px;
+}
+.mt-modal__body::-webkit-scrollbar-thumb {
+  background: var(--ww-list-selected-ring, rgba(255, 255, 255, 0.12));
+  border-radius: 999px;
+}
+.mt-modal__body::-webkit-scrollbar-thumb:hover {
+  background: var(--ww-list-selected-accent, rgba(255, 255, 255, 0.2));
+}
+.mt-modal__body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .mt-modal-enter-active,

@@ -50,13 +50,55 @@ pub mod app {
                 }
             })
             .setup(|app| {
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: enter");
                 let app_handle = app.handle().clone();
+
+                // === 应用原生 Mica / Tabbed 效果 ===
+                // tauri.conf.json 已配置 windowEffects, 但为兼容性:
+                //  - Win10 走模糊
+                //  - Win11 21H2+ 走 Mica (DWMSBT_MAINWINDOW)
+                // 这里额外补一次设置以确保生效 (Tauri 2.x 在 setup 阶段 set_effects 仍可用)
+                #[cfg(windows)]
+                {
+                    if let Some(window) = app.get_webview_window("search") {
+                        use tauri::window::{EffectsBuilder, Effect};
+
+                        // 优先 Acrylic -> Tabbed -> Blur
+                        // Mica 需要 transparent: true, 但 dev 模式下 WebView2 在透明窗口中渲染异常,
+                        // 改用 Acrylic 效果 (可在不透明窗口上启用, 仅 Win11 22H2+ 完美支持)
+                        let effects = EffectsBuilder::new()
+                            .effects(vec![
+                                Effect::Acrylic,
+                                Effect::Tabbed,
+                                Effect::Blur,
+                            ])
+                            .radius(20.0)
+                            .state(tauri::window::EffectState::Active)
+                            .build();
+
+                        if let Err(e) = window.set_effects(effects) {
+                            log::warn!("[effects] set_effects 失败: {e}, 尝试 DWM API");
+                            // 退化到 DWM API
+                            use crate::platform::windows::mica;
+                            use windows_sys::Win32::Foundation::HWND;
+                            if let Ok(hwnd_raw) = window.hwnd() {
+                                let hwnd = hwnd_raw.0 as HWND;
+                                mica::enable_acrylic(hwnd);
+                            }
+                        } else {
+                            log::info!("[effects] Acrylic/Tabbed/Blur 效果已应用");
+                        }
+                    }
+                }
 
                 // 初始默认行为依赖于设置；先构造 settings repo 读取 pin_to_top
                 let default_settings = Settings::default();
                 let initial_pin = default_settings.pin_to_top;
 
                 // 构建系统托盘图标 + 菜单（含"窗口置顶"开关）
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: 构建系统托盘");
                 let show_item = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
                 let hide_item = MenuItem::with_id(app, "hide", "隐藏窗口", true, None::<&str>)?;
                 let pin_item = CheckMenuItem::with_id(
@@ -71,6 +113,8 @@ pub mod app {
                 let tray_menu =
                     Menu::with_items(app, &[&show_item, &hide_item, &pin_item, &quit_item])?;
 
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: TrayIconBuilder::build");
                 let _tray = TrayIconBuilder::with_id("monotools")
                     .icon(app.default_window_icon().unwrap().clone())
                     .icon_as_template(true)
@@ -127,67 +171,161 @@ pub mod app {
                     })
                     .build(app)?;
 
-                let state: Arc<AppState> = tauri::async_runtime::block_on(async {
-                    let settings_repo = Arc::new(InMemorySettingsRepo::new(Settings::default()));
-                    let command_repo: Arc<dyn crate::repositories::CommandRepo> =
-                        Arc::new(InMemoryCommandRepo::new());
-                    let stats_repo = Arc::new(StatsRepo::new());
+                #[cfg(debug_assertions)]
+                log::info!("[boot] tauri Builder::setup 入口");
 
-                    let app_search = Arc::new(AppSearchEngine::new(settings_repo.clone()).await?);
-                    app_search.refresh_index().await?;
-                    let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
-                    let settings = settings_repo.get();
-                    let mut file_roots = settings.file_search_roots.clone();
+                // 同步构造 AppState（全部为廉价操作）：不再用 block_on 阻塞事件循环。
+                // app_search.refresh_index() 与文件索引一律放到后台 spawn，避免卡死 webview。
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: 同步构造 AppState");
+                let settings_repo = Arc::new(InMemorySettingsRepo::new(Settings::default()));
+                let command_repo: Arc<dyn crate::repositories::CommandRepo> =
+                    Arc::new(InMemoryCommandRepo::new());
+                let stats_repo = Arc::new(StatsRepo::new());
 
-                    if !settings.file_search_drives.is_empty() {
-                        for drive in &settings.file_search_drives {
-                            file_roots.push(PathBuf::from(format!("{}:\\", drive)));
-                        }
+                // app_search 用空缓存构造（不扫盘）；refresh_index 在下方后台 spawn。
+                let app_search = Arc::new(AppSearchEngine::new_empty(settings_repo.clone()));
+                let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
+
+                let settings = settings_repo.get();
+                let file_roots = settings.file_search_roots.clone();
+
+                // 让 FileSearchEngine 选择盘符：
+                // 1) 用户在 settings.file_search_drives 显式指定的盘符优先；
+                // 2) 否则 **保持空 roots**，由 FileSearchEngine 内部动态枚举所有 NTFS 卷。
+                //    （即使 file_search_roots 里有用户目录，我们也想要自动发现全部盘符；
+                //     那是 HUD 数据维度而非驱动边界，不能让单一 C: 限制全集枚举。）
+                let explicit_drives = !settings.file_search_drives.is_empty();
+                let selected_roots = if explicit_drives {
+                    let mut roots = file_roots.clone();
+                    for drive in &settings.file_search_drives {
+                        roots.push(PathBuf::from(format!("{}:\\", drive)));
                     }
+                    roots
+                } else {
+                    // 不传 roots，交由 FileSearchEngine::new 走 `NtfsIndexer::new()` 路径。
+                    Vec::new()
+                };
 
-                    let file_search = Arc::new(FileSearchEngine::new(file_roots.clone()).unwrap());
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: 构造 FileSearchEngine");
+                let file_search = Arc::new(FileSearchEngine::new(selected_roots).unwrap());
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: FileSearchEngine 构造完成");
 
-                    let search_engine = Arc::new(SearchEngine::new(
-                        app_search.clone(),
-                        file_search.clone(),
-                        command_search.clone(),
-                    ));
+                let search_engine = Arc::new(SearchEngine::new(
+                    app_search.clone(),
+                    file_search.clone(),
+                    command_search.clone(),
+                ));
 
-                    let hotkey = Arc::new(HotkeyService::new());
-                    let app_for_window = app_handle.clone();
-                    let window_inner = WindowService::new(app_for_window);
-                    let window = Arc::new(window_inner);
+                let hotkey = Arc::new(HotkeyService::new());
+                let window_inner = WindowService::new(app_handle.clone());
+                let window = Arc::new(window_inner);
 
-                    Ok::<_, crate::error::AppError>(Arc::new(AppState {
-                        app: app_handle.clone(),
-                        settings_repo,
-                        command_repo,
-                        stats_repo,
-                        app_search,
-                        command_search,
-                        file_search,
-                        search_engine,
-                        hotkey,
-                        window,
-                        is_dragging: Arc::new(Mutex::new(false)),
-                    }))
-                })?;
+                let state: Arc<AppState> = Arc::new(AppState {
+                    app: app_handle.clone(),
+                    settings_repo,
+                    command_repo,
+                    stats_repo,
+                    app_search,
+                    command_search,
+                    file_search,
+                    search_engine,
+                    hotkey,
+                    window,
+                    is_dragging: Arc::new(Mutex::new(false)),
+                });
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup: AppState 就绪");
 
-                let file_search_clone = state.file_search.clone();
-                let app_handle_for_index = app.handle().clone();
-                let file_roots_clone = state.settings_repo.get().file_search_roots.clone();
-                if !file_roots_clone.is_empty() {
+                // 后台刷新应用索引（扫描开始菜单/桌面）— 不阻塞 setup，进度通过 index_progress 上报。
+                {
+                    let app_search_for_refresh = state.app_search.clone();
+                    let app_handle_for_apps = app_handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        log::info!("后台索引构建任务启动...");
-                        let _ = app_handle_for_index.emit(
+                        #[cfg(debug_assertions)]
+                        log::info!("[boot] 后台应用索引刷新任务已 spawn");
+                        let _ = app_handle_for_apps.emit(
                             "index_progress",
                             serde_json::json!({
                                 "status": "building",
-                                "message": "正在构建文件索引...",
+                                "message": "正在加载应用列表...",
+                                "phase": "apps",
                             }),
                         );
-                        let start = std::time::Instant::now();
-                        if let Err(e) = file_search_clone.build_index().await {
+                        match app_search_for_refresh.refresh_index().await {
+                            Ok(()) => {
+                                let total = app_search_for_refresh.total();
+                                log::info!("应用索引刷新完成: {} 个应用", total);
+                                let _ = app_handle_for_apps.emit(
+                                    "index_progress",
+                                    serde_json::json!({
+                                        "status": "completed",
+                                        "message": format!("已加载 {} 个应用", total),
+                                        "phase": "apps",
+                                        "apps": total,
+                                    }),
+                                );
+                            }
+                            Err(e) => {
+                                log::warn!("应用索引刷新失败: {}", e);
+                                let _ = app_handle_for_apps.emit(
+                                    "index_progress",
+                                    serde_json::json!({
+                                        "status": "error",
+                                        "message": format!("应用列表加载失败: {}", e),
+                                        "phase": "apps",
+                                    }),
+                                );
+                            }
+                        }
+                    });
+                }
+
+                let file_search_clone = state.file_search.clone();
+                let app_handle_for_index = app.handle().clone();
+                // 启动后台索引：无需等待 file_search_roots，启动时也应建立盘符索引，
+                // 因为 NtfsIndexer 会自动枚举所有 NTFS 卷（动态获取）。
+                tauri::async_runtime::spawn(async move {
+                    #[cfg(debug_assertions)]
+                    log::info!("[boot] 后台索引构建任务已 spawn");
+                    log::info!("后台索引构建任务启动...");
+                    let _ = app_handle_for_index.emit(
+                        "index_progress",
+                        serde_json::json!({
+                            "status": "building",
+                            "message": "正在检测盘符...",
+                        }),
+                    );
+                    let start = std::time::Instant::now();
+                    let app_for_progress = app_handle_for_index.clone();
+                    let res = file_search_clone
+                        .build_index_with_volume_progress(move |volume, idx, cumulative, total_volumes| {
+                            let drive = crate::platform::windows::usn::drive_label(volume);
+                            let msg = if total_volumes == 0 {
+                                format!("正在索引 {}", drive)
+                            } else {
+                                format!(
+                                    "正在索引 {}（{}/{}） — 已累计 {} 个文件",
+                                    drive, idx, total_volumes, cumulative
+                                )
+                            };
+                            let _ = app_for_progress.emit(
+                                "index_progress",
+                                serde_json::json!({
+                                    "status": "building",
+                                    "message": msg,
+                                    "files": cumulative,
+                                    "volumes": total_volumes,
+                                    "current_volume": drive,
+                                    "current_index": idx,
+                                }),
+                            );
+                        })
+                        .await;
+                    match res {
+                        Err(e) => {
                             log::error!("后台索引构建失败: {}", e);
                             let _ = app_handle_for_index.emit(
                                 "index_progress",
@@ -196,29 +334,34 @@ pub mod app {
                                     "message": format!("索引构建失败: {}", e),
                                 }),
                             );
-                        } else {
+                        }
+                        Ok(_) => {
                             log::info!("后台索引构建完成，耗时 {:?}", start.elapsed());
+                            let total = file_search_clone.total();
                             let _ = app_handle_for_index.emit(
                                 "index_progress",
                                 serde_json::json!({
                                     "status": "completed",
                                     "message": "索引构建完成",
+                                    "files": total,
                                 }),
                             );
                         }
+                    }
 
-                        use crate::engines::start_update_loop;
-                        let fs_clone = file_search_clone.clone();
-                        start_update_loop(
-                            move || fs_clone.update_index(),
-                            std::time::Duration::from_secs(120),
-                        );
-                    });
-                }
+                    use crate::engines::start_update_loop;
+                    let fs_clone = file_search_clone.clone();
+                    start_update_loop(
+                        move || fs_clone.update_index(),
+                        std::time::Duration::from_secs(120),
+                    );
+                });
 
                 app.manage(state.clone());
 
                 // 同步初始置顶状态到窗口
+                #[cfg(debug_assertions)]
+                log::info!("[boot] 同步 pin_to_top -> 窗口");
                 if let Some(w) = app_handle.get_webview_window("search") {
                     let _ = w.set_always_on_top(state.settings_repo.get().pin_to_top);
                 }
@@ -227,6 +370,8 @@ pub mod app {
                 let app_handle_for_setup = app.handle().clone();
                 let initial_hotkey = state.settings_repo.get().hotkey.clone();
                 tauri::async_runtime::spawn(async move {
+                    #[cfg(debug_assertions)]
+                    log::info!("[hotkey] 后台注册 hotkey: {}", initial_hotkey);
                     if let Err(e) = state
                         .hotkey
                         .register(&initial_hotkey, &app_handle_for_setup)
@@ -239,8 +384,14 @@ pub mod app {
                             .hotkey
                             .register(&initial_hotkey, &app_handle_for_setup)
                             .await;
+                    } else {
+                        #[cfg(debug_assertions)]
+                        log::info!("[hotkey] hotkey 注册成功: {}", initial_hotkey);
                     }
                 });
+
+                #[cfg(debug_assertions)]
+                log::info!("[boot] setup 即将 return Ok(())");
 
                 Ok(())
             })
@@ -271,9 +422,11 @@ pub mod app {
                 crate::commands::quit_app,
                 crate::commands::build_file_index,
                 crate::commands::get_index_status,
+                crate::commands::frontend_ready,
                 crate::commands::file_search,
                 crate::commands::list_command_specs,
                 crate::commands::dispatch_command,
+                crate::commands::get_app_icon,
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");

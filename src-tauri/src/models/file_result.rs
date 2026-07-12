@@ -11,4 +11,5 @@ pub struct FileResult {
     pub size: i64,
     pub modified_at: i64,
     pub is_directory: bool,
+    pub id: Option<i64>,
 }

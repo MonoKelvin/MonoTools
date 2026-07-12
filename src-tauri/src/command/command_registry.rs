@@ -63,6 +63,13 @@ impl CommandRegistry {
         all
     }
 
+    /// 返回所有主命令名（不含别名）。
+    pub fn main_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.cmds.keys().cloned().collect();
+        names.sort();
+        names
+    }
+
     /// 解析 + 执行。`input` 是完整命令行字符串（含要执行的子命令）。
     pub async fn dispatch_str(
         &self,

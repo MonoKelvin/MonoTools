@@ -18,10 +18,30 @@ impl CommandSearchEngine {
 
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
         let q = query.to_lowercase();
-        if q.is_empty() {
-            return vec![];
-        }
         let cmds = self.command_repo.list_enabled();
+        if q.is_empty() {
+            // 空查询: 列出所有已启用命令, 不截断. 按 name 排序, 方便浏览.
+            let mut results: Vec<SearchResult> = cmds
+                .into_iter()
+                .map(|cmd| SearchResult {
+                    id: cmd.id.clone(),
+                    title: cmd.name.clone(),
+                    subtitle: cmd.command.clone() + " " + &cmd.args.join(" "),
+                    // 命令没有"大小"等次级元信息.
+                    meta: None,
+                    icon: cmd.icon.clone(),
+                    category: SearchCategory::Commands,
+                    result_type: ResultType::Command,
+                    action: SearchAction::Run {
+                        command: cmd.command.clone(),
+                        args: cmd.args.clone(),
+                    },
+                    score: 0.0,
+                })
+                .collect();
+            results.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
+            return results;
+        }
         let mut results: Vec<SearchResult> = Vec::new();
         for cmd in cmds {
             let name_l = cmd.name.to_lowercase();
@@ -49,6 +69,7 @@ impl CommandSearchEngine {
                 id: cmd.id.clone(),
                 title: cmd.name.clone(),
                 subtitle: cmd.command.clone() + " " + &cmd.args.join(" "),
+                meta: None,
                 icon: cmd.icon.clone(),
                 category: SearchCategory::Commands,
                 result_type: ResultType::Command,

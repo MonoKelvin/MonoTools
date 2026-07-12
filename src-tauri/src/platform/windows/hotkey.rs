@@ -1,8 +1,221 @@
 //! 全局快捷键平台实现 - Windows
-//! 优先使用 tauri-plugin-global-shortcut；如失败则回退到 Windows API
+//! 优先使用 tauri-plugin-global-shortcut；如失败则回退到低级键盘钩子 (WH_KEYBOARD_LL)
+//!
+//! Windows 保留了 Alt+Space 给系统窗口菜单, RegisterHotKey 无法注册.
+//! 低级键盘钩子在 Windows 处理之前拦截按键, 可以实现 Alt+Space.
 
 use crate::error::{AppError, Result};
 use parking_lot::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+
+// ── 低级键盘钩子全局状态 (hook 线程设置, hook proc 读取) ──
+// LLKHF_ALTDOWN (0x20) 直接使用 windows crate 提供的常量 (类型 KBDLLHOOKSTRUCT_FLAGS),
+// 在 ll_hook_proc 中通过 .0 取原始 u32 进行位运算.
+
+/// 目标虚拟键码 (0 = 未激活)
+static LL_HOOK_VK_CODE: AtomicU32 = AtomicU32::new(0);
+/// 是否要求 Alt 修饰键
+static LL_HOOK_NEEDS_ALT: AtomicBool = AtomicBool::new(false);
+/// 回调 (在 hook 线程中调用, 必须非阻塞)
+static LL_HOOK_CALLBACK: std::sync::Mutex<Option<Box<dyn Fn() + Send + Sync>>> =
+    std::sync::Mutex::new(None);
+
+/// 低级键盘钩子 (WH_KEYBOARD_LL)
+///
+/// 当 RegisterHotKey 失败时使用. 钩子在自己的线程中运行消息循环,
+/// 拦截 Alt+Space 等组合键, 阻止 Windows 显示系统菜单.
+pub struct LowLevelHotkeyHook {
+    thread: Option<std::thread::JoinHandle<()>>,
+    thread_id: u32,
+}
+
+impl LowLevelHotkeyHook {
+    /// 启动低级键盘钩子.
+    ///
+    /// - `vk_code`: Windows 虚拟键码 (如 0x20 = Space)
+    /// - `needs_alt`: 是否要求 Alt 同时按下
+    /// - `callback`: 按键匹配时调用 (在 hook 线程中执行, 必须非阻塞)
+    pub fn start<F>(vk_code: u32, needs_alt: bool, callback: F) -> Result<Self>
+    where
+        F: Fn() + Send + Sync + 'static,
+    {
+        LL_HOOK_VK_CODE.store(vk_code, Ordering::SeqCst);
+        LL_HOOK_NEEDS_ALT.store(needs_alt, Ordering::SeqCst);
+        *LL_HOOK_CALLBACK.lock().unwrap() = Some(Box::new(callback));
+
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        let thread = std::thread::Builder::new()
+                .name("ll-hotkey".into())
+                .spawn(move || {
+                    use windows::Win32::System::Threading::GetCurrentThreadId;
+                    use windows::Win32::UI::WindowsAndMessaging::*;
+
+                let tid = unsafe { GetCurrentThreadId() };
+                let _ = tx.send(tid);
+
+                let hook = unsafe {
+                    // WH_KEYBOARD_LL 是全局钩子, hmod 可为 NULL (None).
+                    SetWindowsHookExW(WH_KEYBOARD_LL, Some(ll_hook_proc), None, 0)
+                };
+                let hook = match hook {
+                    Ok(h) => h,
+                    Err(e) => {
+                        log::error!("[ll_hook] SetWindowsHookExW 失败: {}", e);
+                        return;
+                    }
+                };
+                log::info!("[ll_hook] WH_KEYBOARD_LL 已安装 (tid={})", tid);
+
+                // 消息循环 (WH_KEYBOARD_LL 要求)
+                let mut msg = MSG::default();
+                loop {
+                    let ret = unsafe { GetMessageW(&mut msg, None, 0, 0) };
+                    if ret.0 <= 0 {
+                        break; // WM_QUIT (0) 或错误 (-1)
+                    }
+                    unsafe {
+                        let _ = TranslateMessage(&msg);
+                        let _ = DispatchMessageW(&msg);
+                    }
+                }
+
+                unsafe {
+                    let _ = UnhookWindowsHookEx(hook);
+                }
+                log::info!("[ll_hook] 钩子已卸载, 线程退出");
+            })
+            .map_err(|e| AppError::Other(format!("创建 LL hook 线程失败: {e}")))?;
+
+        let thread_id = rx
+            .recv()
+            .map_err(|e| AppError::Other(format!("获取线程 ID 失败: {e}")))?;
+
+        Ok(Self {
+            thread: Some(thread),
+            thread_id,
+        })
+    }
+
+    /// 停止钩子 (发送 WM_QUIT + join 线程)
+    pub fn stop(&mut self) {
+        if self.thread_id != 0 {
+            unsafe {
+                use windows::Win32::Foundation::*;
+                use windows::Win32::UI::WindowsAndMessaging::*;
+                let _ = PostThreadMessageW(self.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
+            }
+        }
+        if let Some(t) = self.thread.take() {
+            let _ = t.join();
+        }
+        *LL_HOOK_CALLBACK.lock().unwrap() = None;
+        log::info!("[ll_hook] 已停止");
+    }
+}
+
+impl Drop for LowLevelHotkeyHook {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// WH_KEYBOARD_LL 钩子过程
+unsafe extern "system" fn ll_hook_proc(
+    code: i32,
+    wparam: windows::Win32::Foundation::WPARAM,
+    lparam: windows::Win32::Foundation::LPARAM,
+) -> windows::Win32::Foundation::LRESULT {
+    use windows::Win32::UI::WindowsAndMessaging::*;
+
+    if code == HC_ACTION as i32 {
+        let kb = &*(lparam.0 as *const KBDLLHOOKSTRUCT);
+        let target_vk = LL_HOOK_VK_CODE.load(Ordering::Relaxed);
+
+        if kb.vkCode == target_vk {
+            let is_down =
+                wparam.0 == WM_KEYDOWN as usize || wparam.0 == WM_SYSKEYDOWN as usize;
+            let needs_alt = LL_HOOK_NEEDS_ALT.load(Ordering::Relaxed);
+            // KBDLLHOOKSTRUCT_FLAGS 是 newtype(u32), 用 .0 取原始值进行位运算.
+            // LLKHF_ALTDOWN 来自 windows crate (通过上方 glob use 导入).
+            let alt_down = (kb.flags.0 & LLKHF_ALTDOWN.0) != 0;
+
+            if is_down && (!needs_alt || alt_down) {
+                // 匹配成功 — 调用回调
+                if let Ok(guard) = LL_HOOK_CALLBACK.lock() {
+                    if let Some(cb) = guard.as_ref() {
+                        cb();
+                    }
+                }
+                // 返回非零: 消费此按键, 阻止 Windows 显示系统菜单
+                return windows::Win32::Foundation::LRESULT(1);
+            }
+        }
+    }
+
+    // 其他按键: 传递给下一个钩子
+    CallNextHookEx(None, code, wparam, lparam)
+}
+
+/// 将快捷键字符串解析为 (VK code, needs_alt).
+/// 例如 "Alt+Space" → (0x20, true), "Ctrl+Q" → (0x51, false)
+pub fn hotkey_to_vk(s: &str) -> Result<(u32, bool)> {
+    let parts: Vec<&str> = s.split('+').map(|p| p.trim()).collect();
+    if parts.is_empty() {
+        return Err(AppError::InvalidInput("快捷键为空".into()));
+    }
+
+    let mut needs_alt = false;
+    let mut key_str: Option<&str> = None;
+
+    for part in &parts {
+        match part.to_lowercase().as_str() {
+            "alt" => needs_alt = true,
+            "ctrl" | "control" | "shift" | "meta" | "win" | "super" => { /* 忽略 */ }
+            _ => key_str = Some(part),
+        }
+    }
+
+    let key = key_str.ok_or_else(|| AppError::InvalidInput("快捷键缺少主键".into()))?;
+    let vk = key_to_vk_code(key)?;
+    Ok((vk, needs_alt))
+}
+
+fn key_to_vk_code(s: &str) -> Result<u32> {
+    let upper = s.to_uppercase();
+    let normalized = upper.replace(' ', "");
+
+    // 单字符 A-Z, 0-9
+    if normalized.len() == 1 {
+        let c = normalized.chars().next().unwrap();
+        if c.is_ascii_alphabetic() || c.is_ascii_digit() {
+            return Ok(c as u32); // 'A'=0x41, '0'=0x30, etc.
+        }
+    }
+
+    match normalized.as_str() {
+        "SPACE" => Ok(0x20),
+        "TAB" => Ok(0x09),
+        "ESC" | "ESCAPE" => Ok(0x1B),
+        "ENTER" | "RETURN" => Ok(0x0D),
+        "BACKSPACE" | "BKSP" => Ok(0x08),
+        "DELETE" | "DEL" => Ok(0x2E),
+        "INSERT" | "INS" => Ok(0x2D),
+        "HOME" => Ok(0x24),
+        "END" => Ok(0x23),
+        "PAGEUP" | "PGUP" => Ok(0x21),
+        "PAGEDOWN" | "PGDN" => Ok(0x22),
+        "UP" => Ok(0x26),
+        "DOWN" => Ok(0x28),
+        "LEFT" => Ok(0x25),
+        "RIGHT" => Ok(0x27),
+        "F1" => Ok(0x70), "F2" => Ok(0x71), "F3" => Ok(0x72),
+        "F4" => Ok(0x73), "F5" => Ok(0x74), "F6" => Ok(0x75),
+        "F7" => Ok(0x76), "F8" => Ok(0x77), "F9" => Ok(0x78),
+        "F10" => Ok(0x79), "F11" => Ok(0x7A), "F12" => Ok(0x7B),
+        _ => Err(AppError::InvalidInput(format!("未知按键: {}", s))),
+    }
+}
 use tauri::{AppHandle, Runtime};
 
 /// 已注册快捷键的句柄

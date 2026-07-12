@@ -2,8 +2,9 @@ export interface HotkeyBinding {
   id: string
   key: string
   description: string
-  action: () => void
   category: string
+  /** 可选：前端可点击触发的回调（仅为 UI 上 "show-hotkeys" 等命令使用） */
+  action?: () => void
 }
 
 class HotkeyManager {
@@ -12,7 +13,6 @@ class HotkeyManager {
 
   register(binding: HotkeyBinding): void {
     if (this.bindings.has(binding.id)) {
-      console.warn(`快捷键已注册: ${binding.id}`)
       return
     }
     this.bindings.set(binding.id, binding)
@@ -20,6 +20,34 @@ class HotkeyManager {
 
   unregister(id: string): void {
     this.bindings.delete(id)
+  }
+
+  /**
+   * 对一组命令 spec（含 shortcut）进行注册。
+   * 同一 id 重新注册会覆盖之前的描述（同一快捷键可在不同上下文复用）。
+   */
+  registerFromSpecs(
+    specs: ReadonlyArray<{
+      id: string
+      title?: string
+      description?: string
+      category?: string
+      shortcut?: string | ReadonlyArray<string>
+    }>,
+  ): void {
+    for (const spec of specs) {
+      if (!spec.shortcut) continue
+      const list = Array.isArray(spec.shortcut) ? spec.shortcut : [spec.shortcut as string]
+      for (const combo of list) {
+        const binding: HotkeyBinding = {
+          id: spec.id,
+          key: combo,
+          description: spec.description || spec.title || spec.id,
+          category: spec.category || 'system',
+        }
+        this.bindings.set(spec.id, binding)
+      }
+    }
   }
 
   getById(id: string): HotkeyBinding | undefined {
@@ -42,7 +70,7 @@ class HotkeyManager {
 
   execute(id: string): boolean {
     const binding = this.bindings.get(id)
-    if (binding && this.enabled) {
+    if (binding && this.enabled && binding.action) {
       binding.action()
       return true
     }

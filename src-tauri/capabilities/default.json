@@ -17,6 +17,7 @@
     "core:event:default",
     "core:app:default",
     "core:path:default",
+    "core:window:allow-set-effects",
     "global-shortcut:default",
     "shell:default",
     "fs:default",

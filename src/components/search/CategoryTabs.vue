@@ -40,9 +40,9 @@ const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
 .category-tabs {
   display: flex;
   align-items: center;
-  padding: var(--sp-2) var(--sp-5);
-  height: 40px;
-  background: var(--surface);
+  padding: 8px 14px;
+  height: 36px;
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
@@ -50,7 +50,7 @@ const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
 .category-tabs__list {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 4px;
 }
 
 .category-tabs__tab {
@@ -58,13 +58,13 @@ const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-4);
+  padding: 4px 10px;
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--text-tertiary);
   background: transparent;
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: 6px;
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease-out);
   letter-spacing: 0.02em;
@@ -73,11 +73,11 @@ const activeIndex = computed(() => tabs.findIndex(t => t.id === props.active))
 
 .category-tabs__tab:hover {
   color: var(--text-secondary);
-  background: var(--surface-hover);
+  background: var(--list-hover-bg);
 }
 
 .category-tabs__tab--active {
-  color: var(--text-primary);
-  background: var(--surface-overlay);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 </style>

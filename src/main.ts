@@ -5,6 +5,7 @@ import './assets/styles/main.scss'
 
 import PrimeVue from 'primevue/config'
 import Aura from '@primeuix/themes/aura'
+import Tooltip from 'primevue/tooltip'
 
 import { router } from './router'
 import { pinia } from './stores'
@@ -23,5 +24,6 @@ app.use(PrimeVue, {
   },
   ripple: true,
 })
+app.directive('tooltip', Tooltip)
 
 app.mount('#app')

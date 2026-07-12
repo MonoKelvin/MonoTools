@@ -15,19 +15,19 @@
       {
         "label": "search",
         "title": "MonoTools",
-        "width": 680,
-        "height": 520,
-        "minWidth": 680,
-        "minHeight": 360,
+        "width": 640,
+        "height": 580,
+        "minWidth": 540,
+        "minHeight": 320,
         "decorations": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "transparent": false,
         "resizable": false,
-        "visible": true,
+        "visible": false,
         "center": true,
-        "backgroundColor": "#111111",
-        "shadow": true
+        "shadow": true,
+        "backgroundColor": "#15151a"
       }
     ],
     "security": {

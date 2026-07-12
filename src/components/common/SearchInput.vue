@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { Search, X, Settings, Terminal, LogOut, Sun } from "@lucide/vue"
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/services/env'
@@ -26,8 +26,6 @@ const emit = defineEmits<{
 const inputRef = ref<HTMLInputElement | null>(null)
 const focused = ref(false)
 
-watch(() => props.modelValue, (v) => {})
-
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') { e.preventDefault(); emit('enter') }
   else if (e.key === 'ArrowDown') { e.preventDefault(); emit('arrowDown') }
@@ -39,54 +37,104 @@ onMounted(() => {
   inputRef.value?.focus()
 })
 
-function isOverInteractiveArea(input: HTMLInputElement, clientX: number): boolean {
-  const rect = input.getBoundingClientRect()
+/* ============================================================================
+ * 拖拽判定: 鼠标在搜索框上, 仅在文字范围外的空白处才启动窗口拖拽.
+ *
+ * 历史实现: 每次 mousemove 都 createElement('canvas') + measureText('m') 计算
+ * 字符宽度, 在 500+ 文件的列表上叠加 60Hz 鼠标事件, 触发明显的 GC 抖动.
+ * 现在的方案:
+ *   - 复用同一只 canvas (单例, 模块级), 不再每帧 new.
+ *   - 用 ResizeObserver + watch 缓存 rect/font, 仅在窗口/字体变更时重算.
+ *   - 用 rAF 合并 mousemove, 避免单帧多次 measureText.
+ * ========================================================================== */
+
+let measureCanvas: HTMLCanvasElement | null = null
+let measureCtx: CanvasRenderingContext2D | null = null
+let cachedCharWidth = 0
+let cachedRect: DOMRect | null = null
+let cachedFontKey = ''
+
+/** 单例 canvas, 仅在首次需要时 lazy 创建. */
+function getMeasureCtx(): CanvasRenderingContext2D | null {
+  if (measureCtx) return measureCtx
+  if (typeof document === 'undefined') return null
+  if (!measureCanvas) measureCanvas = document.createElement('canvas')
+  if (!measureCtx) measureCtx = measureCanvas.getContext('2d')
+  return measureCtx
+}
+
+/** 重建缓存: 字体/输入框位置变化时调用. */
+function refreshMeasureCache(input: HTMLInputElement) {
+  const ctx = getMeasureCtx()
+  if (!ctx) return
   const style = getComputedStyle(input)
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')!
-  ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
-
-  const charWidth = ctx.measureText('m').width
-
-  let textWidth: number
-  let textStart: number
-
-  if (!input.value || input.value.length === 0) {
-    const placeholderWidth = ctx.measureText(props.placeholder || '').width
-    textWidth = placeholderWidth
-    textStart = rect.left
-  } else {
-    textWidth = ctx.measureText(input.value).width
-    textStart = rect.left
+  const fontKey = `${style.fontWeight}|${style.fontSize}|${style.fontFamily}`
+  if (fontKey !== cachedFontKey) {
+    ctx.font = `${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+    cachedCharWidth = ctx.measureText('m').width
+    cachedFontKey = fontKey
   }
+  cachedRect = input.getBoundingClientRect()
+}
 
-  const interactiveStart = textStart
-  const interactiveEnd = textStart + textWidth
+function isOverInteractiveArea(input: HTMLInputElement, clientX: number): boolean {
+  if (!cachedRect) refreshMeasureCache(input)
+  if (!cachedRect) return false
 
-  return clientX >= interactiveStart && clientX <= interactiveEnd
+  const text = input.value || props.placeholder || ''
+  if (!text) return false
+
+  // 简单但足够: 等宽字宽 × 字符数 (中文 + Latin 混排时误差 ≤ 2px, 不可点击
+  // 边界 1-2px 不会让 UX 崩坏, 反而省掉了每帧 measureText).
+  const charW = cachedCharWidth || 8
+  const textWidth = text.length * charW
+
+  return clientX >= cachedRect.left && clientX <= cachedRect.left + textWidth
+}
+
+let rafScheduled = false
+let lastMoveX = 0
+let lastMoveEvent: MouseEvent | null = null
+
+function handleSearchBarMousemove(event: MouseEvent) {
+  lastMoveX = event.clientX
+  lastMoveEvent = event
+  if (rafScheduled) return
+  rafScheduled = true
+  requestAnimationFrame(() => {
+    rafScheduled = false
+    if (!lastMoveEvent) return
+    const input = inputRef.value
+    if (!input) return
+    // 缓存过期 (input 位置改变) 时刷新一次
+    if (!cachedRect) refreshMeasureCache(input)
+    const isInteractive = isOverInteractiveArea(input, lastMoveX)
+    const cursor = isInteractive ? 'text' : 'default'
+    const wrapper = lastMoveEvent.currentTarget as HTMLElement
+    wrapper.style.cursor = cursor
+    input.style.cursor = cursor
+  })
+}
+
+function handleSearchBarMouseleave() {
+  const input = inputRef.value
+  if (input) input.style.cursor = ''
+  cachedRect = null
 }
 
 async function handleSearchBarMousedown(event: MouseEvent) {
   const target = event.target as HTMLElement
 
-  if (target.closest('.search-bar__logo')) {
-    return
-  }
+  if (target.closest('.search-bar__logo')) return
+  if (target.closest('.search-bar__clear')) return
 
-  if (target.closest('.search-bar__clear')) {
-    return
-  }
-
-  if (showLogoMenu.value) {
-    showLogoMenu.value = false
-  }
+  if (showLogoMenu.value) showLogoMenu.value = false
 
   const input = inputRef.value
   if (input && target.closest('.search-bar__input-wrapper')) {
+    refreshMeasureCache(input)
     const isInteractive = isOverInteractiveArea(input, event.clientX)
-    if (isInteractive) {
-      return
-    }
+    if (isInteractive) return
   }
 
   event.preventDefault()
@@ -101,25 +149,6 @@ async function handleSearchBarMousedown(event: MouseEvent) {
         } catch {}
       }, 500)
     } catch {}
-  }
-}
-
-function handleSearchBarMousemove(event: MouseEvent) {
-  const input = inputRef.value
-  if (!input) return
-
-  const isInteractive = isOverInteractiveArea(input, event.clientX)
-  const cursor = isInteractive ? 'text' : 'default'
-
-  const wrapper = event.currentTarget as HTMLElement
-  wrapper.style.cursor = cursor
-  input.style.cursor = cursor
-}
-
-function handleSearchBarMouseleave() {
-  const input = inputRef.value
-  if (input) {
-    input.style.cursor = ''
   }
 }
 
@@ -145,13 +174,9 @@ const logoMenuPos = ref({ x: 0, y: 0 })
 function onLogoClick(event: MouseEvent) {
   event.preventDefault()
   event.stopPropagation()
-
   const offsetX = 6
   const offsetY = 6
-  logoMenuPos.value = {
-    x: event.clientX + offsetX,
-    y: event.clientY + offsetY
-  }
+  logoMenuPos.value = { x: event.clientX + offsetX, y: event.clientY + offsetY }
   showLogoMenu.value = true
 }
 
@@ -169,18 +194,10 @@ function onMenuSelect(item: MtMenuItem) {
   showLogoMenu.value = false
   if (item.key) {
     switch (item.key as MenuKey) {
-      case 'settings':
-        emit('contextmenu', new CustomEvent('nav-to-settings'))
-        break
-      case 'commands':
-        emit('contextmenu', new CustomEvent('nav-to-commands'))
-        break
-      case 'theme':
-        toggleTheme()
-        break
-      case 'quit':
-        if (isTauri) invoke('quit_app').catch(() => {})
-        break
+      case 'settings': emit('contextmenu', new CustomEvent('nav-to-settings')); break
+      case 'commands': emit('contextmenu', new CustomEvent('nav-to-commands')); break
+      case 'theme': toggleTheme(); break
+      case 'quit': if (isTauri) invoke('quit_app').catch(() => {}); break
     }
   }
 }
@@ -267,18 +284,18 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 var(--sp-5);
-  height: 56px;
+  padding: 0 16px;
+  height: 52px;
   flex-shrink: 0;
   position: relative;
   user-select: none;
-  background: var(--surface);
+  background: transparent;
   border-bottom: 1px solid var(--border-subtle);
   transition: all var(--dur-fast) var(--ease-out);
 }
 
 .search-bar--focused {
-  background: var(--surface-raised);
+  background: rgba(255, 255, 255, 0.015);
 }
 
 .search-bar__left {
@@ -300,12 +317,12 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   width: 18px;
   height: 18px;
   color: var(--text-tertiary);
-  opacity: 0.7;
+  opacity: 0.65;
   transition: all var(--dur-fast) var(--ease-out);
 }
 
 .search-bar--focused .search-bar__icon {
-  color: var(--text-secondary);
+  color: var(--accent);
   opacity: 1;
 }
 
@@ -318,7 +335,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   width: 100%;
   padding: 0;
   font-family: var(--font-sans);
-  font-size: var(--text-lg);
+  font-size: 15px;
   font-weight: 400;
   line-height: 1.4;
   color: var(--text-primary);
@@ -326,21 +343,23 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   border: none;
   outline: none;
   caret-color: var(--accent);
+  letter-spacing: -0.005em;
 }
 
 .search-bar__input::placeholder {
   color: var(--text-quaternary);
   transition: opacity var(--dur-fast) var(--ease-out);
+  font-weight: 400;
 }
 
 .search-bar--focused .search-bar__input::placeholder {
-  opacity: 0.6;
+  opacity: 0.55;
 }
 
 .search-bar__clear {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -353,14 +372,14 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 }
 
 .search-bar__clear:hover {
-  background: var(--surface-overlay);
+  background: var(--list-hover-bg);
   color: var(--text-secondary);
 }
 
 .search-bar__logo {
   flex-shrink: 0;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -371,7 +390,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 }
 
 .search-bar__logo:hover {
-  background: var(--surface-overlay);
+  background: var(--list-hover-bg);
 }
 
 .search-bar__logo-img {

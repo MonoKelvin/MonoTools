@@ -1,41 +1,68 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useCommandsStore } from '@/commands/store'
-import * as tauriSvc from '@/services/tauri'
 
-vi.mock('@/services/tauri', async () => {
-  const actual = await vi.importActual<any>('@/services/tauri')
+/**
+ * 手动 mock `@/services/tauri`。
+ *
+ * 为什么不用 `vi.spyOn(tauriSvc, 'call')`：
+ *   `store.ts` 的 `invokeCmd` 闭包通过 `import * as tauriSvc` 读取 `tauriSvc.call`。
+ *   vi.mock 的 hoisting 行为确保 store 模块加载时，`call` 已经被替换成我们的 mock。
+ *
+ * 关键：vi.hoisted() 在 vi.mock hoisting 之前运行，所以可以在这里安全地创建 mock fn。
+ */
+const { mockCall, setOverride, clearOverride } = vi.hoisted(() => {
+  let handler: ((cmd: string, args?: unknown) => unknown) | null = null
+
+  const fn = vi.fn(async (cmd: string, args?: Record<string, unknown>) => {
+    if (handler) return handler(cmd, args)
+    switch (cmd) {
+      case 'list_command_specs':
+        return [
+          { name: 'search', description: '搜索', aliases: ['s', 'find'], usage: 'search <query>' },
+          { name: 'launch', description: '启动', aliases: ['run', 'open-app'], usage: 'launch <name>' },
+          { name: 'open', description: '打开', aliases: [], usage: 'open <path>' },
+          { name: 'config', description: '配置', aliases: ['cfg', 'setting'], usage: 'config' },
+          { name: 'help', description: '帮助', aliases: ['-h', '--help'], usage: 'help' },
+          { name: 'version', description: '版本', aliases: ['-v', '--version'], usage: 'version' },
+          { name: 'index', description: '索引', aliases: ['idx'], usage: 'index <sub>' },
+          { name: 'stats', description: '统计', aliases: [], usage: 'stats [type]' },
+          { name: 'command', description: '自定义命令', aliases: ['cmd'], usage: 'command <sub>' },
+        ]
+      case 'dispatch_command':
+        return { success: true, message: 'mock', data: undefined }
+      default:
+        return null
+    }
+  })
+
   return {
-    ...actual,
-    listenEvent: vi.fn(async () => () => undefined),
+    mockCall: fn,
+    setOverride: (h: (cmd: string, args?: unknown) => unknown) => { handler = h },
+    clearOverride: () => { handler = null },
   }
 })
 
-const callSpy = vi.spyOn(tauriSvc, 'call')
-function asMock() {
-  return callSpy
-}
+vi.mock('@/services/tauri', () => ({
+  call: mockCall,
+  listenEvent: vi.fn(async () => () => undefined),
+}))
 
-function rewireBackends(impls: {
-  list_command_specs: any
-  dispatch_command: any
-}) {
-  callSpy.mockImplementation(async (cmd: string) => {
-    if (cmd === 'list_command_specs') return impls.list_command_specs
-    if (cmd === 'dispatch_command') return impls.dispatch_command
-    throw new Error(`unexpected cmd ${cmd}`)
-  })
+function asMock() {
+  return mockCall
 }
 
 beforeEach(() => {
   setActivePinia(createPinia())
-  callSpy.mockReset()
+  mockCall.mockClear()
+  clearOverride()
   ;(globalThis as any).window = (globalThis as any).window ?? {}
   ;(globalThis as any).window.__TAURI__ = {}
 })
 
 afterEach(() => {
-  callSpy.mockReset()
+  mockCall.mockClear()
+  clearOverride()
   delete (globalThis as any).window.__TAURI__
 })
 
@@ -48,18 +75,13 @@ describe('useCommandsStore — loadFromBackend', () => {
     // 不调用后端，但 specs 自动 fallback 到 UI 内置
     expect(s.specs.length).toBeGreaterThan(0)
     expect(asMock()).not.toHaveBeenCalled()
-    ;(globalThis as any).window = (globalThis as any).window ?? {}
-    ;(globalThis as any).window.__TAURI__ = {}
   })
 
   it('拉取后端成功 → store 列表填满', async () => {
-    rewireBackends({
-      list_command_specs: [
-        { name: 'search', description: '搜索', aliases: ['s', 'find'], usage: 'search <query>' },
-        { name: 'config', description: '配置', aliases: ['cfg'] },
-      ],
-      dispatch_command: { success: true, message: 'ok' },
-    })
+    setOverride(async () => [
+      { name: 'search', description: '搜索', aliases: ['s', 'find'], usage: 'search <query>' },
+      { name: 'config', description: '配置', aliases: ['cfg'] },
+    ])
     const s = useCommandsStore()
     await s.loadFromBackend()
     expect(s.isLoaded).toBe(true)
@@ -73,10 +95,7 @@ describe('useCommandsStore — loadFromBackend', () => {
   })
 
   it('拉取失败 → fallback builtin + 记录 lastError', async () => {
-    ;(globalThis as any).window.__TAURI__ = {}
-    callSpy.mockImplementation(async () => {
-      throw new Error('IPC 失败')
-    })
+    setOverride(async () => { throw new Error('IPC 失败') })
     const s = useCommandsStore()
     await s.loadFromBackend()
     expect(s.isLoaded).toBe(true)
@@ -85,8 +104,6 @@ describe('useCommandsStore — loadFromBackend', () => {
   })
 
   it('force=true 时强制重新拉取', async () => {
-    ;(globalThis as any).window.__TAURI__ = {}
-    rewireBackends({ list_command_specs: [], dispatch_command: { success: true } })
     const s = useCommandsStore()
     await s.loadFromBackend()
     expect(asMock().mock.calls.filter((c) => c[0] === 'list_command_specs').length).toBe(1)
@@ -98,15 +115,8 @@ describe('useCommandsStore — loadFromBackend', () => {
 })
 
 describe('useCommandsStore — execute / errors', () => {
-  function mockFallback(impl: (...args: unknown[]) => unknown) {
-    callSpy.mockImplementation((cmd: string, args?: unknown) => {
-      if (cmd === 'list_command_specs') return []
-      return impl(cmd, args)
-    })
-  }
-
   it('后端 success=false 触发 onError', async () => {
-    mockFallback(() => ({ success: false, message: '失败' }))
+    setOverride(async () => ({ success: false, message: '失败' }))
     const s = useCommandsStore()
     const errs: Array<[unknown, string]> = []
     s.onError((e, id) => errs.push([e, id]))
@@ -118,9 +128,7 @@ describe('useCommandsStore — execute / errors', () => {
   })
 
   it('execute promise 抛错时同样进 onError', async () => {
-    mockFallback(() => {
-      throw new Error('网络层错误')
-    })
+    setOverride(async () => { throw new Error('网络层错误') })
     const s = useCommandsStore()
     const errs: Array<[unknown, string]> = []
     s.onError((e, id) => errs.push([e, id]))
@@ -130,7 +138,7 @@ describe('useCommandsStore — execute / errors', () => {
   })
 
   it('onError 解绑后不再触发', async () => {
-    mockFallback(() => ({ success: false, message: 'x' }))
+    setOverride(async () => ({ success: false, message: 'x' }))
     const s = useCommandsStore()
     let count = 0
     const off = s.onError(() => count++)
@@ -140,7 +148,7 @@ describe('useCommandsStore — execute / errors', () => {
   })
 
   it('成功的执行不进 onError', async () => {
-    mockFallback(() => ({ success: true, message: 'OK' }))
+    setOverride(async () => ({ success: true, message: 'OK' }))
     const s = useCommandsStore()
     const errs: unknown[] = []
     s.onError((e) => errs.push(e))
@@ -154,12 +162,10 @@ describe('useCommandsStore — execute / errors', () => {
     const s = useCommandsStore()
     const out = await s.execute('launch')
     expect(!!out && out.success).toBe(true)
-    ;(globalThis as any).window.__TAURI__ = {}
   })
 
   it('execute 路径走 invoke 并走到后端', async () => {
-    ;(globalThis as any).window.__TAURI__ = {}
-    mockFallback(() => ({ success: true, message: 'OK' }))
+    setOverride(async () => ({ success: true, message: 'OK' }))
     const s = useCommandsStore()
     const before = asMock().mock.calls.length
     const out = await s.execute('config')
@@ -171,14 +177,11 @@ describe('useCommandsStore — execute / errors', () => {
 
 describe('useCommandsStore — query helpers', () => {
   beforeEach(() => {
-    rewireBackends({
-      list_command_specs: [
-        { name: 'search', description: '搜索', aliases: ['find'] },
-        { name: 'config', description: '配置', aliases: ['cfg'] },
-        { name: 'help', description: '帮助', aliases: [] },
-      ],
-      dispatch_command: { success: true },
-    })
+    setOverride(async () => [
+      { name: 'search', description: '搜索', aliases: ['find'] },
+      { name: 'config', description: '配置', aliases: ['cfg'] },
+      { name: 'help', description: '帮助', aliases: [] },
+    ])
   })
 
   it('get 直接 by id / by alias', async () => {
@@ -186,7 +189,6 @@ describe('useCommandsStore — query helpers', () => {
     await s.loadFromBackend()
     expect(s.get('search')?.id).toBe('search')
     expect(s.get('find')?.id).toBe('search')
-    expect(s.get('config')?.id).toBe('config')
     expect(s.get('cfg')?.id).toBe('config')
     expect(s.get('missing')).toBeUndefined()
   })

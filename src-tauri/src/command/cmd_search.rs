@@ -21,7 +21,7 @@ impl Command for SearchCommand {
             return Ok(CommandOutput::err("用法：search <query>"));
         }
 
-        let mut limit: u32 = 10;
+        let mut limit: u32 = 20;
         let mut query_parts: Vec<String> = Vec::new();
         let mut i = 0;
         while i < args.len() {

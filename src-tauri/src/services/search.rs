@@ -63,18 +63,18 @@ impl SearchEngine {
 
     fn post_process(&self, query: &str, mut results: Vec<SearchResult>, limit: u32) -> Vec<SearchResult> {
         if query.is_empty() {
+            // 空查询: 不截断 (上层传入的 limit 已经是 2000), 按 score 倒序即可.
             results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-            results.truncate(limit as usize);
             return results;
         }
 
         results = self.apply_fuzzy_score(query, results);
         results = self.apply_category_weight(results);
         results = self.remove_duplicates(results);
-        
+
         results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         results.truncate(limit as usize);
-        
+
         results
             .into_iter()
             .map(|r| with_default_action(r))

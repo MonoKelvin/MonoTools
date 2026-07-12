@@ -20,6 +20,23 @@ export const searchApi = {
     },
 }
 
+/**
+ * 应用图标 API —— 从可执行文件 (.exe / .lnk) 提取 32x32 PNG 真实图标.
+ *
+ * 错误处理协议 (与后端 `get_app_icon` IPC 对齐):
+ * - 返回 `string | null`: null 表示提取失败, 前端降级到 Lucide 通用图标.
+ * - 内部 IPC 错误 (网络 / Tauri 未注入) 同样返回 null, 永不抛错.
+ */
+export const appIconApi = {
+  /**
+   * 获取可执行文件图标的 base64 PNG.
+   * @param path `.exe` / `.lnk` / `.bat` 等 Windows 可执行路径.
+   */
+  get(path: string): Promise<string | null> {
+    return call<string | null>('get_app_icon', { path }).catch(() => null)
+  },
+}
+
 export const commandApi = {
     list() {
         return call<unknown[]>('list_commands', {})

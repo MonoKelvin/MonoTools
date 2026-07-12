@@ -21,6 +21,8 @@ dist-ssr/
 *.njsproj
 *.sln
 *.sw?
+.trae/
+.claude/settings.local.json
 
 # Logs
 logs/

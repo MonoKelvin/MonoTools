@@ -19,6 +19,13 @@ const HELP_TEXT: &str = r#"MonoTools CLI - 命令帮助
     ├ add <name> <kw> <cmd>
     └ remove <id>
   config [key] [val]        读取/设置配置
+  index <sub>               文件索引管理
+    ├ build
+    ├ update
+    ├ stats
+    ├ add-root <path>
+    └ remove-root <path>
+  stats [apps|commands|files] 查询统计信息
   help                      帮助
   version                   版本
 
@@ -26,6 +33,7 @@ const HELP_TEXT: &str = r#"MonoTools CLI - 命令帮助
   monotools-cli search chrome
   monotools-cli launch "Visual Studio Code"
   monotools-cli command list
+  monotools-cli index build
   monotools-cli config hotkey "Ctrl+Space"
 "#;
 

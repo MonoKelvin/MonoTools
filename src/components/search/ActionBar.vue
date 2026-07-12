@@ -9,6 +9,10 @@ const props = defineProps<{
   indexBuilding: boolean
   indexStatus: string
   indexMessage: string
+  /** 索引扩展字段,用于 UI 展示"哪一个盘符" + 总卷/当前卷index, 默认值兜底 */
+  indexVolumesTotal?: number
+  indexVolumeIndex?: number
+  indexCurrentVolume?: string
 }>()
 
 const emit = defineEmits<{
@@ -18,8 +22,10 @@ const emit = defineEmits<{
 const showIndexStatus = ref(false)
 const autoHideTimer = ref<number | null>(null)
 
+// 默认: building 状态保持常驻显示, 让用户始终看到后台索引在做;
+//       completed 5s 后隐藏, 错误 8s 后隐藏.
 watch(() => props.indexStatus, (newStatus) => {
-  if (newStatus === 'building') {
+  if (newStatus === 'building' || newStatus === 'idle') {
     showIndexStatus.value = true
     if (autoHideTimer.value) {
       clearTimeout(autoHideTimer.value)
@@ -74,8 +80,24 @@ const statusText = computed(() => {
   return `共 ${props.results.length} 项结果`
 })
 
+// 多盘符索引进度文本: "索引中 1/3 · C: (123456)"
+const volumeProgress = computed(() => {
+  const total = props.indexVolumesTotal ?? 0
+  const idx = props.indexVolumeIndex ?? 0
+  const cur = props.indexCurrentVolume ?? ''
+  if (total > 0) {
+    if (cur) return `索引中 ${idx}/${total} · ${cur}`
+    return `索引中 ${idx}/${total}`
+  }
+  return ''
+})
+
 const displayText = computed(() => {
+  // 构建中时优先展示多盘符进度(若后端已上报), 否则显示后端原始 message.
   if (showIndexStatus.value) {
+    if (props.indexStatus === 'building' && volumeProgress.value) {
+      return volumeProgress.value
+    }
     return props.indexMessage
   }
   return statusText.value
@@ -117,90 +139,99 @@ const displayText = computed(() => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sp-3) var(--sp-5);
-  background: var(--surface);
+  padding: 6px 14px;
+  background: transparent;
   border-top: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  height: 30px;
 }
 
 .action-bar__left {
   display: flex;
   align-items: center;
   gap: var(--sp-5);
+  min-width: 0;
+  flex: 1;
 }
 
 .action-bar__right {
   display: flex;
   align-items: center;
-  gap: var(--sp-5);
+  gap: var(--sp-4);
+  flex-shrink: 0;
 }
 
 .action-bar__hint {
   display: inline-flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 5px;
 }
 
 .action-bar__keys {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
 }
 
 .action-bar__label {
   color: var(--text-quaternary);
-  font-size: var(--text-xs);
-  font-weight: 400;
+  font-size: 10.5px;
+  font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .action-bar__status {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   color: var(--text-tertiary);
-  font-size: var(--text-xs);
+  font-size: 11.5px;
   font-weight: 400;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 250px;
+  max-width: 360px;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+  transition:
+    color var(--dur-normal) var(--ease-out),
+    background var(--dur-normal) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
 .action-bar__status--active {
   padding: 2px 8px;
   border-radius: 10px;
-  animation: fadeInUp 0.3s ease-out;
+  animation: fadeInUp 320ms var(--ease-out);
 }
 
 .action-bar__status--active:has(.action-bar__status-spinner) {
-  background: rgba(255, 107, 107, 0.1);
+  background: var(--accent-soft);
   color: var(--accent);
 }
 
 .action-bar__status--active:has(.action-bar__status-icon--success) {
-  background: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
 }
 
 .action-bar__status--active:has(.action-bar__status-icon--error) {
-  background: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .action-bar__status-spinner {
   animation: spin 1s linear infinite;
+  color: var(--accent);
 }
 
 .action-bar__status-icon--success {
-  color: #10b981;
+  color: var(--text-primary);
 }
 
 .action-bar__status-icon--error {
-  color: #ef4444;
+  color: var(--color-danger);
 }
 
 @keyframes spin {
@@ -222,15 +253,15 @@ const displayText = computed(() => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: 10px;
   color: var(--text-tertiary);
-  background: var(--surface-raised);
+  background: var(--inset);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-xs);
+  border-radius: 4px;
   line-height: 1;
 }
 
@@ -238,18 +269,18 @@ const displayText = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   background: transparent;
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   color: var(--text-tertiary);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease-out);
 }
 
 .action-bar__hotkey-btn:hover {
-  background: var(--surface-overlay);
+  background: var(--list-hover-bg);
   color: var(--text-secondary);
 }
 </style>

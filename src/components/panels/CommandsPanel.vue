@@ -6,6 +6,7 @@ import { Zap, Trash2, Plus, Play } from '@lucide/vue'
 import type { CustomCommand } from '@/types/command'
 import MtCard from '@/components/common/MtCard.vue'
 import MtButton from '@/components/common/MtButton.vue'
+import CheckButton from '@/components/common/CheckButton.vue'
 
 const items = ref<CustomCommand[]>([])
 const showAdd = ref(false)
@@ -122,7 +123,11 @@ onMounted(async () => {
 
           <div class="commands-panel__form-row commands-panel__form-row--check">
             <label class="commands-panel__check-label">
-              <input v-model="form.runAsAdmin" type="checkbox" />
+              <CheckButton
+                v-model="form.runAsAdmin"
+                :size="16"
+                class="commands-panel__check-btn"
+              />
               <span>以管理员权限运行</span>
             </label>
           </div>
@@ -330,6 +335,10 @@ onMounted(async () => {
   cursor: pointer;
   font-size: var(--text-base);
   color: var(--text-secondary);
+}
+
+.commands-panel__check-btn {
+  flex-shrink: 0;
 }
 
 .commands-panel__modal-actions {
