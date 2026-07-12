@@ -1,5 +1,14 @@
 //! 简易测试报告 + 结果表。轻量版 reporter：单纯累积若干 section / item；
 //! 若需要更花哨的边框 + 染色版本见 [`crate::reporter::TestReporter`]。
+//!
+//! #problems_and_diagnostics
+//!
+//! P0-1 [never-used] 整个模块从未被任何测试调用 (2026-07-13 grep 确认).
+//!       保留是因为 [tests/SKILL.md] 的"测试报告"章节把它列作可选项.
+//!       实际 reporter 走 [`crate::reporter::TestReporter`], 本模块是"轻量版"备选.
+//!       警告抑制: 整个模块加 `#![allow(dead_code)]`, 避免误导性 warning.
+
+#![allow(dead_code)]
 
 use std::collections::HashMap;
 use std::path::PathBuf;

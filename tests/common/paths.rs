@@ -25,20 +25,12 @@ fn output_root() -> PathBuf {
     tests_root().join("output")
 }
 
-pub fn config_dir(module: &str) -> PathBuf {
-    tests_root().join("config").join(module)
-}
-
 pub fn data_dir(module: &str) -> PathBuf {
     data_root().join(module)
 }
 
 pub fn output_dir(module: &str) -> PathBuf {
     output_root().join(module)
-}
-
-pub fn config_path(module: &str, filename: &str) -> PathBuf {
-    config_dir(module).join(filename)
 }
 
 pub fn data_path(module: &str, filename: &str) -> PathBuf {

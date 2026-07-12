@@ -220,40 +220,6 @@ export function lookupKnownIcon(name: string, path?: string): IconState | null {
 }
 
 // ============================================================================
-// 通用兜底: 根据 resultType 给出最匹配的 Lucide 组件
-// ============================================================================
-
-/**
- * 通用兜底图标: 在没命中任何关键词规则时使用, 风格统一.
- * 接受 resultType 给出最佳匹配, 默认 AppWindow.
- */
-export function fallbackIconForResultType(type: string): Component {
-  switch (type) {
-    case 'system-app':
-      return Monitor
-    case 'uwp-app':
-      return Package
-    case 'command':
-      return Terminal
-    case 'directory':
-      return Folder
-    case 'image':
-      return ImageIcon
-    case 'video':
-      return Video
-    case 'audio':
-      return MusicIcon
-    case 'document':
-    case 'other-file':
-    case 'executable':
-    case 'archive':
-      return FileText
-    default:
-      return AppWindow
-  }
-}
-
-// ============================================================================
 // 按"文件类型/扩展名"给图标 —— 替代 monogram 的精确映射
 // ============================================================================
 
@@ -354,7 +320,7 @@ function appFallbackIcon(resultType: string | undefined, title: string, path: st
 /**
  * 按 resultType + 扩展名 给出最合适的 Lucide 文件类型图标.
  *
- * 与 `fallbackIconForResultType` 的区别:
+ * 设计要点:
  * - 后端粗粒度 (document / image / video) → 精确扩展名 (xlsx / png / mp4)
  * - 目录: FolderOpen (打开) 而非 Folder (静态)
  * - 应用: 用 appFallbackIcon 区分 系统/UWP/普通
@@ -418,31 +384,6 @@ export function iconForFileKind(result: { title?: string; subtitle?: string; cat
     default:
       return File
   }
-}
-
-// ============================================================================
-// LobeHub UI 彩色图标 (可选方案)
-// ============================================================================
-
-/**
- * LobeHub 提供了大量高质量的开源彩色品牌图标, 适合需要"识别度"的应用图标.
- * 本函数返回可下载的 URL, 由调用方 (useAppIcon) 决定是否使用.
- *
- * URL 格式参考: https://github.com/lobehub/lobe-icons
- *   - 单色:   `https://lobehub.com/icon/{slug}`
- *   - 彩色:   `https://lobehub.com/icon-colorful/{slug}`
- *
- * 使用方式 (示例):
- *   const url = lobehubIconUrl('wechat', 'colorful')
- *   // → 'https://lobehub.com/icon-colorful/wechat'
- *
- * 注意: 需要外网访问. 失败时调用方应回退到 Lucide 通用图标.
- */
-export function lobehubIconUrl(slug: string, variant: 'mono' | 'colorful' = 'colorful'): string {
-  const safe = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-  return variant === 'colorful'
-    ? `https://lobehub.com/icon-colorful/${safe}`
-    : `https://lobehub.com/icon/${safe}`
 }
 
 // ============================================================================

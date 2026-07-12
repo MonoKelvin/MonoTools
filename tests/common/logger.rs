@@ -76,10 +76,12 @@ impl TestLogger {
         }
     }
 
+    #[allow(dead_code)]
     pub fn disable(&mut self) {
         self.enabled = false;
     }
 
+    #[allow(dead_code)]
     pub fn enable(&mut self) {
         self.enabled = true;
         if self.file.lock().unwrap().is_none() {
@@ -164,6 +166,7 @@ impl TestLogger {
         }
     }
 
+    #[allow(dead_code)]
     pub fn table(&self, headers: &[&str], rows: &[Vec<&str>]) {
         if !self.enabled || rows.is_empty() {
             return;

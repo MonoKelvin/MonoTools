@@ -22,6 +22,7 @@ pub struct TestReporter {
     tests: Vec<TestResultItem>,
     timestamp: String,
     start_time: std::time::Instant,
+    #[allow(dead_code)]
     search_stats: Vec<SearchStats>,
 }
 
@@ -34,6 +35,7 @@ pub struct TestResultItem {
     pub tables: Vec<String>,
 }
 
+#[allow(dead_code)]
 pub struct SearchStats {
     query: String,
     total_results: usize,
@@ -43,6 +45,7 @@ pub struct SearchStats {
 }
 
 impl SearchStats {
+    #[allow(dead_code)]
     pub fn new(
         query: &str,
         total_results: usize,
@@ -59,6 +62,7 @@ impl SearchStats {
         }
     }
 
+    #[allow(dead_code)]
     pub fn generate_table(stats_list: &[SearchStats]) -> String {
         if stats_list.is_empty() {
             return "无搜索统计数据".to_string();
@@ -126,6 +130,7 @@ impl TestReporter {
         }
     }
 
+    #[allow(dead_code)]
     pub fn add_search_stats(&mut self, stats: SearchStats) {
         self.search_stats.push(stats);
     }

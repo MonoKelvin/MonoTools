@@ -8,15 +8,18 @@ use crate::common::paths::{data_path, output_path, ensure_dir, timestamped_outpu
 
 const MODULE_NAME: &str = "search_engine";
 
+#[allow(dead_code)]
 fn base_dir() -> std::path::PathBuf {
     // 保留以兼容旧调用方；新代码请直接用 `data_path` / `output_path`。
     crate::common::paths::tests_root()
 }
 
+#[allow(dead_code)]
 fn log_dir_path(module: &str) -> std::path::PathBuf {
     crate::common::paths::output_dir(module)
 }
 
+#[allow(dead_code)]
 fn timestamped_filename(base: &str, ext: &str) -> String {
     timestamped_output_path(MODULE_NAME, base, ext)
         .file_name()
@@ -32,8 +35,8 @@ fn get_test_db_path() -> std::path::PathBuf {
     dir.join(format!("test_index_{}.db", pid))
 }
 
+#[allow(dead_code)]
 fn cleanup_test_data() {
-    use std::path::PathBuf;
     use crate::common::paths::data_dir;
     let data_dir = data_dir(MODULE_NAME);
     if data_dir.exists() {
@@ -87,6 +90,7 @@ struct SearchEngineTestConfig {
     pub search_keywords: Vec<String>,
     pub validity_threshold: f64,
     pub search_sample_paths: usize,
+    #[allow(dead_code)]
     pub usn_monitor_duration_ms: u64,
     pub case_insensitive_keywords: Vec<String>,
     pub whole_word_keywords: Vec<String>,
@@ -479,11 +483,13 @@ struct KeywordDetail {
     result_count: usize,
     valid_count: usize,
     time_ms: u64,
+    #[allow(dead_code)]
     sample_paths: Vec<(String, bool)>,
     match_type: String,
 }
 
 impl KeywordDetail {
+    #[allow(dead_code)]
     fn summary(&self) -> String {
         format!(
             "{} | 结果 {} | 有效 {} | 耗时 {}ms",
@@ -677,6 +683,7 @@ struct UsnMonitorResult {
     delete_count: usize,
     total_validated: usize,
     valid_count: usize,
+    #[allow(dead_code)]
     changes: Vec<(UsnChangeReason, String, bool)>,
 }
 

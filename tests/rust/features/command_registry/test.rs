@@ -28,6 +28,7 @@ async fn run_all_command_registry_tests() {
 
 pub async fn run_command_registry_tests() {
     let config = CommandRegistryTestConfig::default();
+    #[allow(unused_mut)]
     let mut logger = TestLogger::new(
         MODULE_NAME,
         &crate::common::paths::output_dir(MODULE_NAME),

@@ -11,6 +11,17 @@
 //! let mut vr = ValidationReport::new("路径验证");
 //! vr.add_entry("a.txt", "/path/a.txt", true);
 //! ```
+//!
+//! #problems_and_diagnostics
+//!
+//! P0-1 [never-used] 整个模块从未被任何测试调用 (2026-07-13 grep 确认).
+//!       保留是因为 [tests/SKILL.md] 把 Table / ValidationReport 列为可选输出格式.
+//!       警告抑制: 整个模块加 `#![allow(dead_code)]`, 避免误导性 warning.
+
+#![allow(dead_code)]
+
+#[allow(unused_imports)]
+use std::path::PathBuf;
 
 pub struct Table {
     headers: Vec<String>,

@@ -10,9 +10,10 @@
 //!
 //! 使用方式:
 //! ```rust
-//! use crate::config::{search, paths, ipc_events};
-//! if path.starts_with(paths::WINDOWS_PROGRAMFILES) { ... }
-//! app.emit(ipc_events::INDEX_PROGRESS, payload)?;
+//! // 系统路径前缀查表
+//! let _prefixes = monotools_lib::config::paths::SYSTEM_PATH_PREFIXES;
+//! // 事件名集中管理
+//! let _evt = monotools_lib::config::ipc_events::INDEX_PROGRESS;
 //! ```
 
 pub mod icon {
