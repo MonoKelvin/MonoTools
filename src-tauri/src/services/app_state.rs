@@ -16,6 +16,7 @@ pub struct AppState {
     pub settings_repo: Arc<dyn SettingsRepo>,
     pub command_repo: Arc<dyn CommandRepo>,
     pub stats_repo: Arc<StatsRepo>,
+    pub pin_repo: Arc<PinRepo>,
 
     pub app_search: Arc<AppSearchEngine>,
     pub command_search: Arc<CommandSearchEngine>,

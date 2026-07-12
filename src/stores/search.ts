@@ -1,12 +1,57 @@
 import { defineStore } from 'pinia'
-import { computed, ref } from 'vue'
-import type { SearchResult, SearchOptions, SearchCategory } from '@/types/search'
+import { computed, ref, watch } from 'vue'
+import type { SearchResult, SearchOptions } from '@/types/search'
 import { searchApi } from '@/services/searchApi'
+import { pinApi } from '@/services/api'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
 
-const DEBOUNCE_MS = 0
+/**
+ * 输入防抖: 30ms. 既消除每键击穿的连发 IPC, 又几乎无感.
+ * 0ms 时用户连打 "chrome" 6 个字符 = 6 次 IPC, 在弱机上会卡顿;
+ * 30ms 是 "字符级" 体验的甜蜜点 (低于人眼可感知延迟).
+ */
+const DEBOUNCE_MS = 30
+
+/** 固定项目最多展示多少个 (避免分组过高). */
+const PINNED_MAX = 8
+/** 最近访问展示多少个. */
+const RECENT_MAX = 10
+
+// ============================================================================
+// 分组 (group) 标识 —— 单一真源. VGR 和 store 共享同一组 ID, 确保
+// 折叠状态与可见列表能保持一致.
+// ============================================================================
+
+export const GROUP_ID = {
+  pinned: 'group.pinned',
+  recent: 'group.recent',
+  system: 'group.system',
+  commands: 'group.commands',
+  apps: 'group.apps',
+  files: 'group.files',
+} as const
+
+export type GroupId = (typeof GROUP_ID)[keyof typeof GROUP_ID]
+
+/** 分组显示结构: 给 VGR 用来渲染 section. */
+export interface DisplayGroup {
+  id: GroupId
+  title: string
+  /** 折叠时, items 仍然按"已过滤+排序"准备, VGR 决定渲染哪些. */
+  items: SearchResult[]
+  /** 该组是否被折叠 (来自 store.collapsedGroups). */
+  collapsed: boolean
+  /** 命中时, 真正要显示的 items (未折叠 = 全部, 已折叠 = []). */
+  visibleItems: SearchResult[]
+  /** 该组类型, VGR 据此选用图标与色板. */
+  kind: 'pinned' | 'recent' | 'system' | 'commands' | 'apps' | 'files'
+  /** 未搜索时, "所有文件" 分组的可见项上限 (UI 性能保护). */
+  fileVisibleLimit?: number
+  /** 未搜索时, "所有文件" 分组总命中数 (用于"显示更多 (+N)"). */
+  hiddenCount?: number
+}
 
 export const useSearchStore = defineStore('search', () => {
   const query = ref('')
@@ -14,6 +59,17 @@ export const useSearchStore = defineStore('search', () => {
   const loading = ref(false)
   const activeCategory = ref<ActiveCategory>('all')
   const selectedIndex = ref(0)
+  /**
+   * 选中项的全局 ID 锚点 —— 搜索 / 折叠 / 分类变化时,
+   * 用 ID 而不是 index 来追踪"用户选中的是哪个"，
+   * 避免结果列表重排后 selectedIndex 指向错误位置.
+   *
+   * 规则:
+   * - 单击 / 上下方向键 / Enter → 同步更新 selectedIndex 与 selectedGlobalId
+   * - displayList 变化 → 在 watcher 中按 ID 重新解析 selectedIndex
+   * - 找不到 ID 时 → 落到 displayList 末尾, 并清空 selectedGlobalId
+   */
+  const selectedGlobalId = ref<string | null>(null)
   const visible = ref(false)
 
   const indexStatus = ref<IndexStatus>('idle')
@@ -26,6 +82,24 @@ export const useSearchStore = defineStore('search', () => {
   /** 应用索引是否已就绪 (后台 refresh_index 完成). 用于首屏自动重搜触发. */
   const appReady = ref(false)
 
+  /**
+   * 用户手动固定的 SearchResult.id 列表 (按用户添加顺序).
+   * 不在 results 里出现时, 渲染会自动过滤掉 (避免 stale 引用).
+   *
+   * 持久化: 启动时调用 loadPinned() 从后端 SQLite 拉取, 任何变更
+   * 立即调用 pinApi.add/remove 同步. 永远不会回退到 launch_count 模拟.
+   */
+  const pinnedIds = ref<string[]>([])
+
+  /**
+   * 用户已折叠的分组 ID 集合. 默认全部展开. VGR 通过 props 读取,
+   * store 是状态的唯一所有者, 避免 view 层和 store 状态漂移.
+   *
+   * 重要: 当折叠状态变化时, 必须立即 clamp selectedIndex 防止指向
+   * 不可见项造成 UI 无响应.
+   */
+  const collapsedGroups = ref<Set<GroupId>>(new Set())
+
   let debounceHandle: ReturnType<typeof setTimeout> | null = null
 
   const filteredResults = computed(() => {
@@ -33,56 +107,83 @@ export const useSearchStore = defineStore('search', () => {
     return results.value.filter((r) => r.category === activeCategory.value)
   })
 
+  /** 兼容旧 API —— 历史 UI 顶部固定推荐位. */
   const topResults = computed(() => filteredResults.value.slice(0, 8))
 
   /**
-   * 未搜索状态下"固定项目"分组: 优先取 launch_count 最高的前 4 个应用
-   * (后端 app_search.search("") 已经按 launch_count 倒序排好, 这里取前 4 个)。
-   * 若应用不足 4 个, 用最近访问的文件补齐。
-   *
-   * 行为规则:
-   *   - category === 'all'        → 优先 apps, 不足用 files 补
-   *   - category === 'apps'       → 仅 apps
-   *   - category === 'files'      → 仅 files
-   *   - category === 'commands'   → 空 (commands 分类无 pinned 概念)
-   *
-   * 使用 `filteredResults` 而非 `results` 让 pinned 自动跟随 category 过滤,
-   * 避免在"文件" tab 下还显示应用这种割裂体验.
+   * "固定项目" 分组: 仅含用户**手动** pin 的项. 不再从 launch_count 推算.
+   *   - 空列表时 → 分组区域不显示 (VGR 已实现).
+   *   - 引用已不在 results 中的 id → 自动跳过, 避免显示陈旧数据.
+   *   - 上限 PINNED_MAX = 8.
    */
   const pinned = computed<SearchResult[]>(() => {
-    if (activeCategory.value === 'commands') return []
-    const base = activeCategory.value === 'all' ? results.value : filteredResults.value
-
-    if (activeCategory.value === 'files') {
-      // 文件 tab: 直接取最近文件
-      return base.filter((r) => r.category === 'files').slice(0, 4)
-    }
-
-    // 'all' 或 'apps' tab: 优先 apps
-    const apps = base.filter((r) => r.category === 'apps').slice(0, 4)
-    if (apps.length >= 4) return apps
-    // 补足到 4 个: 填入文件
-    const files = base.filter((r) => r.category === 'files').slice(0, 4 - apps.length)
-    return [...apps, ...files]
+    if (pinnedIds.value.length === 0) return []
+    const map = new Map(results.value.map((r) => [r.id, r]))
+    return pinnedIds.value
+      .map((id) => map.get(id))
+      .filter((r): r is SearchResult => !!r)
+      .slice(0, PINNED_MAX)
   })
 
   /**
-   * 未搜索状态下的"最近访问"分组.
-   *   - 'all'        → 剩余应用 + 文件, 总共 10 个
-   *   - 'apps'       → 剩余应用
-   *   - 'files'      → 剩余文件
-   *   - 'commands'   → 空
+   * "最近访问" 分组: 排除 pinned 后的剩余 results, 保持 launch_count 顺序.
+   * 这是"次重要"列表, 给用户**主动 pin 之前**浏览过/用过的应用和文件做临时推荐.
+   * 同样: 空列表时分组区域不显示.
    */
   const recent = computed<SearchResult[]>(() => {
     if (activeCategory.value === 'commands') return []
-    const usedIds = new Set(pinned.value.map((r) => r.id))
-    const base = activeCategory.value === 'all' ? results.value : filteredResults.value
-    return base.filter((r) => !usedIds.has(r.id)).slice(0, 10)
+    const pinnedSet = new Set(pinnedIds.value)
+    return results.value
+      .filter((r) => !pinnedSet.has(r.id))
+      .slice(0, RECENT_MAX)
   })
+
+  /** 某个 id 是否被 pin. */
+  function isPinned(id: string): boolean {
+    return pinnedIds.value.includes(id)
+  }
+
+  /**
+   * 切换 pin 状态: 立即更新本地, 后端持久化 (失败则回滚).
+   * 调用方无需 await, 但 UI 已经乐观更新.
+   */
+  async function togglePin(id: string): Promise<void> {
+    const idx = pinnedIds.value.indexOf(id)
+    const wasPinned = idx >= 0
+    // 乐观更新
+    if (wasPinned) {
+      pinnedIds.value = pinnedIds.value.filter((x) => x !== id)
+    } else {
+      pinnedIds.value = [id, ...pinnedIds.value].slice(0, PINNED_MAX)
+    }
+    try {
+      if (wasPinned) await pinApi.remove(id)
+      else await pinApi.add(id)
+    } catch {
+      // 回滚
+      if (wasPinned) {
+        pinnedIds.value = [id, ...pinnedIds.value].slice(0, PINNED_MAX)
+      } else {
+        pinnedIds.value = pinnedIds.value.filter((x) => x !== id)
+      }
+    }
+  }
+
+  /** 从后端加载 pinned 列表. 应在 initialLoad 之后调用. */
+  async function loadPinned(): Promise<void> {
+    try {
+      const ids = await pinApi.list()
+      pinnedIds.value = Array.isArray(ids) ? ids : []
+    } catch {
+      pinnedIds.value = []
+    }
+  }
 
   function setQuery(next: string) {
     query.value = next
     selectedIndex.value = 0
+    // 清空 ID 锚点: 搜索新内容时, 之前选中的项可能不再相关.
+    selectedGlobalId.value = null
     if (debounceHandle) clearTimeout(debounceHandle)
     debounceHandle = setTimeout(() => runSearch(), DEBOUNCE_MS)
   }
@@ -200,18 +301,328 @@ export const useSearchStore = defineStore('search', () => {
     selectedIndex.value = 0
   }
 
+  /** 文件类型过滤: 由 VGR 通过 `setFileKindFilter` 控制. */
+  const fileKindFilter = ref<Set<string>>(new Set())
+
+  /**
+   * 通知 store 前端文件类型过滤状态, 让 `displayList` 与 VGR 渲染严格一致.
+   * 当 VGR 内部 `selectedFileKinds` 变化时调用.
+   */
+  function setFileKindFilter(kinds: Set<string>) {
+    fileKindFilter.value = kinds
+  }
+
+  // ==========================================================================
+  // Display pipeline: query / pinned / collapsed 三者共同决定"实际可见"列表
+  // ==========================================================================
+
+  /**
+   * 进入 VGR 的"原始"分组数据. 每个组含该类的全部命中, 不受折叠影响.
+   * VGR 只需决定渲染哪些 (根据 collapsed), 不用再算 groups.
+   *
+   * 注: 文件分组在未搜索状态下做了 `fileVisibleLimit` 截断, 避免 500+
+   * 个 DOM 节点同屏 paint. hiddenCount 用来展示"显示更多 (+N)".
+   */
+  const FILE_VISIBLE_INITIAL = 80
+  const FILE_VISIBLE_STEP = 50
+  const FILE_HARD_CAP = 1000
+  const fileVisibleLimit = ref(FILE_VISIBLE_INITIAL)
+
+  /**
+   * 对 files 分组应用文件类型过滤: 仅保留命中 selectedFileKinds 的项.
+   * 未搜索时过滤生效; 搜索时 (query 非空) 也过滤 (保持用户偏好).
+   */
+  function applyFileKindFilter(items: SearchResult[], kinds: Set<string>): SearchResult[] {
+    if (kinds.size === 0) return items
+    // 匹配 FILE_KIND_DISPLAY_ORDER 中的 FileKind 值
+    return items.filter((r) => kinds.has(getFileKind(r)))
+  }
+
+  /** 从 SearchResult 推导 FileKind (用于文件类型过滤). */
+  function getFileKind(r: SearchResult): string {
+    // 优先 resultType (后端分类更准)
+    const typeMap: Record<string, string> = {
+      'directory': 'other',
+      'document': 'document',
+      'image': 'image',
+      'video': 'video',
+      'audio': 'audio',
+      'executable': 'executable',
+      'archive': 'archive',
+      'other-file': 'other',
+      'code': 'code',
+      'pdf': 'pdf',
+      'font': 'font',
+      'design': 'design',
+      'spreadsheet': 'spreadsheet',
+      'presentation': 'presentation',
+    }
+    if (typeMap[r.resultType]) return typeMap[r.resultType]
+    // 回退: 从扩展名推断
+    const ext = (r.subtitle || r.title || '').split(/[\\/]/).pop() || ''
+    const dot = ext.lastIndexOf('.')
+    const raw = dot >= 0 ? ext.slice(dot + 1).toLowerCase() : ext.toLowerCase()
+    if (!raw) return 'other'
+
+    const DOC_EXT = new Set(['txt','md','markdown','rtf','log','rst','doc','docx','odt','pages','epub','mobi','azw','azw3','fb2','djvu','tex'])
+    const IMAGE_EXT = new Set(['jpg','jpeg','png','gif','webp','bmp','tiff','tif','heic','heif','ico','avif','jxl','raw','cr2','nef','orf','sr2','dng','arw','rw2','raf'])
+    const VIDEO_EXT = new Set(['mp4','m4v','mkv','webm','mov','avi','wmv','flv','f4v','mpeg','mpg','mp2','mpe','vob','ogv','3gp','3g2','mts','m2ts','ts','rm','rmvb'])
+    const AUDIO_EXT = new Set(['mp3','m4a','aac','flac','wav','ogg','oga','opus','wma','alac','ape','aiff','aif','aifc','mka','caf','mid','midi','amr','awb'])
+    const EXECUTABLE_EXT = new Set(['exe','msi','bat','cmd','com','scr','pif','gadget','dll','sys','drv','bin','run','app','dmg','pkg','deb','rpm','apk','ipa','appx','msix','jar','jse','wsf','vbs','ps1','psm1','sh','bash','zsh','ksh','csh'])
+    const ARCHIVE_EXT = new Set(['zip','rar','7z','tar','gz','tgz','bz2','tbz','xz','txz','lz','lzma','lz4','zst','Z','cab','msp','msu','rpm','iso','img','dmg','wim','esd'])
+
+    if (raw === 'pdf') return 'pdf'
+    if (DOC_EXT.has(raw)) return 'document'
+    if (IMAGE_EXT.has(raw)) return 'image'
+    if (VIDEO_EXT.has(raw)) return 'video'
+    if (AUDIO_EXT.has(raw)) return 'audio'
+    if (EXECUTABLE_EXT.has(raw)) return 'executable'
+    if (ARCHIVE_EXT.has(raw)) return 'archive'
+    return 'other'
+  }
+
+  const allAppsSorted = computed<SearchResult[]>(() => {
+    return filteredResults.value
+      .filter((r) => r.category === 'apps' && r.resultType !== 'system-app')
+      .sort((a, b) => a.title.localeCompare(b.title))
+  })
+
+  const systemAppsSorted = computed<SearchResult[]>(() => {
+    return filteredResults.value
+      .filter((r) => r.category === 'apps' && r.resultType === 'system-app')
+      .sort((a, b) => a.title.localeCompare(b.title))
+  })
+
+  const commandsItems = computed<SearchResult[]>(() => {
+    return filteredResults.value
+      .filter((r) => r.category === 'commands')
+      .slice(0, 12)
+  })
+
+  const filesAllUnfiltered = computed<SearchResult[]>(() => {
+    return filteredResults.value
+      .filter((r) => r.category === 'files')
+      .slice(0, query.value ? 80 : 2000)
+  })
+
+  const allAppsItems = computed<SearchResult[]>(() => {
+    // 搜索时仍然按全量返回; 未搜索时 = 全量 (因为后端 ALL_FILES_EMPTY_QUERY_CAP
+    // 已限制 2000, 这里不再二次截断).
+    if (query.value) return allAppsSorted.value
+    return allAppsSorted.value
+  })
+
+  const systemAppsItems = computed<SearchResult[]>(() => {
+    if (query.value) return systemAppsSorted.value
+    return systemAppsSorted.value
+  })
+
+  /**
+   * 6 个分组的完整数据 —— 单一真源, VGR 不再自己算分组.
+   * 关键: query 模式下, pinned/recent 分组为空 (不显示).
+   */
+  const displayGroups = computed<DisplayGroup[]>(() => {
+    const out: DisplayGroup[] = []
+    const q = query.value
+    const isCollapsed = (id: GroupId) => collapsedGroups.value.has(id)
+
+    // 1) 固定项目 (未搜索才显示)
+    const pinnedItems = q ? [] : pinned.value
+    out.push({
+      id: GROUP_ID.pinned,
+      title: '固定项目',
+      items: pinnedItems,
+      visibleItems: isCollapsed(GROUP_ID.pinned) ? [] : pinnedItems,
+      collapsed: isCollapsed(GROUP_ID.pinned),
+      kind: 'pinned',
+    })
+
+    // 2) 最近访问 (未搜索才显示)
+    const recentItems = q ? [] : recent.value
+    out.push({
+      id: GROUP_ID.recent,
+      title: '最近访问',
+      items: recentItems,
+      visibleItems: isCollapsed(GROUP_ID.recent) ? [] : recentItems,
+      collapsed: isCollapsed(GROUP_ID.recent),
+      kind: 'recent',
+    })
+
+    // 3) 系统应用
+    const sysItems = systemAppsItems.value
+    out.push({
+      id: GROUP_ID.system,
+      title: '系统应用',
+      items: sysItems,
+      visibleItems: isCollapsed(GROUP_ID.system) ? [] : sysItems,
+      collapsed: isCollapsed(GROUP_ID.system),
+      kind: 'system',
+    })
+
+    // 4) 命令
+    const cmdItems = commandsItems.value
+    out.push({
+      id: GROUP_ID.commands,
+      title: '命令',
+      items: cmdItems,
+      visibleItems: isCollapsed(GROUP_ID.commands) ? [] : cmdItems,
+      collapsed: isCollapsed(GROUP_ID.commands),
+      kind: 'commands',
+    })
+
+    // 5) 所有应用
+    const appsItems = allAppsItems.value
+    out.push({
+      id: GROUP_ID.apps,
+      title: '所有应用',
+      items: appsItems,
+      visibleItems: isCollapsed(GROUP_ID.apps) ? [] : appsItems,
+      collapsed: isCollapsed(GROUP_ID.apps),
+      kind: 'apps',
+    })
+
+    // 6) 所有文件 - 受 fileVisibleLimit 控制 + 折叠影响 + 文件类型过滤
+    const allFiles = filesAllUnfiltered.value
+    let filesItems: SearchResult[]
+    let hiddenCount: number
+    if (q) {
+      filesItems = applyFileKindFilter(allFiles, fileKindFilter.value)
+      hiddenCount = 0
+    } else {
+      const limit = Math.min(fileVisibleLimit.value, FILE_HARD_CAP)
+      filesItems = applyFileKindFilter(allFiles.slice(0, limit), fileKindFilter.value)
+      hiddenCount = Math.max(0, allFiles.length - limit)
+    }
+    out.push({
+      id: GROUP_ID.files,
+      title: '所有文件',
+      items: allFiles,
+      visibleItems: isCollapsed(GROUP_ID.files) ? [] : filesItems,
+      collapsed: isCollapsed(GROUP_ID.files),
+      kind: 'files',
+      fileVisibleLimit: fileVisibleLimit.value,
+      hiddenCount,
+    })
+
+    return out
+  })
+
+  /**
+   * 实际可见的扁平列表. 用于键盘上下方向键 + Enter 选中.
+   * 与 VGR 渲染的内容严格 1:1, 杜绝 selectedIndex 指向不可见项.
+   */
+  const displayList = computed<SearchResult[]>(() => {
+    const out: SearchResult[] = []
+    for (const g of displayGroups.value) {
+      if (!g.collapsed) {
+        for (const it of g.visibleItems) out.push(it)
+      }
+    }
+    return out
+  })
+
+  /** keyboard nav / Enter 选中的下标上限. */
+  const displayMax = computed(() => Math.max(0, displayList.value.length))
+
+  /**
+   * 切换一个分组的折叠状态. 当折叠时若 selectedIndex 指向被隐藏的项,
+   * 主动 clamp 到 0 / 末尾, 避免高亮看不见.
+   */
+  function toggleGroupCollapse(id: GroupId) {
+    const next = new Set(collapsedGroups.value)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    collapsedGroups.value = next
+  }
+
+  /**
+   * "所有文件" 分组增量展开: 每次 +50 个 (硬上限 1000).
+   */
+  function showMoreFiles() {
+    fileVisibleLimit.value = Math.min(
+      fileVisibleLimit.value + FILE_VISIBLE_STEP,
+      FILE_HARD_CAP,
+    )
+  }
+
   function selectNext() {
-    if (selectedIndex.value < filteredResults.value.length - 1) {
+    if (selectedIndex.value < displayMax.value - 1) {
       selectedIndex.value++
+      // 同步 ID 锚点: 切换时记录当前选中项的 ID, 用于 displayList 变化后重新定位.
+      const item = displayList.value[selectedIndex.value]
+      selectedGlobalId.value = item?.id ?? null
     }
   }
 
   function selectPrev() {
-    if (selectedIndex.value > 0) selectedIndex.value--
+    if (selectedIndex.value > 0) {
+      selectedIndex.value--
+      const item = displayList.value[selectedIndex.value]
+      selectedGlobalId.value = item?.id ?? null
+    }
   }
 
+  /**
+   * 直接按 index 选中, 同时设置 ID 锚点. 给单击 / 双击 / hover 场景用.
+   * 边界保护: 越界时 clamp 到 [0, max-1].
+   */
+  function selectByIndex(idx: number) {
+    if (displayMax.value === 0) {
+      selectedIndex.value = 0
+      selectedGlobalId.value = null
+      return
+    }
+    const clamped = Math.max(0, Math.min(idx, displayMax.value - 1))
+    selectedIndex.value = clamped
+    selectedGlobalId.value = displayList.value[clamped]?.id ?? null
+  }
+
+  /**
+   * 当 displayList 变化时 (搜索 / 索引刷新 / 折叠切换 / 分类筛选), 主动
+   * 重新定位 selectedIndex:
+   * 1) 如果有 ID 锚点 → 在新 displayList 中按 ID 查找, 找到了就定位过去;
+   * 2) 找不到 (被折叠 / 被过滤 / 列表为空) → 落到末尾, 清空 ID 锚点;
+   * 3) 都没 ID 锚点时, 仅做边界 clamp.
+   *
+   * 关键改进: 之前 selectedIndex 可能停在越界位置, 视觉上看不到高亮 +
+   * Enter 无反应. 现在即使 displayList 剧烈重排, 选中态也会"跟着 ID 走".
+   *
+   * `flush: 'sync'` 同步触发 (默认 'pre' 是 microtask).
+   * 选 'sync' 的原因: displayList 变化常常在同一 tick 内被 selectByIndex 紧随读取,
+   * 默认 'pre' 会在 selectByIndex 之后才跑, 留下 selectedIndex 越界的窗口.
+   * 同步触发保证 clamp 立即生效, 行为对调用方完全可预测.
+   */
+  watch(
+    displayMax,
+    () => {
+      if (displayMax.value === 0) {
+        selectedIndex.value = 0
+        selectedGlobalId.value = null
+        return
+      }
+      // 优先按 ID 锚点重新定位
+      if (selectedGlobalId.value) {
+        const idx = displayList.value.findIndex((r) => r.id === selectedGlobalId.value)
+        if (idx >= 0) {
+          selectedIndex.value = idx
+          return
+        }
+        // 锚点丢失: 落到末尾, 保留上一个 ID 作为"上一次选中"的记忆 (便于后续 expand 恢复)
+        selectedIndex.value = displayMax.value - 1
+        return
+      }
+      // 无锚点: 单纯 clamp 边界
+      if (selectedIndex.value > displayMax.value - 1) {
+        selectedIndex.value = displayMax.value - 1
+      } else if (selectedIndex.value < 0) {
+        selectedIndex.value = 0
+      }
+    },
+    { flush: 'sync' },
+  )
+
   async function executeSelected(): Promise<SearchResult | null> {
-    const item = filteredResults.value[selectedIndex.value]
+    const item = displayList.value[selectedIndex.value]
     if (!item) return null
     try {
       await searchApi.execute(item)
@@ -236,9 +647,12 @@ export const useSearchStore = defineStore('search', () => {
     if (results.value.length === 0) {
       query.value = ''
       selectedIndex.value = 0
+      selectedGlobalId.value = null
     } else {
       // 已有数据时仅重置选区到第一项, 不动 query / results.
       selectedIndex.value = 0
+      // 用 displayList 第一项的 ID 作为新锚点, 避免 ID 残留造成重定位错误.
+      selectedGlobalId.value = displayList.value[0]?.id ?? null
     }
   }
 
@@ -256,6 +670,8 @@ export const useSearchStore = defineStore('search', () => {
     loading,
     activeCategory,
     selectedIndex,
+    /** 选中项的全局 ID 锚点 (供 VGR / 测试 / hover 等场景同步使用). */
+    selectedGlobalId,
     visible,
     indexStatus,
     indexMessage,
@@ -264,10 +680,15 @@ export const useSearchStore = defineStore('search', () => {
     indexVolumeIndex,
     indexCurrentVolume,
     appReady,
+    pinnedIds,
+    collapsedGroups,
     filteredResults,
     topResults,
     pinned,
     recent,
+    isPinned,
+    togglePin,
+    loadPinned,
     setQuery,
     runSearch,
     initialLoad,
@@ -277,10 +698,19 @@ export const useSearchStore = defineStore('search', () => {
     setCategory,
     selectNext,
     selectPrev,
+    /** 按 index 选中, 自动同步 ID 锚点 + 边界 clamp. */
+    selectByIndex,
     executeSelected,
     executeItem,
     show,
     hide,
     toggle,
+    // 新增的显示层 API
+    displayGroups,
+    displayList,
+    displayMax,
+    toggleGroupCollapse,
+    setFileKindFilter,
+    showMoreFiles,
   }
 })

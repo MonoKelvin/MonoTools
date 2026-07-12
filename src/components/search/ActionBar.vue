@@ -127,7 +127,11 @@ const displayText = computed(() => {
         <span class="kbd"><CornerDownLeft :size="12" :stroke-width="2.5" /></span>
         <span class="action-bar__label">打开</span>
       </span>
-      <button class="action-bar__hotkey-btn" @click="emit('showHotkeys')" title="快捷键">
+      <button
+        class="action-bar__hotkey-btn"
+        @click="emit('showHotkeys')"
+        v-tooltip="{ value: '查看快捷键', showDelay: 280, position: 'top' }"
+      >
         <Keyboard :size="14" :stroke-width="2" />
       </button>
     </div>

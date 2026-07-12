@@ -285,3 +285,56 @@ export {
   Monitor, AppWindow, Package, Terminal, FileText, Folder,
   MusicIcon, ImageIcon, Video, Settings, Mail, Globe,
 }
+
+// ============================================================================
+// 单字母 monogram 占位符 —— 当无任何图标 (Lucide + 后端 PNG + 静态命中
+// 全部失败) 时, 用一个字母 + 暖白底色的小方块作为视觉锚点.
+// ============================================================================
+
+/**
+ * 从 title 抽取 monogram 单字母. 规则:
+ *   - 优先取第一个字母 (英文 / 中文首字)
+ *   - 空 title 时按 resultType 推断
+ *   - 永远是单个字符, 大写, 可直接渲染.
+ */
+export function getMonogram(title: string, resultType?: string): string {
+  const t = (title || '').trim()
+  if (t.length > 0) {
+    // 取第一个非空字符, 转大写
+    const first = t.charAt(0).toUpperCase()
+    // 中文 / 拉丁字符都直接返回
+    if (/[A-Z0-9\u4e00-\u9fff]/.test(first)) return first
+  }
+  // fallback by resultType
+  switch (resultType) {
+    case 'directory': return 'D'
+    case 'executable': return 'E'
+    case 'document': return 'F'
+    case 'image': return 'I'
+    case 'video': return 'V'
+    case 'audio': return 'A'
+    case 'archive': return 'Z'
+    case 'code': return 'C'
+    case 'pdf': return 'P'
+    default: return '?'
+  }
+}
+
+/**
+ * 根据 title 哈希出一个稳定的 monogram 背景色 (低饱和度, 与单色 UI 协调).
+ * 同一 title 永远得到同一颜色, 跨刷新稳定.
+ */
+export function getMonogramColor(title: string): string {
+  let hash = 0
+  for (let i = 0; i < title.length; i++) {
+    hash = ((hash << 5) - hash) + title.charCodeAt(i)
+    hash |= 0
+  }
+  // 用 3 个低饱和度暖色: #f5f1e8 / #e8e5dc / #d8d4c8
+  const palette = [
+    'rgba(245, 241, 232, 0.18)', // warm white
+    'rgba(232, 229, 220, 0.22)', // beige
+    'rgba(216, 212, 200, 0.20)', // muted tan
+  ]
+  return palette[Math.abs(hash) % palette.length]
+}

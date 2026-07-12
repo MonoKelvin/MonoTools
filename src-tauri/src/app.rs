@@ -182,6 +182,7 @@ pub mod app {
                 let command_repo: Arc<dyn crate::repositories::CommandRepo> =
                     Arc::new(InMemoryCommandRepo::new());
                 let stats_repo = Arc::new(StatsRepo::new());
+                let pin_repo = Arc::new(PinRepo::new());
 
                 // app_search 用空缓存构造（不扫盘）；refresh_index 在下方后台 spawn。
                 let app_search = Arc::new(AppSearchEngine::new_empty(settings_repo.clone()));
@@ -228,6 +229,7 @@ pub mod app {
                     settings_repo,
                     command_repo,
                     stats_repo,
+                    pin_repo,
                     app_search,
                     command_search,
                     file_search,
@@ -397,6 +399,7 @@ pub mod app {
             })
             .invoke_handler(tauri::generate_handler![
                 crate::commands::search_cmd,
+                crate::commands::search_more_cmd,
                 crate::commands::execute_result,
                 crate::commands::show_window,
                 crate::commands::hide_window,
@@ -423,10 +426,13 @@ pub mod app {
                 crate::commands::build_file_index,
                 crate::commands::get_index_status,
                 crate::commands::frontend_ready,
-                crate::commands::file_search,
                 crate::commands::list_command_specs,
                 crate::commands::dispatch_command,
                 crate::commands::get_app_icon,
+                crate::commands::get_app_icons_batch,
+                crate::commands::list_pinned,
+                crate::commands::pin_item,
+                crate::commands::unpin_item,
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");

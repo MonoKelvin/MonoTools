@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from 'vue'
-import { FolderOpen, Copy, FileText, ExternalLink } from "@lucide/vue"
+import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { FolderOpen, Copy, FileText, ExternalLink, Pin, PinOff } from "@lucide/vue"
 import type { SearchResult } from '@/types/search'
 import { shellApi } from '@/services/api'
+import { useSearchStore } from '@/stores/search'
 
 interface Props {
   visible: boolean
@@ -15,7 +16,16 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{
   (e: 'close'): void
+  (e: 'pin-toggle', item: SearchResult): void
 }>()
+
+const search = useSearchStore()
+
+/** 当前项是否已被 pin —— 决定菜单显示 "固定" 还是 "取消固定". */
+const isPinned = computed(() => {
+  if (!props.item) return false
+  return search.isPinned(props.item.id)
+})
 
 const copyPath = async () => {
   if (!props.item) return
@@ -49,6 +59,12 @@ const openContainingFolder = async () => {
   }
 }
 
+const onPinToggle = () => {
+  if (!props.item) return
+  emit('pin-toggle', props.item)
+  emit('close')
+}
+
 const handleClickOutside = (e: MouseEvent) => {
   const target = e.target as HTMLElement
   if (!target.closest('.context-menu')) {
@@ -70,8 +86,8 @@ onBeforeUnmount(() => {
 <template>
   <Teleport to="body">
     <Transition name="context-menu">
-      <div 
-        v-if="visible && item" 
+      <div
+        v-if="visible && item"
         class="context-menu"
         :style="{ left: `${x}px`, top: `${y}px` }"
       >
@@ -88,6 +104,10 @@ onBeforeUnmount(() => {
           <span>复制名称</span>
         </div>
         <div class="context-menu__divider"></div>
+        <div class="context-menu__item" @click="onPinToggle">
+          <component :is="isPinned ? PinOff : Pin" :size="14" />
+          <span>{{ isPinned ? '取消固定' : '固定到首页' }}</span>
+        </div>
         <div class="context-menu__item" @click="() => emit('close')">
           <ExternalLink :size="14" />
           <span>关闭</span>

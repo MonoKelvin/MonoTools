@@ -3,8 +3,30 @@ import type { SearchResult, SearchOptions } from '@/types/search'
 import type { Settings, ThemeMode } from '@/types/settings'
 
 export const searchApi = {
-    search(query: string, options?: Partial<SearchOptions>): Promise<SearchResult[]> {
+    /**
+     * 执行搜索.
+     * @param query 用户输入的查询字符串 (空字符串 = 列出全部).
+     * @param options 扩展选项:
+     *   - `limit`: 覆盖默认上限, 用于"显示更多" / loadMore 增量加载.
+     *   - `categories`: 限制只在指定 category 中搜索 (apps / files / commands).
+     *   - `includeHidden`: 是否包含隐藏文件.
+     */
+    search(
+        query: string,
+        options?: Partial<SearchOptions>,
+    ): Promise<SearchResult[]> {
         return call<SearchResult[]>('search_cmd', { query, options })
+    },
+    /**
+     * 分页搜索: 从 after_id 之后继续取 limit 条, 给"显示更多"按钮用.
+     * 避免一次性 search 拉过多结果导致 IPC 序列化阻塞.
+     */
+    searchMore(
+        query: string,
+        afterId: number,
+        options?: Partial<SearchOptions>,
+    ): Promise<SearchResult[]> {
+        return call<SearchResult[]>('search_more_cmd', { query, after_id: afterId, options })
     },
     execute(item: SearchResult): Promise<void> {
         return call<void>('execute_result', { item })
@@ -14,9 +36,6 @@ export const searchApi = {
     },
     getIndexStatus(): Promise<{ files: number; apps: number; commands: number }> {
         return call<{ files: number; apps: number; commands: number }>('get_index_status', {})
-    },
-    fileSearch(query: string, limit?: number): Promise<SearchResult[]> {
-        return call<SearchResult[]>('file_search', { query, limit })
     },
 }
 
@@ -34,6 +53,16 @@ export const appIconApi = {
    */
   get(path: string): Promise<string | null> {
     return call<string | null>('get_app_icon', { path }).catch(() => null)
+  },
+  /**
+   * 批量获取图标. 一次 IPC 拉多个 base64 PNG, 减少 RTT 开销.
+   * @param paths 可执行文件路径数组 (会去重, 后端自动 cache).
+   * @returns 顺序与 paths 一一对应的 base64 字符串数组, 失败位置为 null.
+   */
+  getBatch(paths: string[]): Promise<Array<string | null>> {
+    return call<Array<string | null>>('get_app_icons_batch', { paths }).catch(
+      () => paths.map(() => null),
+    )
   },
 }
 
@@ -132,5 +161,27 @@ export const commandSpecsApi = {
             'dispatch_command',
             { commandId, args: args ?? [] },
         )
+    },
+}
+
+/**
+ * 固定项目 API —— 用户手动 pin 到首页的应用/文件.
+ *
+ * 错误处理协议:
+ * - 所有方法在 IPC 失败时**静默**返回 null / 抛错, 由调用方 (search store) 处理.
+ * - 持久化由后端 SQLite 完成 (`pin_repo`), 重启不丢失.
+ */
+export const pinApi = {
+    /** 列出全部已 pin 的 id 列表 (按用户添加顺序). */
+    list(): Promise<string[]> {
+        return call<string[]>('list_pinned', {})
+    },
+    /** 添加一个 id 到 pin 列表. */
+    add(id: string): Promise<void> {
+        return call<void>('pin_item', { id })
+    },
+    /** 从 pin 列表移除一个 id. */
+    remove(id: string): Promise<void> {
+        return call<void>('unpin_item', { id })
     },
 }

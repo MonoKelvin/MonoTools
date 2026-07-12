@@ -87,7 +87,11 @@ onMounted(async () => {
             <Play :size="12" :stroke-width="2.5" />
             运行
           </MtButton>
-          <button class="commands-panel__delete-btn" @click="remove(cmd.id)" title="删除">
+          <button
+            class="commands-panel__delete-btn"
+            @click="remove(cmd.id)"
+            v-tooltip="{ value: '删除此命令', showDelay: 280, position: 'top' }"
+          >
             <Trash2 :size="14" :stroke-width="2" />
           </button>
         </div>

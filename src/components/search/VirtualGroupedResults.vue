@@ -2,198 +2,160 @@
 /**
  * 简洁分组列表 (Raycast 风格).
  *
- * 不管是搜索状态还是未搜索状态, 都以"分组行"的形式展示内容.
- * 分组之间用细分隔线区分, 不使用卡片背景/边框/阴影.
- * 标题是简洁的小号大写字母 + 数字, 类似 Raycast 列表分组.
+ * 组件定位: **纯展示** —— 分组结构、折叠状态、可见项全部由 store 提供.
+ * VGR 不再持有任何"业务状态", 只负责:
+ *   - 接收 `groups: DisplayGroup[]` 渲染每个 section.
+ *   - 单击行: emit 'select' (父级更新 selectedIndex).
+ *   - 双击行: emit 'open'   (父级 executeItem 真正打开).
+ *   - 点击折叠箭头: emit 'toggle-group' (父级 → store.toggleGroupCollapse).
+ *   - 点击 "显示更多": emit 'show-more-files'.
  *
- * 分组顺序:
+ * 分组顺序 (来自 store):
  *   1. 固定项目 (Pinned)      - 未搜索
  *   2. 最近访问 (Recent)        - 未搜索
- *   3. 系统应用 (System)      - 全部/应用
- *   4. 命令 (Commands)        - 全部/命令
+ *   3. 系统应用 (System)
+ *   4. 命令 (Commands)
  *   5. 所有应用 (All Apps)
- *   6. 所有文件 (All Files)   - 含多选分类筛选 chip
+ *   6. 所有文件 (All Files)   - 含多选分类筛选 chip + 增量展开
+ *
+ * 动画策略 (重要):
+ *   - 行 .vg__rows 用 <Transition name="rows"> 包裹, 折叠时高度/透明度
+ *     平滑过渡而不是瞬间消失, 修复"点击箭头后内容立即消失"问题.
+ *   - 折叠箭头用 CSS rotate 平滑旋转.
+ *   - 选中行始终有 2px accent 进度条 + 缩放图标 + accent 文字色.
  */
-import { computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import {
-  File as FileIcon, FileCode, FileImage, FileText,
-  Folder, Settings as SettingsIcon, Terminal, PinIcon, Clock, Cpu,
-  Sparkles, FileVideo, FileAudio, FileArchive,
-  FileBraces, FileSpreadsheet, Presentation,
-  ChevronDown, Filter
+  Folder, Settings as SettingsIcon, Terminal, PinIcon, Clock,
+  Sparkles, ChevronDown, Filter
 } from '@lucide/vue'
 import type { SearchResult } from '@/types/search'
+import type { DisplayGroup, GroupId } from '@/stores/search'
 import ResultItem from '@/components/common/ResultItem.vue'
 import AppResultItem from '@/components/search/AppResultItem.vue'
 import CheckButton from '@/components/common/CheckButton.vue'
 import { classify, classifyByResultType, FILE_KIND_META, FILE_KIND_DISPLAY_ORDER, type FileKind } from '@/utils/fileKinds'
+import { useSearchStore } from '@/stores/search'
 
 interface Props {
-  results: SearchResult[]
+  /**
+   * 分组结构 (来自 store.displayGroups).
+   * 启动早期 store 还没产出 DisplayGroup, 父组件可能传 undefined,
+   * 组件必须能在 undefined 下挂载 (见 setup 中的 `?? []` 防护).
+   */
+  groups?: DisplayGroup[]
   loading?: boolean
+  /** 当前全局选中项的下标 (来自 store.displayList). */
   selectedIndex: number
   height?: number
   itemHeight?: number
-  pinned?: SearchResult[]
-  recent?: SearchResult[]
   hasQuery?: boolean
-  /** 单个分组最多显示多少项, 避免分组过高撑爆窗口. 默认 6. */
-  maxPerGroup?: number
+  /** 当前查询关键字, 用于"搜索 X 中…"提示文案. */
+  query?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   height: 400,
   itemHeight: 44,
-  pinned: () => [],
-  recent: () => [],
   hasQuery: false,
-  maxPerGroup: 6,
+  query: '',
 })
-
-/**
- * 文件分组在"未搜索"状态下的最大可见数.
- * 后端 ALL_FILES_EMPTY_QUERY_CAP=500 时, 一次渲染 500 个 DOM 节点会
- * 让滚动卡顿. 默认 80 个 + 用户点击 "显示更多" 每次展开 50 个,
- * 既保留"全部可访问"语义又避免性能塌方.
- */
-const FILE_VISIBLE_INITIAL = 80
-const FILE_VISIBLE_STEP = 50
-const fileVisibleLimit = ref(FILE_VISIBLE_INITIAL)
 
 const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
+  (e: 'open', item: SearchResult): void
   (e: 'hover', index: number): void
   (e: 'contextmenu', event: MouseEvent, item: SearchResult): void
+  (e: 'toggle-group', id: GroupId): void
+  (e: 'show-more-files'): void
 }>()
 
-// 默认全选 (搜索时) 或全选 (未搜索时)
+// === 文件类型过滤 (UI 内部状态) ===
+// 仅 UI 偏好, 不影响 store 中的搜索结果. 持久化由 store 负责, 这里只是
+// "未搜索状态下, 在所有文件分组里再筛一次" 的小开关.
 const selectedFileKinds = ref<Set<FileKind>>(new Set(FILE_KIND_DISPLAY_ORDER))
 
-interface Group {
-  id: string
-  title: string
-  icon: any
-  kinds: FileKind[] | null
-  items: SearchResult[]
+// === 分组 -> 图标映射 (kind) ===
+const GROUP_ICONS: Record<DisplayGroup['kind'], any> = {
+  pinned: PinIcon,
+  recent: Clock,
+  system: SettingsIcon,
+  commands: Terminal,
+  apps: Sparkles,
+  files: Folder,
 }
 
-const FILE_GROUP_ID = 'group.files'
-const APPS_GROUP_ID = 'group.apps'
-const COMMANDS_GROUP_ID = 'group.commands'
-const PINNED_GROUP_ID = 'group.pinned'
-const SYSTEM_GROUP_ID = 'group.system'
-const RECENT_GROUP_ID = 'group.recent'
-
-function isFile(r: SearchResult): boolean { return r.category === 'files' }
-function isApp(r: SearchResult): boolean { return r.category === 'apps' }
-function isCommand(r: SearchResult): boolean { return r.category === 'commands' }
-function isSystemApp(r: SearchResult): boolean {
-  return isApp(r) && (r as any).resultType === 'system-app'
+/**
+ * 文件类型过滤已委托到 store.search.setFileKindFilter().
+ * 此处保留此函数仅为文件类型下拉面板的 count 统计使用,
+ * visibleGroups 直接使用 store 过滤后的 displayGroups.
+ */
+function applyFileKindFilter(items: SearchResult[]): SearchResult[] {
+  return items
 }
 
-const groups = computed<Group[]>(() => {
-  const out: Group[] = []
-  const cap = props.maxPerGroup
-
-  // 1) 固定项目 - 未搜索状态才有
-  const pinned = (props.pinned || []).slice(0, cap)
-  if (pinned.length && !props.hasQuery) {
-    out.push({ id: PINNED_GROUP_ID, title: '固定项目', icon: PinIcon, kinds: null, items: pinned })
-  }
-
-  // 2) 最近访问 - 未搜索状态才有
-  const recent = (props.recent || []).slice(0, cap)
-  if (recent.length && !props.hasQuery) {
-    out.push({ id: RECENT_GROUP_ID, title: '最近访问', icon: Clock, kinds: null, items: recent })
-  }
-
-  // 3) 系统应用
-  const sysApps: SearchResult[] = []
-  const userApps: SearchResult[] = []
-  for (const r of props.results) {
-    if (isSystemApp(r)) sysApps.push(r)
-    else if (isApp(r)) userApps.push(r)
-  }
-  if (sysApps.length) {
-    sysApps.sort((a, b) => a.title.localeCompare(b.title))
-    // 空查询时: 系统应用也全部展开; 有查询时仍 cap.
-    const sysItems = props.hasQuery ? sysApps.slice(0, cap) : sysApps
-    out.push({ id: SYSTEM_GROUP_ID, title: '系统应用', icon: SettingsIcon, kinds: null, items: sysItems })
-  }
-
-  // 4) 命令
-  const commands: SearchResult[] = []
-  for (const r of props.results) if (isCommand(r)) commands.push(r)
-  if (commands.length) {
-    out.push({ id: COMMANDS_GROUP_ID, title: '命令', icon: Terminal, kinds: null, items: commands.slice(0, cap) })
-  }
-
-  // 5) 所有应用
-  if (userApps.length) {
-    // 空查询时: 全部展开 (不再 cap=6 截断), 让首屏能看到所有应用.
-    // 有查询时: 仍 cap 保持原有紧凑节奏.
-    const appsItems = props.hasQuery ? userApps.slice(0, cap) : userApps
-    out.push({ id: APPS_GROUP_ID, title: '所有应用', icon: Sparkles, kinds: null, items: appsItems })
-  }
-
-  // 6) 所有文件 - 应用文件分类筛选
-  const filesAll: SearchResult[] = []
-  for (const r of props.results) {
-    if (!isFile(r)) continue
-    const byType = classifyByResultType((r as any).resultType)
-    const ext = (r.subtitle || r.title || '').split(/[\\/]/).pop() || ''
-    const kind = byType ?? classify(ext)
-    if (selectedFileKinds.value.has(kind)) filesAll.push(r)
-  }
-  if (filesAll.length) {
-    // 关键: 空查询时文件分组**默认展开** (受 fileVisibleLimit 限制),
-    // 保证即使没有输入关键字搜索也能展示所有可搜索/索引的文件.
-    // 有查询时仍 cap 保持紧凑节奏, 由窗口滚动承载更多结果.
-    if (!props.hasQuery) {
-      // 切换 query / 筛选 / 索引就绪时, 把可见数重置回 initial,
-      // 避免"展开更多"后的状态在切换条件后造成困惑.
-      fileVisibleLimit.value = FILE_VISIBLE_INITIAL
-    }
-    const sliceEnd = props.hasQuery
-      ? Math.min(filesAll.length, cap)
-      : Math.min(filesAll.length, fileVisibleLimit.value)
-    const filesItems = filesAll.slice(0, sliceEnd)
-    out.push({
-      id: FILE_GROUP_ID,
-      title: '所有文件',
-      icon: Folder,
-      kinds: FILE_KIND_DISPLAY_ORDER,
-      items: filesItems,
-      // 让分组头部拿到"是否有更多未展示"的元信息, 渲染"显示更多"按钮
-      hiddenCount: props.hasQuery ? 0 : Math.max(0, filesAll.length - sliceEnd),
-    } as any)
-  }
-
-  return out
+/** 真正渲染到 DOM 的分组 —— 应用文件类型过滤后. */
+const visibleGroups = computed<DisplayGroup[]>(() => {
+  // 防御: props.groups 在组件挂载早期可能是 undefined, 直接 .map() 会白屏.
+  return (props.groups ?? [])
+    .map((g) => {
+      if (g.kind !== 'files') return g
+      const filtered = applyFileKindFilter(g.visibleItems)
+      return { ...g, visibleItems: filtered }
+    })
+    .filter((g) => g.items.length > 0 || g.collapsed)
 })
 
-/** 每个分组的全局起始 offset (用于键盘上下方向键 / 高亮联动) */
+/** 每个分组的全局起始 offset (用于键盘上下方向键 / 高亮联动). */
 const itemOffsetOfGroup = computed(() => {
   const map: Record<string, number> = {}
   let off = 0
-  for (const g of groups.value) {
+  for (const g of visibleGroups.value) {
     map[g.id] = off
-    off += g.items.length
+    off += g.collapsed ? 0 : g.visibleItems.length
   }
   return map
 })
 
-/** 全局扁平化列表, 给键盘方向键使用 */
-const flatItems = computed(() => groups.value.flatMap((g) => g.items))
+/** 全局扁平化列表 —— 与 store.displayList 严格一致. */
+const flatItems = computed<SearchResult[]>(() => {
+  const out: SearchResult[] = []
+  for (const g of visibleGroups.value) {
+    if (!g.collapsed) {
+      for (const it of g.visibleItems) out.push(it)
+    }
+  }
+  return out
+})
 
-// === 滚动到指定项 (用于键盘上下方向键) ===
+// === 滚动到指定项 ===
 const scrollerRef = ref<HTMLElement | null>(null)
 
+/**
+ * 滚动到指定全局 index 对应的行. 优先用 scrollIntoView (现代浏览器),
+ * 失败时回退到手工 scrollTop 计算.
+ *
+ * 修复: 旧版仅用 offsetTop 计算, 但 collapse/expand 动画期间
+ * offsetTop 处于中间值, 导致滚动位置抖动. scrollIntoView 的
+ * { block: 'nearest' } 行为会自动跳过已在视口内的项, 视觉更稳定.
+ */
 function scrollToGlobalIndex(idx: number) {
   if (!scrollerRef.value) return
+  if (idx < 0) return
   const el = scrollerRef.value.querySelector<HTMLElement>(`[data-global-idx="${idx}"]`)
-  if (el) {
+  if (!el) {
+    // 元素可能还在 transition 中, 等下一帧再试
+    requestAnimationFrame(() => {
+      const retry = scrollerRef.value?.querySelector<HTMLElement>(`[data-global-idx="${idx}"]`)
+      retry?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    })
+    return
+  }
+  try {
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  } catch {
+    // 回退: 手工计算 scrollTop
     const cTop = scrollerRef.value.scrollTop
     const cBot = cTop + scrollerRef.value.clientHeight
     const eTop = el.offsetTop
@@ -207,10 +169,27 @@ watch(() => props.selectedIndex, (v) => {
   if (v >= 0) nextTick(() => scrollToGlobalIndex(v))
 })
 
-watch(() => props.results, () => {
-  if (scrollerRef.value) scrollerRef.value.scrollTop = 0
+/**
+ * 折叠状态变化时: 等待 max-height 过渡 (280ms) 完成后再滚动,
+ * 避免在 transition 中读到错误的 offsetTop.
+ *
+ * 关键防护: props.groups 在组件挂载早期可能是 undefined (store 还没
+ * 产生 DisplayGroup). 直接 `.map()` 会抛 "Cannot read properties of
+ * undefined (reading 'map')" 让整个 setup watch 链路死掉, 出现白屏.
+ * 用 `?` + `?? ''` 把 undefined 折成空字符串, 让 join 返回 '' (稳定)
+ * 而 watcher 第一次的 (undefined→'') 不被错误地当成"折叠状态变化".
+ */
+watch(() => (props.groups ?? []).map((g) => g.collapsed).join(','), () => {
+  nextTick(() => {
+    setTimeout(() => scrollToGlobalIndex(props.selectedIndex), 320)
+  })
 })
 
+watch(() => props.groups, () => {
+  if (scrollerRef.value) scrollerRef.value.scrollTop = 0
+}, { deep: true })
+
+// === 文件类型过滤 ===
 function toggleKind(k: FileKind, e: Event) {
   if (e && (e as any).metaKey) {
     if (selectedFileKinds.value.has(k) && selectedFileKinds.value.size === 1) return
@@ -249,12 +228,10 @@ const panelAlign = ref<'down' | 'up'>('down')
 
 function toggleFilterPanel() {
   if (!filterOpen.value) {
-    // 智能判断: 下方空间不足时改为向上展开
     const root = filterDropdownRef.value as any
     if (root && typeof root.getBoundingClientRect === 'function') {
       const rect = root.getBoundingClientRect()
       const spaceBelow = window.innerHeight - rect.bottom
-      // 面板大约高度 ~270px, 留 8px 间距
       panelAlign.value = spaceBelow < 280 ? 'up' : 'down'
     }
   }
@@ -266,7 +243,6 @@ function selectAllKinds() {
   selectedFileKinds.value = new Set(FILE_KIND_DISPLAY_ORDER)
 }
 function clearAllKinds() {
-  // 至少保留一个, 避免空筛选. 兜底保留 "其他" 类型.
   selectedFileKinds.value = new Set(['other'] as FileKind[])
 }
 
@@ -283,7 +259,6 @@ function onFilterOptionClick(k: FileKind) {
 function onDocClick(e: MouseEvent) {
   if (!filterOpen.value) return
   const root = filterDropdownRef.value as any
-  // 防御: ref 可能为 null/undefined 或 v-if 切换过程中被解绑
   if (!root || typeof root.contains !== 'function') return
   const target = e.target as Node | null
   if (target && !root.contains(target)) {
@@ -310,11 +285,19 @@ onBeforeUnmount(() => {
   }
 })
 
+// === 同步文件类型过滤到 store, 确保 displayList 与 VGR 渲染严格一致 ===
+const search = useSearchStore()
+onMounted(() => {
+  search.setFileKindFilter(selectedFileKinds.value)
+})
+watch(selectedFileKinds, (kinds) => {
+  search.setFileKindFilter(kinds)
+}, { deep: true })
+
 // === 统计每个 kind 的命中数 (仅用于下拉面板的 count 显示) ===
 const fileCountByKind = computed(() => {
   const m: Record<string, number> = {}
-  for (const r of props.results) {
-    if (!isFile(r)) continue
+  for (const r of props.groups.find((g) => g.kind === 'files')?.items ?? []) {
     const byType = classifyByResultType((r as any).resultType)
     const ext = (r.subtitle || r.title || '').split(/[\\/]/).pop() || ''
     const kind = byType ?? classify(ext)
@@ -323,19 +306,33 @@ const fileCountByKind = computed(() => {
   return m
 })
 
-const isLoading = computed(() => props.loading && flatItems.value.length === 0)
+const isLoading = computed(() => props.loading && props.hasQuery)
 const nothingNow = computed(() => !props.loading && flatItems.value.length === 0)
 
-function onPickItem(item: SearchResult) { emit('select', item) }
+/** 单击 → 只更新 selectedIndex (无副作用). 双击 → 真正打开. */
+function onPickItem(item: SearchResult) {
+  emit('select', item)
+}
+
+function onOpenItem(item: SearchResult) {
+  emit('open', item)
+}
+
 function onItemHover(idx: number) { emit('hover', idx) }
 
-/** "显示更多": 每次展开 FILE_VISIBLE_STEP 个文件. */
-function showMoreFiles() {
-  fileVisibleLimit.value = Math.min(
-    fileVisibleLimit.value + FILE_VISIBLE_STEP,
-    // 硬上限 1000, 防止无限滚动按钮
-    1000
-  )
+/** "显示更多": 通知 store 增加可见文件数. */
+function onShowMoreFiles() {
+  emit('show-more-files')
+}
+
+/** 切换分组折叠: 通知 store. */
+function onToggleGroup(id: GroupId) {
+  emit('toggle-group', id)
+}
+
+/** 分组是否处于展开状态 (供模板 aria-expanded 使用). */
+function isCollapsed(g: DisplayGroup): boolean {
+  return g.collapsed
 }
 </script>
 
@@ -343,7 +340,7 @@ function showMoreFiles() {
   <div class="vg" :style="{ height: height + 'px' }">
     <div v-if="isLoading" class="vg__loading">
       <div class="vg__spinner"></div>
-      <span class="vg__loading-text">搜索中…</span>
+      <span class="vg__loading-text">搜索 {{ props.query }} 中…</span>
     </div>
 
     <div v-else-if="nothingNow" class="vg__empty">
@@ -352,108 +349,141 @@ function showMoreFiles() {
 
     <div v-else ref="scrollerRef" class="vg__scroller">
       <div class="vg__list">
-        <template v-for="(g, gi) in groups" :key="g.id">
+        <template v-for="(g, gi) in visibleGroups" :key="g.id">
           <!-- 分组 (无卡片背景, 仅细分隔线) -->
           <section
             class="vg__group"
-            :class="{ 'vg__group--first': gi === 0, 'vg__group--files': g.id === FILE_GROUP_ID }"
+            :class="{ 'vg__group--first': gi === 0, 'vg__group--files': g.kind === 'files' }"
           >
-            <!-- 简洁标题 (Raycast 风格, 进一步加大字号 + 加大图标 + 浅色) -->
+            <!-- 标题行: 左侧图标 + 标题 + 计数; 右侧 [筛选] [折叠箭头] -->
             <div class="vg__group-header">
               <div class="vg__group-header-left">
-                <component :is="g.icon" :size="15" :stroke-width="1.7" class="vg__group-icon" />
+                <component :is="GROUP_ICONS[g.kind]" :size="15" :stroke-width="1.7" class="vg__group-icon" />
                 <span class="vg__group-title">{{ g.title }}</span>
                 <span v-if="g.items.length" class="vg__group-count">{{ g.items.length }}</span>
               </div>
-              <!-- 所有文件: 标题行右侧的下拉多选 -->
-              <div v-if="g.id === FILE_GROUP_ID" ref="filterDropdownRef" class="vg__filter-dropdown">
+
+              <div class="vg__group-header-right">
+                <!-- 所有文件: 标题行右侧的下拉多选 -->
+                <div v-if="g.kind === 'files'" ref="filterDropdownRef" class="vg__filter-dropdown">
+                  <button
+                    type="button"
+                    class="vg__filter-trigger"
+                    :class="{ 'vg__filter-trigger--active': !allKindsActive }"
+                    @click="toggleFilterPanel"
+                    :aria-expanded="filterOpen"
+                  >
+                    <Filter :size="13" :stroke-width="2" class="vg__filter-trigger-icon" />
+                    <span>{{ filterSummary }}</span>
+                    <ChevronDown :size="13" :stroke-width="2.2" class="vg__filter-trigger-icon" :style="{ transform: filterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)' }" />
+                  </button>
+
+                  <Transition :name="panelAlign === 'up' ? 'filter-pop-up' : 'filter-pop'">
+                    <div
+                      v-if="filterOpen"
+                      class="vg__filter-panel"
+                      :class="panelAlign === 'up' ? 'vg__filter-panel--up' : 'vg__filter-panel--down'"
+                      role="listbox"
+                      @click.stop
+                    >
+                      <button
+                        v-for="(k, idx) in FILE_KIND_DISPLAY_ORDER"
+                        :key="k"
+                        type="button"
+                        class="vg__filter-option"
+                        :class="{ 'vg__filter-option--active': isKindActive(k) }"
+                        :style="{ '--i': idx }"
+                        @click="onFilterOptionClick(k)"
+                      >
+                        <CheckButton
+                          :model-value="isKindActive(k)"
+                          :size="15"
+                          class="vg__filter-check"
+                        />
+                        <span class="vg__filter-label">{{ FILE_KIND_META[k].label }}</span>
+                        <span v-if="fileCountByKind[k]" class="vg__filter-count">{{ fileCountByKind[k] }}</span>
+                      </button>
+
+                      <div class="vg__filter-footer">
+                        <button type="button" class="vg__filter-action" @click="clearAllKinds">清空</button>
+                        <button type="button" class="vg__filter-action vg__filter-action--primary" @click="selectAllKinds">全选</button>
+                      </div>
+                    </div>
+                  </Transition>
+                </div>
+
+                <!-- 折叠/展开箭头: 位于分组标题行最右侧 -->
                 <button
                   type="button"
-                  class="vg__filter-trigger"
-                  :class="{ 'vg__filter-trigger--active': !allKindsActive }"
-                  @click="toggleFilterPanel"
-                  :aria-expanded="filterOpen"
+                  class="vg__group-toggle"
+                  :class="{ 'vg__group-toggle--collapsed': isCollapsed(g) }"
+                  @click="onToggleGroup(g.id)"
+                  :aria-expanded="!isCollapsed(g)"
+                  :aria-label="isCollapsed(g) ? '展开分组' : '折叠分组'"
+                  :title="isCollapsed(g) ? '展开分组' : '折叠分组'"
                 >
-                  <Filter :size="13" :stroke-width="2" class="vg__filter-trigger-icon" />
-                  <span>{{ filterSummary }}</span>
-                  <ChevronDown :size="13" :stroke-width="2.2" class="vg__filter-trigger-icon" :style="{ transform: filterOpen ? 'rotate(180deg)' : 'none', transition: 'transform 200ms cubic-bezier(0.16, 1, 0.3, 1)' }" />
+                  <ChevronDown :size="14" :stroke-width="2.2" />
                 </button>
-
-                <Transition :name="panelAlign === 'up' ? 'filter-pop-up' : 'filter-pop'">
-                  <div
-                    v-if="filterOpen"
-                    class="vg__filter-panel"
-                    :class="panelAlign === 'up' ? 'vg__filter-panel--up' : 'vg__filter-panel--down'"
-                    role="listbox"
-                  >
-                    <button
-                      v-for="(k, idx) in g.kinds || []"
-                      :key="k"
-                      type="button"
-                      class="vg__filter-option"
-                      :class="{ 'vg__filter-option--active': isKindActive(k) }"
-                      :style="{ '--i': idx }"
-                      @click="onFilterOptionClick(k)"
-                    >
-                      <CheckButton
-                        :model-value="isKindActive(k)"
-                        :size="15"
-                        class="vg__filter-check"
-                      />
-                      <span class="vg__filter-label">{{ FILE_KIND_META[k].label }}</span>
-                      <span v-if="fileCountByKind[k]" class="vg__filter-count">{{ fileCountByKind[k] }}</span>
-                    </button>
-
-                    <div class="vg__filter-footer">
-                      <button type="button" class="vg__filter-action" @click="clearAllKinds">清空</button>
-                      <button type="button" class="vg__filter-action vg__filter-action--primary" @click="selectAllKinds">全选</button>
-                    </div>
-                  </div>
-                </Transition>
               </div>
             </div>
 
-            <!-- 项 (直接渲染, 无 wrapper) -->
-            <div class="vg__rows">
+            <!-- 行容器: v-show + max-height transition 让折叠/展开平滑过渡.
+                 修复"元素瞬间消失"问题: 旧版用 TransitionGroup + position:absolute
+                 让行脱离文档流, 父容器高度瞬间坍缩, 视觉上看不到过渡.
+                 现在由 wrapper 的 max-height 控制整段高度, 行内再叠加淡入淡出. -->
+            <Transition
+              name="group-collapse"
+              appear
+            >
               <div
-                v-for="(it, localIdx) in g.items"
-                :key="it.id + ':' + localIdx"
-                :data-global-idx="itemOffsetOfGroup[g.id] + localIdx"
-                class="vg__row"
-                :class="{ 'vg__row--active': (itemOffsetOfGroup[g.id] + localIdx) === selectedIndex }"
-                @click="onPickItem(it)"
-                @mouseover="onItemHover(itemOffsetOfGroup[g.id] + localIdx)"
-                @contextmenu.prevent="(e) => emit('contextmenu', e, it)"
+                v-show="!isCollapsed(g)"
+                class="vg__rows-wrapper"
               >
-                <AppResultItem
-                  v-if="isApp(it)"
-                  :result="it"
-                  :index="itemOffsetOfGroup[g.id] + localIdx"
-                  :active="(itemOffsetOfGroup[g.id] + localIdx) === selectedIndex"
-                  @select="onPickItem"
-                  @mouseover="onItemHover(itemOffsetOfGroup[g.id] + localIdx)"
-                  @contextmenu="(e) => emit('contextmenu', e, it)"
-                />
-                <ResultItem
-                  v-else
-                  :result="it"
-                  :index="itemOffsetOfGroup[g.id] + localIdx"
-                  :active="(itemOffsetOfGroup[g.id] + localIdx) === selectedIndex"
-                  @select="onPickItem"
-                />
-              </div>
+                <TransitionGroup
+                  tag="div"
+                  name="rows"
+                  class="vg__rows"
+                  appear
+                >
+                  <div
+                    v-for="(it, localIdx) in g.visibleItems"
+                    :key="it.id + ':' + localIdx"
+                    :data-global-idx="itemOffsetOfGroup[g.id] + localIdx"
+                    class="vg__row"
+                    :class="{ 'vg__row--active': (itemOffsetOfGroup[g.id] + localIdx) === selectedIndex }"
+                    @click="onPickItem(it)"
+                    @dblclick="onOpenItem(it)"
+                    @mouseover="onItemHover(itemOffsetOfGroup[g.id] + localIdx)"
+                    @contextmenu.prevent="(e) => emit('contextmenu', e, it)"
+                  >
+                    <AppResultItem
+                      v-if="g.kind === 'apps' || g.kind === 'pinned' || g.kind === 'recent' || g.kind === 'system'"
+                      :result="it"
+                      :index="itemOffsetOfGroup[g.id] + localIdx"
+                      :active="(itemOffsetOfGroup[g.id] + localIdx) === selectedIndex"
+                    />
+                    <ResultItem
+                      v-else
+                      :result="it"
+                      :index="itemOffsetOfGroup[g.id] + localIdx"
+                      :active="(itemOffsetOfGroup[g.id] + localIdx) === selectedIndex"
+                    />
+                  </div>
 
-              <!-- "所有文件" 分组: 还有更多未展示时, 渲染展开按钮 -->
-              <button
-                v-if="g.id === FILE_GROUP_ID && (g as any).hiddenCount > 0"
-                type="button"
-                class="vg__show-more"
-                @click="showMoreFiles"
-              >
-                <ChevronDown :size="13" :stroke-width="2" />
-                <span>显示更多 (+{{ (g as any).hiddenCount }})</span>
-              </button>
-            </div>
+                  <!-- "所有文件" 分组: 还有更多未展示时, 渲染展开按钮 -->
+                  <button
+                    v-if="g.kind === 'files' && g.hiddenCount && g.hiddenCount > 0"
+                    :key="`show-more-${g.id}`"
+                    type="button"
+                    class="vg__show-more"
+                    @click="onShowMoreFiles"
+                  >
+                    <ChevronDown :size="13" :stroke-width="2" />
+                    <span>显示更多 (+{{ g.hiddenCount }})</span>
+                  </button>
+                </TransitionGroup>
+              </div>
+            </Transition>
           </section>
         </template>
       </div>
@@ -516,6 +546,13 @@ function showMoreFiles() {
   min-width: 0;
 }
 
+.vg__group-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .vg__group-icon {
   color: var(--text-quaternary);
   opacity: 0.8;
@@ -558,6 +595,43 @@ function showMoreFiles() {
 .vg__group-header:hover .vg__group-count {
   color: var(--text-tertiary);
   border-color: var(--border-default);
+}
+
+/* === 折叠/展开箭头按钮 === */
+.vg__group-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-quaternary);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform 280ms cubic-bezier(0.34, 1.2, 0.64, 1);
+  transform: rotate(0deg);
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.vg__group-toggle:hover {
+  color: var(--text-primary);
+  background: var(--list-hover-bg);
+  border-color: var(--border-subtle);
+}
+
+.vg__group-toggle--collapsed {
+  transform: rotate(-90deg);
+}
+
+.vg__group-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* === 所有文件: 标题行右侧的下拉多选 === */
@@ -609,7 +683,7 @@ function showMoreFiles() {
 /* === 扁平化 3 列网格面板 (强高斯模糊, 黑白灰, 适当间距) === */
 .vg__filter-panel {
   position: absolute;
-  background: rgba(20, 20, 24, 0.75);
+  background: rgba(18, 18, 21, 0.62);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-xl);
   box-shadow:
@@ -621,8 +695,8 @@ function showMoreFiles() {
   grid-template-columns: repeat(3, 1fr);
   grid-auto-rows: min-content;
   gap: 6px;
-  backdrop-filter: blur(40px) saturate(180%);
-  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  backdrop-filter: blur(48px) saturate(180%);
+  -webkit-backdrop-filter: blur(48px) saturate(180%);
   overflow: visible;
 }
 
@@ -778,24 +852,97 @@ function showMoreFiles() {
 }
 
 /* === 项容器 === */
+/* wrapper: v-show + max-height transition, 让整段行的高度平滑收放.
+ * 旧版问题: TransitionGroup 直接放在 v-if 上, 行一离开 (position:absolute)
+ * 父容器就瞬间坍缩, 用户看不到过渡. 现在高度由 wrapper 控制. */
+.vg__rows-wrapper {
+  overflow: hidden;
+  /* max-height 大到能容纳约 50 行 (50 * 36px ≈ 1800px), 超出部分
+   * 由 v-show 隐藏, 但 transition 期间仍可见动画. */
+  max-height: 2000px;
+  transition:
+    max-height 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  opacity: 1;
+}
+
 .vg__rows {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  /* 关键: overflow:hidden 让 TransitionGroup 的高度/透明度过渡生效,
+   * 否则子项脱离时仍会"瞬间消失" (因为父容器没有限制). */
+  overflow: hidden;
+  transition: max-height 320ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* === group-collapse Transition: v-show 时的 max-height 动画 === */
+.group-collapse-enter-active,
+.group-collapse-leave-active {
+  transition:
+    max-height 280ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
+  /* 折叠时给 leave 一个稍快一点的节奏, 视觉上"先收高再消". */
+  will-change: max-height, opacity;
+}
+.group-collapse-enter-from,
+.group-collapse-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+.group-collapse-enter-to,
+.group-collapse-leave-from {
+  max-height: 2000px;
+  opacity: 1;
 }
 
 .vg__row {
   display: block;
   cursor: pointer;
   border-radius: var(--radius-md);
-  /* 长列表性能优化: 浏览器自动跳过视口外元素的渲染, 大幅减少 500+
-   * 个文件时的 paint / layout 开销. 50px 是单行预估高度的 1.1x 余量. */
-  content-visibility: auto;
-  contain-intrinsic-size: auto 44px;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    opacity 220ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.vg__row:hover {
+  background: var(--list-hover-bg);
 }
 
 .vg__row--active {
   background: var(--list-selected-bg);
+}
+
+.vg__row--active:hover {
+  background: var(--list-selected-bg);
+  filter: brightness(1.1);
+}
+
+/* === TransitionGroup: 折叠/展开/插入/删除 行 时平滑过渡 === */
+.rows-enter-active {
+  transition:
+    opacity 240ms cubic-bezier(0.16, 1, 0.3, 1),
+    transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* 修复: 旧版 position:absolute 让行脱离文档流, 父容器瞬间坍缩, 看不到过渡.
+ * 现在高度由 .vg__rows-wrapper 的 max-height 控制, 行只做淡出. */
+.rows-leave-active {
+  transition:
+    opacity 160ms cubic-bezier(0.4, 0, 1, 1),
+    transform 160ms cubic-bezier(0.4, 0, 1, 1);
+}
+.rows-enter-from {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+.rows-leave-to {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+}
+.rows-move {
+  transition: transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* "显示更多" 按钮 (文件分组尾部, 当 hiddenCount > 0 时渲染) */
@@ -871,19 +1018,14 @@ function showMoreFiles() {
 }
 .filter-pop-enter-from {
   opacity: 0;
-  transform: translateY(-8px) scale(0.92);
+  transform: translateY(-6px) scale(0.96);
 }
 .filter-pop-leave-to {
   opacity: 0;
-  transform: translateY(-4px) scale(0.96);
-}
-.filter-pop-enter-to,
-.filter-pop-leave-from {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translateY(-4px) scale(0.98);
 }
 
-/* 向上展开 (用于触发器靠近视口底部时) */
+/* 向上展开 */
 .filter-pop-up-enter-active {
   transition:
     opacity 200ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -898,25 +1040,10 @@ function showMoreFiles() {
 }
 .filter-pop-up-enter-from {
   opacity: 0;
-  transform: translateY(8px) scale(0.92);
+  transform: translateY(6px) scale(0.96);
 }
 .filter-pop-up-leave-to {
   opacity: 0;
-  transform: translateY(4px) scale(0.96);
+  transform: translateY(4px) scale(0.98);
 }
-.filter-pop-up-enter-to,
-.filter-pop-up-leave-from {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-
-.vg__scroller::-webkit-scrollbar { width: 6px; }
-.vg__scroller::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: 999px;
-}
-.vg__scroller::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
-}
-.vg__scroller::-webkit-scrollbar-track { background: transparent; }
 </style>

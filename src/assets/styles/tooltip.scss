@@ -74,3 +74,19 @@
   max-width: 320px;
   border-radius: var(--radius-sm);
 }
+
+/* === Mono tooltip: 路径/文件名等长文本, 用等宽字体保持对齐感 === */
+.mono-tooltip .p-tooltip-text {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 6px 10px;
+  max-width: 480px;
+  letter-spacing: 0;
+  border-radius: var(--radius-md);
+  /* 路径过长时自动换行, 不强制截断, 避免路径被省略号隐藏. */
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  direction: ltr;
+}

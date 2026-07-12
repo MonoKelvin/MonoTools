@@ -6,10 +6,12 @@ import {
   FolderOpen, FileText, Terminal, Command, Grid3x3,
   Monitor, User, Package, Image, Video, Music, Archive, Cpu,
   Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
-  FileArchive, FileBraces, File
+  FileArchive, File, CornerDownLeft
 } from "@lucide/vue"
 
 // --- Component ---
+// 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
+// 仅声明 emit 留作扩展点: 右键菜单等场景需要时再使用.
 const props = defineProps<{
   result: SearchResult
   active?: boolean
@@ -18,14 +20,24 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
-  (e: 'mouseover', index: number): void
+  (e: 'open', item: SearchResult): void
   (e: 'contextmenu', event: MouseEvent, item: SearchResult): void
 }>()
+// 抑制 "声明但未使用" 警告 —— 保留 emit 以便父级透传扩展事件.
+void emit
 
 const contentRef = ref<HTMLElement | null>(null)
 const titleRef = ref<HTMLElement | null>(null)
 const subtitleRef = ref<HTMLElement | null>(null)
 let ro: ResizeObserver | null = null
+
+/**
+ * 截断状态: 当文本被 truncateMiddle / truncatePathMiddle 缩短时为 true.
+ * 用于决定是否对 title / subtitle 启用 tooltip (未截断时不需要).
+ * ResizeObserver 触发 applyTruncation, 截断状态实时更新.
+ */
+const titleTruncated = ref(false)
+const subtitleTruncated = ref(false)
 
 function applyTruncation() {
   const titleEl = titleRef.value
@@ -37,11 +49,14 @@ function applyTruncation() {
   const titleMax = titleEl.clientWidth
   if (titleMax > 1) {
     const titleText = props.result.title
-    titleEl.textContent = textW(titleText, titleFont) > titleMax - 1
+    const needsTruncation = textW(titleText, titleFont) > titleMax - 1
+    titleEl.textContent = needsTruncation
       ? truncateMiddle(titleText, titleMax, titleFont)
       : titleText
+    titleTruncated.value = needsTruncation
   } else {
     titleEl.textContent = props.result.title
+    titleTruncated.value = false
   }
 
   // Subtitle — same idea: use its own font and clientWidth.
@@ -50,14 +65,50 @@ function applyTruncation() {
     const subMax = subtitleEl.clientWidth
     if (subMax > 1) {
       const subText = props.result.subtitle
-      subtitleEl.textContent = textW(subText, subFont) > subMax - 1
+      const needsTruncation = textW(subText, subFont) > subMax - 1
+      subtitleEl.textContent = needsTruncation
         ? truncatePathMiddle(subText, subMax, subFont)
         : subText
+      subtitleTruncated.value = needsTruncation
     } else {
       subtitleEl.textContent = props.result.subtitle
+      subtitleTruncated.value = false
     }
+  } else {
+    subtitleTruncated.value = false
   }
 }
+
+/**
+ * 标题 tooltip —— 仅在文本被截断时显示完整原文.
+ * 用 PrimeVue v-tooltip (项目统一玻璃风格), 替代浏览器默认 title 提示.
+ */
+const titleTooltip = computed(() => {
+  if (!titleTruncated.value) return undefined
+  return {
+    value: props.result.title,
+    class: 'mono-tooltip',
+    showDelay: 280,
+    position: 'top' as const,
+    autoHide: true,
+    escape: true,
+  }
+})
+
+/**
+ * 路径 tooltip —— 当路径被截断时显示完整路径, 使用 mono 字体 tooltip 变体.
+ */
+const subtitleTooltip = computed(() => {
+  if (!subtitleTruncated.value || !props.result.subtitle) return undefined
+  return {
+    value: props.result.subtitle,
+    class: 'mono-tooltip',
+    showDelay: 280,
+    position: 'top' as const,
+    autoHide: true,
+    escape: true,
+  }
+})
 
 watch(() => props.result, () => nextTick(applyTruncation), { flush: 'post' })
 
@@ -78,8 +129,8 @@ onBeforeUnmount(() => {
 const IconComponent = computed(() => {
   const typeMap: Record<string, any> = {
     'system-app': Monitor, 'user-app': AppWindow, 'uwp-app': Package,
-    'directory': Folder, 'document': FileText, 'image': FileImage,
-    'video': FileVideo, 'audio': FileAudio, 'executable': FileBraces,
+    'directory': FolderOpen, 'document': FileText, 'image': FileImage,
+    'video': FileVideo, 'audio': FileAudio, 'executable': FileCode,
     'archive': FileArchive, 'other-file': File, 'command': Terminal,
   }
   return typeMap[props.result.resultType] || Command
@@ -99,21 +150,22 @@ const resultTypeLabel = computed(() => {
 <template>
   <div
     :class="['result-item', { 'result-item--active': active }]"
-    @click="emit('select', result)"
-    @mouseenter="emit('mouseover', index)"
-    @contextmenu="(e) => emit('contextmenu', e, result)"
   >
     <div class="result-item__icon">
       <component :is="IconComponent" :size="16" :stroke-width="2" />
     </div>
 
     <div class="result-item__content" ref="contentRef">
-      <div class="result-item__title" ref="titleRef" :title="result.title"></div>
+      <div
+        class="result-item__title"
+        ref="titleRef"
+        v-tooltip="titleTooltip"
+      ></div>
       <div
         v-if="result.subtitle"
         class="result-item__subtitle"
         ref="subtitleRef"
-        :title="result.subtitle"
+        v-tooltip="subtitleTooltip"
       ></div>
     </div>
 
@@ -121,7 +173,7 @@ const resultTypeLabel = computed(() => {
       <span v-if="result.meta" class="result-item__meta-text">{{ result.meta }}</span>
       <span v-if="resultTypeLabel" class="result-item__badge">{{ resultTypeLabel }}</span>
       <span class="result-item__shortcut">
-        <span class="kbd">↵</span>
+        <CornerDownLeft :size="15" :stroke-width="1.8" class="result-item__enter" />
       </span>
     </div>
   </div>
@@ -179,12 +231,12 @@ const resultTypeLabel = computed(() => {
 
 .result-item__icon {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-tertiary);
   transition:
@@ -196,13 +248,15 @@ const resultTypeLabel = computed(() => {
 
 .result-item:hover .result-item__icon {
   color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
   transform: scale(1.04);
 }
 
 .result-item--active .result-item__icon {
   color: var(--accent);
+  background: var(--accent-soft);
   filter: drop-shadow(0 0 6px var(--accent-glow));
-  transform: scale(1.04);
+  transform: scale(1.06);
 }
 
 .result-item__content {
@@ -282,6 +336,12 @@ const resultTypeLabel = computed(() => {
   opacity: 0;
   transform: translateX(6px);
   transition: opacity var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
 }
 
 .result-item:hover .result-item__shortcut,
@@ -290,26 +350,18 @@ const resultTypeLabel = computed(() => {
   transform: translateX(0);
 }
 
-.kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+.result-item__enter {
   color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  line-height: 1;
-  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  opacity: 0.85;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
 }
 
-.result-item--active .kbd {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+.result-item--active .result-item__enter {
   color: var(--accent);
+  opacity: 1;
+  transform: scale(1.08);
 }
 </style>

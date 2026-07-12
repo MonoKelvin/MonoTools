@@ -25,28 +25,36 @@ pub fn launch_as_admin(path: &str, args: &[String]) -> Result<()> {
     launch(path, args).map(|_| ())
 }
 
-/// 在文件管理器中打开
+/// 在文件管理器中打开 (explorer /select,<path> 选中具体文件).
+///
+/// ⚠️ 历史实现里有两段 spawn 代码, 一段是死代码, 但保留了"let _ = cmd"
+/// 这种"抑制警告"的痕迹, 实际只 spawn 了一次 explorer. 当前实现:
+///   - 单进程 spawn, 避免任何潜在的"两个窗口"误判.
+///   - 显式 "/select,<path>" 作为单一参数, Windows 会忽略多余空格.
+#[cfg(windows)]
 pub fn open_path(path: &PathBuf) -> Result<()> {
-    #[cfg(windows)]
-    {
-        // explorer /select,"path" 选中具体文件 - 使用 cmd.exe
-        let cmd = format!("explorer /select,{}", path.display());
-        std::process::Command::new("explorer")
-            .arg("/select,")
-            .arg(format!("{}", path.display()))
-            .spawn()
-            .map_err(|e| AppError::Other(format!("打开路径失败: {e}")))?;
-        let _ = cmd;
-        Ok(())
-    }
-    #[cfg(not(windows))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map_err(|e| AppError::Other(format!("打开路径失败: {e}")))?;
-        Ok(())
-    }
+    use std::os::windows::process::CommandExt;
+    // CREATE_NO_WINDOW 防止在 GUI 之外再开一个 console window.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+    let path_str = path.to_string_lossy().into_owned();
+    let select_arg = format!("/select,{}", path_str);
+
+    std::process::Command::new("explorer.exe")
+        .arg(&select_arg)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn()
+        .map_err(|e| AppError::Other(format!("打开路径失败: {e}")))?;
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn open_path(path: &PathBuf) -> Result<()> {
+    std::process::Command::new("xdg-open")
+        .arg(path)
+        .spawn()
+        .map_err(|e| AppError::Other(format!("打开路径失败: {e}")))?;
+    Ok(())
 }
 
 /// 解析 .lnk 快捷方式（简化）：读目标的 FileDescription

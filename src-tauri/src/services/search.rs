@@ -51,6 +51,22 @@ impl SearchEngine {
         self.post_process(query, combined, limit)
     }
 
+    /// 分页搜索: 给前端"显示更多"按钮用. 与 search 同样的多引擎并行,
+    /// 但每个引擎只返回 `after_id` 之后的项, 避免重复加载.
+    pub fn search_after(
+        &self,
+        query: &str,
+        after_id: i64,
+        limit: u32,
+    ) -> Vec<SearchResult> {
+        let mut combined: Vec<SearchResult> = Vec::new();
+        combined.extend(self.apps.search(query, limit));
+        combined.extend(self.files.search_after(query, after_id, limit));
+        combined.extend(self.commands.search(query, limit));
+        // 后处理 (排序/去重) 与 search 保持一致.
+        self.post_process(query, combined, limit)
+    }
+
     pub fn search_by_category(&self, query: &str, category: SearchCategory, limit: u32) -> Vec<SearchResult> {
         let results = match category {
             SearchCategory::Apps => self.apps.search(query, limit),

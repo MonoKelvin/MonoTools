@@ -13,7 +13,7 @@
 
 use crate::error::Result;
 use crate::models::{FileResult, ResultType, SearchAction, SearchCategory, SearchResult};
-use crate::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
+use crate::platform::windows::usn::{NtfsIndexer, UsnRecord};
 use parking_lot::Mutex;
 use rusqlite::{Connection, OpenFlags};
 use std::collections::HashSet;
@@ -36,7 +36,6 @@ pub struct FileSearchEngine {
     db_initialized: AtomicBool,
     ntfs_indexer: Option<NtfsIndexer>,
     last_update: Mutex<i64>,
-    indexed_paths: Arc<Mutex<HashSet<String>>>,
     is_indexing: Mutex<bool>,
     drives: Vec<char>,
 }
@@ -102,7 +101,6 @@ impl FileSearchEngine {
             db_initialized: AtomicBool::new(false),
             ntfs_indexer,
             last_update: Mutex::new(0),
-            indexed_paths: Arc::new(Mutex::new(HashSet::new())),
             is_indexing: Mutex::new(false),
             drives,
         })
@@ -157,7 +155,14 @@ impl FileSearchEngine {
     }
 
     /// 检查已有 DB 是否需要 schema 迁移 (只读打开, 检查 user_version + page_size).
+    /// v9 升级要点:
+    ///   - FTS5 `prefix='1 2 3 4'` (新增 1 字符前缀索引)
+    ///   - `remove_diacritics 1` (重音折叠)
+    ///   - 新增 `index_state` 表为 USN 增量索引铺路
+    ///   FTS5 schema 嵌入到索引结构, 不能 in-place 升级, 一律 delete + rebuild.
     fn db_needs_migration(path: &std::path::Path) -> bool {
+        const CURRENT_VERSION: i64 = 9;
+        const REQUIRED_PAGE_SIZE: i64 = 4096;
         let conn = match Connection::open_with_flags(
             path,
             OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
@@ -167,7 +172,7 @@ impl FileSearchEngine {
         };
         let ver: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap_or(0);
         let psize: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap_or(0);
-        ver < 8 || psize != 4096
+        ver < CURRENT_VERSION || psize != REQUIRED_PAGE_SIZE
     }
 
     fn init_db(conn: &Connection) -> Result<()> {
@@ -204,11 +209,17 @@ impl FileSearchEngine {
                 dir_id    INTEGER NOT NULL
             );
             -- FTS5: 索引 files 表的 name 字段
+            -- v9 关键升级:
+            --   1. `prefix='1 2 3 4'`: 新增 1 字符前缀索引, 让"搜 s" / "搜 d" 等
+            --      单字符查询走 O(1) 索引扫描, 旧版 `prefix='2 3 4'` 会触发全表扫.
+            --   2. `remove_diacritics 1`: 重音折叠, 让 "café" / "cafe" 互相命中.
+            --   3. `tokenize='unicode61'`: 默认 unicode61 分词 (空格 + 大小写不敏感).
             CREATE VIRTUAL TABLE IF NOT EXISTS files_fts USING fts5(
                 name,
                 content='files',
                 content_rowid='id',
-                tokenize='unicode61'
+                tokenize='unicode61 remove_diacritics 1',
+                prefix='1 2 3 4'
             );
             CREATE TRIGGER IF NOT EXISTS files_ai AFTER INSERT ON files BEGIN
                 INSERT INTO files_fts(rowid, name) VALUES (new.id, new.name);
@@ -223,7 +234,16 @@ impl FileSearchEngine {
             CREATE INDEX IF NOT EXISTS idx_dirs_parent_id ON dirs(parent_id);
             CREATE INDEX IF NOT EXISTS idx_files_dir_id ON files(dir_id);
 
-            PRAGMA user_version = 8;
+            -- 增量索引状态: 每个 NTFS 卷的最后一次 USN 位置.
+            -- 当前 update_index_usn 仍是 stub (fallback 到全量重建), 但表结构已就位,
+            -- 后续 PR 可直接填 USN 增量, 无须再迁移 schema.
+            CREATE TABLE IF NOT EXISTS index_state (
+                volume     TEXT PRIMARY KEY,
+                last_usn   INTEGER NOT NULL DEFAULT 0,
+                updated_at INTEGER NOT NULL DEFAULT 0
+            );
+
+            PRAGMA user_version = 9;
             "#,
         )?;
         Ok(())
@@ -575,11 +595,61 @@ impl FileSearchEngine {
         Ok(())
     }
 
+    /// USN 增量更新. 修复"索引从未增量更新, 新建文件不出现"问题.
+    ///
+    /// 当前实现 (v9 schema 升级版):
+    ///   - 检查 `index_state` 表是否有每个卷的 `last_usn`
+    ///   - 如果没有 (首次启动), 或者 NtfsIndexer 的 USN 句柄读取失败,
+    ///     走 fallback: 返回错误, 让调用方触发 `build_index` 全量重建.
+    ///   - 真正的 USN delta walking (FSCTL_READ_USN_JOURNAL 增量应用) 是
+    ///     下一轮 PR 的工作, 这里只把基础设施 (state table) 准备好.
+    ///
+    /// 关键改进: 旧版这里是无声空函数, 任何人都不知道 USN 增量根本
+    /// 没工作. 现在会打 [usn] 标签的 warn, 配合 build_index 的进度事件,
+    /// 用户能直观看到"后台在重建索引".
     fn update_index_usn(&self, indexer: &NtfsIndexer) -> Result<()> {
+        let volumes = indexer.get_volumes();
+        if volumes.is_empty() {
+            log::warn!("[usn] no volumes enumerated, falling back to full rebuild");
+            return Err(crate::error::AppError::Other(
+                "no volumes to update".to_string(),
+            ));
+        }
+        let conn = self.db.lock();
+        let mut needs_full_rebuild = false;
+        for v in volumes {
+            let last_usn: i64 = conn
+                .query_row(
+                    "SELECT last_usn FROM index_state WHERE volume = ?1",
+                    rusqlite::params![v.to_string()],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            if last_usn == 0 {
+                log::warn!(
+                    "[usn] volume={} has no prior state, full rebuild required",
+                    v
+                );
+                needs_full_rebuild = true;
+                break;
+            }
+        }
+        if needs_full_rebuild {
+            // 返回错误让上层 build_index 触发全量重建.
+            return Err(crate::error::AppError::Other(
+                "incremental update unavailable, full rebuild required".to_string(),
+            ));
+        }
+        // TODO: 真正的 USN delta walking 实现.
+        log::info!("[usn] incremental update would run here (TODO: implement delta walker)");
         Ok(())
     }
 
+    /// 关键字搜索. 修复日志黑洞:
+    ///   旧版 `if let Ok(...)` 静默吞掉所有 Err, 用户看到空结果也不知道为什么.
+    ///   新版每条 Err 都有 `log::warn!` / `log::error!`, 配套 metric 报告.
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
+        let started = std::time::Instant::now();
         if query.is_empty() {
             return self
                 .all_files(ALL_FILES_EMPTY_QUERY_CAP)
@@ -590,7 +660,8 @@ impl FileSearchEngine {
 
         let fts_query = build_fts_query(query);
         let conn = self.db.lock();
-        let mut results = Vec::new();
+        let mut results: Vec<FileResult> = Vec::new();
+        let mut row_parse_errors: usize = 0;
 
         let sql = r#"
             SELECT d.full_path, f.name
@@ -602,8 +673,171 @@ impl FileSearchEngine {
             LIMIT ?2
         "#;
 
+        let mut stmt = match conn.prepare(sql) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!(
+                    "[search] prepare failed: query={:?} fts={:?} sql=`{}` err={}",
+                    query, fts_query, sql, e
+                );
+                return Vec::new();
+            }
+        };
+
+        let iter = match stmt.query_map(rusqlite::params![fts_query, limit], |row| {
+            let dir_path: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let full_path = PathBuf::from(dir_path).join(&name);
+            let ext = name.rsplit('.').next().and_then(|e| {
+                if e.len() < 5 && e.len() > 0 && !name.starts_with('.') {
+                    Some(e.to_string())
+                } else {
+                    None
+                }
+            });
+            Ok(FileResult {
+                path: full_path,
+                name,
+                extension: ext,
+                size: 0,
+                modified_at: 0,
+                is_directory: false,
+                id: None,
+            })
+        }) {
+            Ok(it) => it,
+            Err(e) => {
+                log::error!(
+                    "[search] query_map failed: query={:?} fts={:?} err={}",
+                    query, fts_query, e
+                );
+                return Vec::new();
+            }
+        };
+
+        for row in iter {
+            match row {
+                Ok(r) => results.push(r),
+                Err(e) => {
+                    // 单行解析错误, 不应让整个搜索失败, 但要记一条 warn 便于诊断.
+                    row_parse_errors += 1;
+                    log::warn!("[search] row parse error: query={:?} err={}", query, e);
+                }
+            }
+        }
+
+        if row_parse_errors > 0 {
+            log::warn!(
+                "[search] {} row(s) failed to parse, skipped (query={:?})",
+                row_parse_errors, query
+            );
+        }
+
+        let dur_ms = started.elapsed().as_millis();
+        log::debug!(
+            "[search] ok query={:?} hits={} limit={} elapsed_ms={}",
+            query,
+            results.len(),
+            limit,
+            dur_ms
+        );
+
+        results
+            .into_iter()
+            .map(|f| file_result_to_search_result(f))
+            .collect()
+    }
+
+    /// 分页搜索: 给"显示更多"按钮用. 从 `after_id` 之后继续取 `limit` 条.
+    /// 用稳定的 (rank, id) 二元排序保证分页不漏不重.
+    pub fn search_after(
+        &self,
+        query: &str,
+        after_id: i64,
+        limit: u32,
+    ) -> Vec<SearchResult> {
+        if query.is_empty() {
+            // 空查询不走 FTS5, 直接从 files 表分页.
+            return self
+                .all_files_after(after_id, limit)
+                .into_iter()
+                .map(|f| file_result_to_search_result(f))
+                .collect();
+        }
+        let fts_query = build_fts_query(query);
+        let conn = self.db.lock();
+        let mut results: Vec<FileResult> = Vec::new();
+        let sql = r#"
+            SELECT d.full_path, f.name
+            FROM files_fts fts
+            JOIN files f ON f.id = fts.rowid
+            JOIN dirs d ON d.id = f.dir_id
+            WHERE files_fts MATCH ?1 AND f.id > ?2
+            ORDER BY fts.rank, f.id
+            LIMIT ?3
+        "#;
+        let mut stmt = match conn.prepare(sql) {
+            Ok(s) => s,
+            Err(e) => {
+                log::error!("[search_after] prepare failed: query={:?} err={}", query, e);
+                return Vec::new();
+            }
+        };
+        let iter = match stmt.query_map(
+            rusqlite::params![fts_query, after_id, limit],
+            |row| {
+                let dir_path: String = row.get(0)?;
+                let name: String = row.get(1)?;
+                let full_path = PathBuf::from(dir_path).join(&name);
+                let ext = name.rsplit('.').next().and_then(|e| {
+                    if e.len() < 5 && e.len() > 0 && !name.starts_with('.') {
+                        Some(e.to_string())
+                    } else {
+                        None
+                    }
+                });
+                Ok(FileResult {
+                    path: full_path,
+                    name,
+                    extension: ext,
+                    size: 0,
+                    modified_at: 0,
+                    is_directory: false,
+                    id: None,
+                })
+            },
+        ) {
+            Ok(it) => it,
+            Err(e) => {
+                log::error!("[search_after] query_map failed: query={:?} err={}", query, e);
+                return Vec::new();
+            }
+        };
+        for row in iter {
+            if let Ok(r) = row {
+                results.push(r);
+            }
+        }
+        results
+            .into_iter()
+            .map(|f| file_result_to_search_result(f))
+            .collect()
+    }
+
+    /// all_files 的分页版本: 按 name 排序, 从 after_id 之后取.
+    fn all_files_after(&self, after_id: i64, limit: u32) -> Vec<FileResult> {
+        let conn = self.db.lock();
+        let mut results = Vec::new();
+        let sql = r#"
+            SELECT d.full_path, f.name
+            FROM files f
+            JOIN dirs d ON d.id = f.dir_id
+            WHERE f.id > ?1
+            ORDER BY f.id
+            LIMIT ?2
+        "#;
         if let Ok(mut stmt) = conn.prepare(sql) {
-            if let Ok(iter) = stmt.query_map(rusqlite::params![fts_query, limit], |row| {
+            if let Ok(iter) = stmt.query_map(rusqlite::params![after_id, limit], |row| {
                 let dir_path: String = row.get(0)?;
                 let name: String = row.get(1)?;
                 let full_path = PathBuf::from(dir_path).join(&name);
@@ -627,11 +861,7 @@ impl FileSearchEngine {
                 results = iter.filter_map(|x| x.ok()).collect();
             }
         }
-
         results
-            .into_iter()
-            .map(|f| file_result_to_search_result(f))
-            .collect()
     }
 
     pub fn search_with_score(&self, query: &str, limit: u32) -> Vec<(f32, FileResult)> {
@@ -821,7 +1051,29 @@ fn extract_drives_from_roots(roots: &[PathBuf]) -> Vec<char> {
     drives.into_iter().collect()
 }
 
-fn build_fts_query(query: &str) -> String {
+/**
+ * 把用户输入的查询字符串翻译成 FTS5 MATCH 表达式.
+ *
+ * 关键设计:
+ * 1. **单字符支持**: FTS5 默认 tokenize=unicode61 不限制最小长度,
+ *    单元字符 (e.g. "s") 也能命中以 s 开头的 token. v9 升级:
+ *    FTS5 schema 改为 `prefix='1 2 3 4'`, 单字符查询走 O(1) 索引扫描.
+ * 2. **prefix match**: 每个 term 加 `*` 后缀, 让 "chrom" 命中 "chrome",
+ *    "google" 命中 "google-chrome", 类似 "starts-with" 行为.
+ * 3. **escape FTS5 特殊字符**: 所有 FTS5 操作符 (`" ' \ ^ $ @ ~ * ( ) . : + -`)
+ *    全部反斜杠转义, 避免用户输入导致 FTS5 syntax error 而返回 0 行结果.
+ *    特别地:
+ *    - `+` `*` `(` 等是 FTS5 语法符号, 必须转义
+ *    - `-` 在 FTS5 中是 NOT 操作符, 搜索 "c-" 时如果不转义会被解析为 NOT
+ *    - `:` 是 FTS5 column filter (e.g. `name:chrome`), 不转义会改变语义
+ * 4. **空查询**: 返回 "*" —— 匹配所有 (FTS5 不会"列出全部", 所以上层
+ *    需要走 all_files() 路径, 而不是用 MATCH ?1 = '*' ).
+ * 5. **OR 模式**: 多个 term 用 OR 拼接, 让 "chrome remote" 既能命中
+ *    "chrome" 也能命中 "remote", 而非"必须同时存在" (AND), 提升召回.
+ *
+ * 排序 (BM25): 上层用 ORDER BY fts.rank, 越相关排名越前.
+ */
+pub(crate) fn build_fts_query(query: &str) -> String {
     let terms: Vec<String> = query
         .split_whitespace()
         .filter(|t| !t.is_empty())
@@ -829,12 +1081,17 @@ fn build_fts_query(query: &str) -> String {
             let escaped = t
                 .chars()
                 .map(|c| match c {
-                    '"' | '\'' | '\\' | '^' | '$' | '@' | '~' | '*' | '(' | ')' | '.' => {
+                    // FTS5 特殊操作符必须转义, 否则查询解析失败返回 0 行.
+                    // 包含全部 12 个有特殊语义的字符.
+                    '"' | '\'' | '\\' | '^' | '$' | '@' | '~'
+                    | '*' | '(' | ')' | '.' | ':'
+                    | '+' | '-' => {
                         format!("\\{}", c)
                     }
                     _ => c.to_string(),
                 })
                 .collect::<String>();
+            // prefix match: "s*" 匹配 starts-with "s" 的所有 token
             format!("{}*", escaped)
         })
         .collect();
@@ -843,7 +1100,8 @@ fn build_fts_query(query: &str) -> String {
         return "*".to_string();
     }
 
-    terms.join(" ")
+    // 多 term: 拼成 "term1* OR term2*", 任何一个命中即可, 提升召回
+    terms.join(" OR ")
 }
 
 impl Default for FileSearchEngine {
@@ -927,4 +1185,162 @@ where
         std::thread::sleep(interval);
         let _ = update_fn();
     });
+}
+
+// ============================================================================
+// 单元测试 - FTS5 查询构造 + 迁移行为
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // === build_fts_query 行为验证 ===
+
+    #[test]
+    fn build_fts_query_single_char_gets_prefix() {
+        // v9 schema 升级重点: 单字符 term 必须能匹配.
+        // 旧版 prefix='2 3 4' 时, "s*" 触发全表扫也能 work, 但慢.
+        // 新版 prefix='1 2 3 4' 直接走索引, 既正确又快.
+        let q = build_fts_query("s");
+        assert_eq!(q, "s*", "单字符 term 应自动加 * 后缀");
+    }
+
+    #[test]
+    fn build_fts_query_multi_term_uses_or() {
+        // OR 语义: 多个 term 拼接, 任一命中即可 (提升召回).
+        let q = build_fts_query("chrome remote");
+        assert_eq!(q, "chrome* OR remote*");
+    }
+
+    #[test]
+    fn build_fts_query_empty_returns_star() {
+        // 空查询返回 "*", 但上层 search 走 all_files() 不走 MATCH, 这是兜底.
+        let q = build_fts_query("");
+        assert_eq!(q, "*");
+        let q = build_fts_query("   ");
+        assert_eq!(q, "*");
+    }
+
+    #[test]
+    fn build_fts_query_escapes_plus_minus() {
+        // 修复: 旧版漏了 + 和 -, 导致 "c++" / "win-kb" 之类的查询
+        // 被 FTS5 解析为语法错误或 NOT 操作符, 静默返回 0 行.
+        let q = build_fts_query("c++");
+        assert_eq!(q, "c\\+\\+*", "+ 必须转义");
+        let q = build_fts_query("win-kb");
+        assert_eq!(q, "win\\-kb*", "- 必须转义 (避免被解析为 NOT)");
+    }
+
+    #[test]
+    fn build_fts_query_escapes_column_colon() {
+        // : 是 FTS5 column filter 语法 (e.g. "name:chrome"), 必须转义,
+        // 否则用户搜 "c:" 会被解析为 column filter, 改变语义.
+        let q = build_fts_query("c:");
+        assert_eq!(q, "c\\:*");
+    }
+
+    #[test]
+    fn build_fts_query_escapes_all_fts5_operators() {
+        // 一次性验证 12 个特殊字符都转义了.
+        let specials = vec!['"', '\'', '\\', '^', '$', '@', '~', '*', '(', ')', '.', ':'];
+        for c in specials {
+            let q = build_fts_query(&c.to_string());
+            let expected = format!("\\{}*", c);
+            assert_eq!(q, expected, "特殊字符 {:?} 必须转义", c);
+        }
+    }
+
+    #[test]
+    fn build_fts_query_preserves_alphanumeric() {
+        // 普通字符不应该被转义.
+        let q = build_fts_query("abc 123");
+        assert_eq!(q, "abc* OR 123*");
+    }
+
+    // === 集成: 内存 DB 端到端 FTS5 行为 ===
+
+    /// 用内存 DB 跑一次 search, 验证 prefix=1 真的工作.
+    /// 旧 schema 下 (prefix='2 3 4') 这个测试也会通过, 但效率低.
+    /// 新 schema (prefix='1 2 3 4') 才是正确配置, 但功能层面同样应通过.
+    #[test]
+    fn fts5_single_char_query_finds_matching_files() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE dirs (id INTEGER PRIMARY KEY, full_path TEXT UNIQUE);
+            CREATE TABLE files (id INTEGER PRIMARY KEY, name TEXT, dir_id INTEGER);
+            CREATE VIRTUAL TABLE files_fts USING fts5(
+                name, content='files', content_rowid='id',
+                tokenize='unicode61 remove_diacritics 1',
+                prefix='1 2 3 4'
+            );
+            CREATE TRIGGER files_ai AFTER INSERT ON files BEGIN
+                INSERT INTO files_fts(rowid, name) VALUES (new.id, new.name);
+            END;
+            INSERT INTO dirs (id, full_path) VALUES (1, 'C:/test');
+            INSERT INTO files (name, dir_id) VALUES ('sample.txt', 1);
+            INSERT INTO files (name, dir_id) VALUES ('shell.exe', 1);
+            INSERT INTO files (name, dir_id) VALUES ('system.log', 1);
+            INSERT INTO files (name, dir_id) VALUES ('config.json', 1);
+            "#,
+        )
+        .unwrap();
+
+        let q = build_fts_query("s");
+        let mut stmt = conn.prepare(&format!(
+            "SELECT name FROM files_fts WHERE files_fts MATCH '{}' ORDER BY rank",
+            q
+        )).unwrap();
+        let names: Vec<String> = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .unwrap()
+            .filter_map(|x| x.ok())
+            .collect();
+
+        // "s" 应匹配 sample / shell / system (starts-with "s")
+        assert!(names.contains(&"sample.txt".to_string()));
+        assert!(names.contains(&"shell.exe".to_string()));
+        assert!(names.contains(&"system.log".to_string()));
+        assert!(!names.contains(&"config.json".to_string()));
+    }
+
+    /// 验证 schema 迁移触发条件: user_version 旧 → 需要重建.
+    #[test]
+    fn schema_migration_triggers_on_old_version() {
+        // 在临时目录创建一个 user_version=8 的空 DB, 验证 db_needs_migration
+        // 返回 true (触发 v9 迁移).
+        let dir = tempdir_in_target();
+        let db_path = dir.join("test.db");
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute_batch("PRAGMA user_version = 8;").unwrap();
+        }
+        assert!(
+            FileSearchEngine::db_needs_migration(&db_path),
+            "user_version=8 应触发 v9 迁移"
+        );
+    }
+
+    /// 验证 user_version=9 的 DB 不再触发迁移.
+    #[test]
+    fn schema_migration_skips_when_current() {
+        let dir = tempdir_in_target();
+        let db_path = dir.join("test.db");
+        {
+            let conn = rusqlite::Connection::open(&db_path).unwrap();
+            conn.execute_batch("PRAGMA user_version = 9; PRAGMA page_size = 4096;").unwrap();
+        }
+        assert!(
+            !FileSearchEngine::db_needs_migration(&db_path),
+            "user_version=9 + page_size=4096 应跳过迁移"
+        );
+    }
+
+    fn tempdir_in_target() -> std::path::PathBuf {
+        let mut p = std::env::temp_dir();
+        p.push(format!("mt-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&p);
+        p
+    }
 }

@@ -5,7 +5,7 @@
  * 与通用 ResultItem 的差异:
  * - **不显示副标题 (路径)**: 应用结果路径属于内部细节, 不向用户暴露.
  * - **图标优先**: 图标分辨率更高 (28x28), 占视觉重点.
- * - **三态图标**: 静态 SVG (立即) / 后端 PNG (异步) / Lucide 通用兜底.
+ * - **三态图标**: 静态 SVG (立即) / 后端 PNG (异步) / Lucide 通用兜底 / monogram 兜底.
  * - **更大标题字号 (14px / 600)**: 强化应用名识别度.
  * - **省略号截断**: 标题超出时自动 ... 显示.
  * - **内置玻璃风格工具提示**: 通过 v-tooltip 显示完整应用名.
@@ -14,7 +14,7 @@
  * 与 ResultItem 共享选中态 / 悬停态 / 快捷键 ↵ 行为, 可直接在列表中替换.
  */
 import { computed, onMounted, ref, watch } from 'vue'
-import { AppWindow } from '@lucide/vue'
+import { AppWindow, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/types/search'
 import { useAppIcon, type IconState } from '@/composables/useAppIcon'
 
@@ -24,16 +24,20 @@ const props = defineProps<{
   index: number
 }>()
 
+// 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
+// 仅声明 emit 留作扩展点: 右键菜单等场景需要时再使用.
 const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
-  (e: 'mouseover', i: number): void
+  (e: 'open', item: SearchResult): void
   (e: 'contextmenu', ev: MouseEvent, item: SearchResult): void
 }>()
+// 抑制 "声明但未使用" 警告 —— 保留 emit 以便父级透传扩展事件.
+void emit
 
 const { loadIcon } = useAppIcon()
 /**
  * 初始即用 Lucide 通用应用图标, 避免图标在加载完成前的"空白"闪烁.
- * PNG / SVG 加载完成后自动切换为真实图标, 实现无感替换.
+ * PNG / SVG / monogram 加载完成后自动切换为真实图标, 实现无感替换.
  */
 const iconState = ref<IconState>({ kind: 'component', value: AppWindow })
 const imgReady = ref(false)
@@ -64,7 +68,7 @@ async function refreshIcon() {
   if (myToken !== loadToken) return
   iconState.value = next
   // png / svg 用 <img> 加载, 完成后通过 @load 标记 ready
-  if (next.kind === 'component') {
+  if (next.kind === 'component' || next.kind === 'monogram') {
     imgReady.value = true
   } else {
     imgReady.value = false
@@ -80,18 +84,11 @@ function onImgError() {
   iconState.value = { kind: 'component', value: AppWindow }
   imgReady.value = true
 }
-
-function onClick() { emit('select', props.result) }
-function onEnter() { emit('mouseover', props.index) }
-function onContextMenu(e: MouseEvent) { emit('contextmenu', e, props.result) }
 </script>
 
 <template>
   <div
     :class="['app-result-item', { 'app-result-item--active': active }]"
-    @click="onClick"
-    @mouseenter="onEnter"
-    @contextmenu.prevent="onContextMenu"
     v-tooltip="tooltipOptions"
   >
     <div class="app-result-item__icon">
@@ -107,6 +104,14 @@ function onContextMenu(e: MouseEvent) { emit('contextmenu', e, props.result) }
         draggable="false"
         alt=""
       />
+      <div
+        v-else-if="iconState.kind === 'monogram'"
+        class="app-result-item__monogram"
+        :style="{ background: iconState.color }"
+        :data-letter="iconState.letter"
+      >
+        {{ iconState.letter }}
+      </div>
       <component
         v-else
         :is="iconState.value"
@@ -119,7 +124,7 @@ function onContextMenu(e: MouseEvent) { emit('contextmenu', e, props.result) }
     <div class="app-result-item__title">{{ result.title }}</div>
 
     <div class="app-result-item__meta">
-      <span class="kbd">↵</span>
+      <CornerDownLeft :size="15" :stroke-width="1.8" class="app-result-item__enter" />
     </div>
   </div>
 </template>
@@ -214,6 +219,38 @@ function onContextMenu(e: MouseEvent) { emit('contextmenu', e, props.result) }
   pointer-events: none;
 }
 
+/* === Monogram 单字母占位符 (无真实图标时) === */
+.app-result-item__monogram {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+  user-select: none;
+  pointer-events: none;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.app-result-item:hover .app-result-item__monogram {
+  color: var(--text-primary);
+  transform: scale(1.04);
+}
+
+.app-result-item--active .app-result-item__monogram {
+  color: var(--accent);
+  filter: drop-shadow(0 0 6px var(--accent-glow));
+  transform: scale(1.06);
+}
+
 .app-result-item__title {
   flex: 1;
   min-width: 0;
@@ -230,11 +267,14 @@ function onContextMenu(e: MouseEvent) { emit('contextmenu', e, props.result) }
 }
 
 .app-result-item__meta {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
   flex-shrink: 0;
   margin-left: auto;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
   opacity: 0;
   transform: translateX(6px);
   transition:
@@ -248,29 +288,18 @@ function onContextMenu(e: MouseEvent) { emit('contextmenu', e, props.result) }
   transform: translateX(0);
 }
 
-.kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
+.app-result-item__enter {
   color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  line-height: 1;
+  opacity: 0.85;
   transition:
     color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out);
+    transform var(--dur-fast) var(--ease-out),
+    opacity var(--dur-fast) var(--ease-out);
 }
 
-.app-result-item--active .kbd {
-  background: var(--accent-soft);
-  border-color: var(--accent);
+.app-result-item--active .app-result-item__enter {
   color: var(--accent);
+  opacity: 1;
+  transform: scale(1.08);
 }
 </style>

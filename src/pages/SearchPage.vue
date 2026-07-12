@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed } from 'vue'
-import { Search, Sparkles, HardDrive, FileText } from '@lucide/vue'
+import { Search } from '@lucide/vue'
 import { useSearchStore } from '@/stores/search'
 import { useSettingsStore } from '@/stores/settings'
 import { hotkeyApi, windowApi, shellApi } from '@/services'
@@ -15,13 +15,13 @@ import ActionBar from '@/components/search/ActionBar.vue'
 import ContextMenu from '@/components/search/ContextMenu.vue'
 import HotkeyModal from '@/components/common/HotkeyModal.vue'
 import { useCommandsStore, dispatchKeyEvent } from '@/commands'
+import { useAppIcon } from '@/composables/useAppIcon'
 
 const showContextMenu = ref(false)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuItem = ref<SearchResult | null>(null)
 const showHotkeyModal = ref(false)
-const useGroupedView = ref(true)
 
 const search = useSearchStore()
 const settings = useSettingsStore()
@@ -66,16 +66,25 @@ const syncWindowHeight = () => {
   resyncTimer = setTimeout(() => windowApi.setHeight(h), 50)
 }
 
+/**
+ * 单击 → 只更新 selectedIndex, 不打开.
+ * 双击 / Enter / 业务触发 → executeItem (打开).
+ * 这样避免"单击"与"双击"产生双重 IPC 调用, 也避免事件冒泡导致打开两次.
+ */
 const onSelect = (item: SearchResult) => {
-  const idx = search.filteredResults.findIndex((r) => r.id === item.id)
-  if (idx >= 0) search.selectedIndex = idx
+  // 通过 store.selectByIndex 选中, 自动同步 selectedGlobalId 锚点,
+  // 避免列表重排时 selectedIndex 指向错误位置.
+  search.selectByIndex(search.displayList.findIndex((r) => r.id === item.id))
+}
+const onOpen = (item: SearchResult) => {
   search.executeItem(item)
 }
 const onShowHotkeys = () => {
   showHotkeyModal.value = true
 }
 const onHover = (idx: number) => {
-  search.selectedIndex = idx
+  // hover 也用 selectByIndex 同步 ID 锚点, 保持状态一致.
+  search.selectByIndex(idx)
 }
 const onQueryChange = (val: string) => search.setQuery(val)
 
@@ -99,6 +108,27 @@ const handleIndexProgress = (progress: {
   }
 }
 
+// ============================================================================
+// 图标批量预取
+// ============================================================================
+//
+// 修复"首屏 200 个结果 = 200 次 IPC"问题: 监听 displayList 变化,
+// 防抖 200ms 后调用 useAppIcon.loadIconsBatch 一次性拉满首屏可见项.
+// 防抖避免连打 "chrome" 6 个字符触发 6 次 batch.
+const { loadIconsBatch } = useAppIcon()
+let iconBatchTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => search.displayList.slice(0, 60), // 只预取首屏 ±20 项, 滚动再追加
+  (items) => {
+    if (!isTauri || items.length === 0) return
+    if (iconBatchTimer) clearTimeout(iconBatchTimer)
+    iconBatchTimer = setTimeout(() => {
+      loadIconsBatch(items).catch(() => undefined)
+    }, 200)
+  },
+  { deep: false },
+)
+
 const handleContextMenu = (e: MouseEvent, item?: SearchResult) => {
   e.preventDefault()
   if (item) {
@@ -120,6 +150,11 @@ const handleContextMenu = (e: MouseEvent, item?: SearchResult) => {
 
 const closeContextMenu = () => {
   showContextMenu.value = false
+}
+
+/** 右键菜单"固定 / 取消固定" → 调用 store 切换 pin 状态. */
+const handleContextMenuPinToggle = (item: SearchResult) => {
+  search.togglePin(item.id).catch(() => undefined)
 }
 
 /** UI 内部对 search.cmd.* 命令的实现：仅 react state；无 IPC 调用。 */
@@ -149,7 +184,7 @@ function runUiCommand(id: string) {
 }
 
 const copySelected = async () => {
-  const item = search.filteredResults[search.selectedIndex]
+  const item = search.displayList[search.selectedIndex]
   if (!item) return
   try {
     await navigator.clipboard.writeText(item.subtitle || item.title)
@@ -157,7 +192,7 @@ const copySelected = async () => {
 }
 
 const revealSelected = async () => {
-  const item = search.filteredResults[search.selectedIndex]
+  const item = search.displayList[search.selectedIndex]
   if (!item) return
   const path = item.subtitle || item.title
   const last = path.lastIndexOf('\\')
@@ -186,19 +221,36 @@ async function handleGlobalKeydown(event: KeyboardEvent) {
   await commandsStore.execute(id).catch(() => undefined)
 }
 
-// === 未搜索状态数据 (默认推荐内容) ===
-// 当 query 为空时, 把整个 results 列表传给分组组件 (内部会按
-// 类别/类型拆分到 "系统应用" / "所有应用" / "所有文件" / "命令" 分组里)。
-// 固定项目和最近访问分组由 VirtualGroupedResults 内部根据 search.pinned / search.recent 决定。
-const defaultResults = computed<SearchResult[]>(() => {
-  if (search.query) return []
-  // 排除固定项目 + 最近访问(它们已有独立分组), 避免在下方重复展示.
-  const excludedIds = new Set([
-    ...search.pinned.map((p) => p.id),
-    ...search.recent.map((p) => p.id),
-  ])
-  return search.filteredResults.filter((r) => !excludedIds.has(r.id))
-})
+// ============================================================================
+// 废弃: displayResults / defaultResults 已被移除.
+//
+// 原因: store.displayList 已经是"折叠 + 分类 + 文件类型过滤"后的
+// 最终可见列表. SearchPage 再次做一层过滤 (排除 pinned/recent) 造成
+// displayResults.length ≠ displayList.length, 键盘上下方向键可以
+// 指向当前不可见的项 (因为 filteredResults 排除了 pinned/recent).
+//
+// 现在所有选择逻辑统一使用 store.displayList, 确保键盘导航
+// 与 VGR 渲染严格 1:1.
+// ============================================================================
+
+/**
+ * 实际传给 VirtualGroupedResults 的扁平结果集.
+ * 保留此 computed 仅为向后兼容 (模板中可能引用),
+ * 内部直接返回 store.displayList 保证一致性.
+ */
+const displayResults = computed<SearchResult[]>(() =>
+  search.displayList,
+)
+
+/**
+ * 给 VirtualGroupedResults 的分组结构.
+ * 单一真源: store.displayGroups 已经包含"折叠 + 分类 + 文件类型过滤"
+ * 的全部计算. SearchPage 只做绑定, 不再二次加工.
+ *
+ * 注意: 这里必须用 `search.displayGroups` (而非 `displayList`) ,
+ * VGR 期望的是"按组分类的二维结构", 不是扁平数组.
+ */
+const displayGroups = computed(() => search.displayGroups)
 
 onMounted(async () => {
   commandsStore.loadFromBackend().catch(() => undefined)
@@ -218,6 +270,8 @@ onMounted(async () => {
   }
 
   search.initialLoad().catch(() => undefined)
+  // 启动后从后端拉取已 pin 的 id 列表, 让"固定项目"分组即时显示.
+  search.loadPinned().catch(() => undefined)
   settings.load().catch(() => undefined)
   tryRegisterHotkey().catch(() => undefined)
   fixWindowWidth().catch(() => undefined)
@@ -269,17 +323,18 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 
       <!-- Raycast 风格统一分组列表 (黑白灰, 简单分隔, 无卡片化) -->
       <VirtualGroupedResults
-        v-if="useGroupedView"
-        :results="search.query ? search.filteredResults : defaultResults"
+        :groups="displayGroups"
         :loading="search.loading"
         :selected-index="search.selectedIndex"
         :height="contentHeight"
-        :pinned="search.pinned"
-        :recent="search.recent"
         :has-query="!!search.query"
+        :query="search.query"
         @select="onSelect"
+        @open="onOpen"
         @hover="onHover"
         @contextmenu="handleContextMenu"
+        @toggle-group="(id) => search.toggleGroupCollapse(id)"
+        @show-more-files="search.showMoreFiles"
       >
         <template #empty>
           <div class="empty-state">
@@ -298,7 +353,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
       </VirtualGroupedResults>
 
       <ActionBar
-        :results="search.filteredResults"
+        :results="search.displayList"
         :selected-index="search.selectedIndex"
         :index-building="search.indexStatus === 'building'"
         :index-status="search.indexStatus"
@@ -316,6 +371,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
       :y="contextMenuY"
       :item="contextMenuItem"
       @close="closeContextMenu"
+      @pin-toggle="handleContextMenuPinToggle"
     />
 
     <HotkeyModal :visible="showHotkeyModal" @close="showHotkeyModal = false" />

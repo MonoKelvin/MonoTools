@@ -7,7 +7,11 @@ void themeStore
 </script>
 
 <template>
-  <div class="theme-toggle" :title="'当前主题：' + label" aria-label="主题">
+  <div
+    class="theme-toggle"
+    v-tooltip="{ value: '当前主题：' + label, showDelay: 280, position: 'bottom' }"
+    aria-label="主题"
+  >
     <svg
       width="13"
       height="13"
