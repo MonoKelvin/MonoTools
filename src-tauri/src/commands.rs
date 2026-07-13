@@ -20,6 +20,7 @@ pub async fn search_cmd(
     query: String,
     options: Option<serde_json::Value>,
 ) -> Result<Vec<SearchResult>, String> {
+    log::info!("[search] search_cmd called with query='{}'", query);
     let default_limit = if query.is_empty() {
         crate::config::search::EMPTY_QUERY_LIMIT
     } else {
@@ -31,6 +32,7 @@ pub async fn search_cmd(
         .map(|n| n.min(crate::config::search::MAX_LIMIT as u64) as u32)
         .unwrap_or(default_limit);
     let results = state.search_engine.search(&query, limit);
+    log::info!("[search] search_cmd returned {} results", results.len());
     Ok(results)
 }
 
@@ -498,14 +500,44 @@ pub async fn dispatch_command(
 /// - 前端拿到 base64 字符串后可以直接 `<img src="data:image/png;base64,...">`.
 /// - 返回 `Ok(None)` 表示提取失败 (文件不存在 / 非 PE / 访问被拒 / 空白图标), 前端降级到 Lucide 通用图标.
 /// - 内部已经过 `parking_lot::Mutex<HashMap>` 缓存, 同路径重复调用 < 1ms.
+/// - 自动解析 .lnk 快捷方式到目标 .exe 路径.
 #[tauri::command]
 pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
-    let bytes =
-        crate::platform::windows::icon::get_or_extract_cached(&path).map_err(|e| e.to_string())?;
+    log::debug!("[icon-ipc] get_app_icon called for path={}", path);
 
-    Ok(bytes.map(|v| BASE64.encode(&v)))
+    let resolved_path =
+        crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(&path))
+            .unwrap_or(std::path::PathBuf::from(&path));
+    let resolved_path_str = resolved_path.to_string_lossy().to_string();
+
+    if resolved_path_str != path {
+        log::debug!(
+            "[icon-ipc] resolved .lnk from {} to {}",
+            path,
+            resolved_path_str
+        );
+    }
+
+    let bytes = crate::platform::windows::icon::get_or_extract_cached(&resolved_path_str)
+        .map_err(|e| e.to_string())?;
+
+    if let Some(ref b) = bytes {
+        let base64_str = BASE64.encode(b);
+        log::debug!(
+            "[icon-ipc] extracted successfully, bytes={}, base64_length={}",
+            b.len(),
+            base64_str.len()
+        );
+        Ok(Some(base64_str))
+    } else {
+        log::debug!(
+            "[icon-ipc] extraction returned None for path={}",
+            resolved_path_str
+        );
+        Ok(None)
+    }
 }
 
 /// 批量获取图标 (base64 编码 PNG 数组). 一次 IPC 拉 N 个图标, 减少 RTT 开销.
@@ -516,13 +548,18 @@ pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
 ///
 /// 失败语义: 单个 path 失败 → 对应位置返回 None, 整体不报错.
 /// 重复 path 自动通过内部 cache 复用, 不会重复抽取.
+/// 自动解析 .lnk 快捷方式到目标 .exe 路径.
 #[tauri::command]
 pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String>>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     let mut out: Vec<Option<String>> = Vec::with_capacity(paths.len());
     for p in &paths {
-        let bytes =
-            crate::platform::windows::icon::get_or_extract_cached(p).map_err(|e| e.to_string())?;
+        let resolved_path =
+            crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(p))
+                .unwrap_or(std::path::PathBuf::from(p));
+        let resolved_path_str = resolved_path.to_string_lossy().to_string();
+        let bytes = crate::platform::windows::icon::get_or_extract_cached(&resolved_path_str)
+            .map_err(|e| e.to_string())?;
         out.push(bytes.map(|v| BASE64.encode(&v)));
     }
     log::info!(

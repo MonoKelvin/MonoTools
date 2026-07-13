@@ -118,18 +118,14 @@ export function useIconRenderer(opts: UseIconRendererOptions): UseIconRendererRe
     async function refresh(result: SearchResult) {
         const myToken = ++loadToken
         clearImgFallback()
-        log('log',
-            `[${opts.debugTag}:refresh] id=${result?.id} title="${result?.title}" ` +
-            `action=${JSON.stringify(result?.action)} ` +
-            `resultType=${result?.resultType}`,
-        )
+        console.log(`[${opts.debugTag}:refresh] START id=${result?.id} title="${result?.title}"`)
         const next = await loadIcon(result)
+        console.log(`[${opts.debugTag}:refresh] loadIcon returned: kind=${next.kind} valueType=${typeof next.value} valueLength=${(next.value as string)?.length ?? 'N/A'}`)
         if (myToken !== loadToken) {
-            log('log', `[${opts.debugTag}:refresh] token mismatch for id=${result?.id}, discarding`)
+            console.log(`[${opts.debugTag}:refresh] token mismatch, discarding`)
             return
         }
 
-        // 优化: 引用相等 / 字符串相等时跳过赋值, 避免 Vue setter 短路 + Chromium 跳过 @load
         const prev = iconState.value
         const isSame =
             prev === next ||
@@ -137,36 +133,27 @@ export function useIconRenderer(opts: UseIconRendererOptions): UseIconRendererRe
                 (prev.kind === 'component' ? prev.value === (next as any).value : prev.kind === 'monogram' ? (prev as any).letter === (next as any).letter : prev.value === (next as any).value))
         if (isSame) {
             if (imgReady.value) {
-                log('log', `[${opts.debugTag}:refresh] iconState unchanged for id=${result?.id}, skip`)
+                console.log(`[${opts.debugTag}:refresh] iconState unchanged and imgReady=true, skipping`)
                 return
             }
-            // 缓存命中但 imgReady 仍为 false, 需要重新触发加载流程
-            log('log', `[${opts.debugTag}:refresh] cache hit but imgReady=false, forcing re-check for id=${result?.id}`)
+            console.log(`[${opts.debugTag}:refresh] iconState unchanged but imgReady=false`)
         }
 
         iconState.value = next
-        log('log',
-            `[${opts.debugTag}:refresh] -> kind=${next.kind} ` +
-            `src.length=${srcOf(next)?.length ?? 'N/A'} ` +
-            `srcHead="${srcOf(next)?.slice(0, 60) ?? 'component'}"`,
-        )
+        console.log(`[${opts.debugTag}:refresh] iconState set to: kind=${next.kind}`)
 
         if (next.kind === 'component' || next.kind === 'monogram') {
             imgReady.value = true
+            console.log(`[${opts.debugTag}:refresh] component/monogram, imgReady=true`)
         } else {
-            // png / svg: 先 false 占位, 等 @load 或兜底 timer
             imgReady.value = false
+            console.log(`[${opts.debugTag}:refresh] png/svg, imgReady=false, scheduling nextTick check`)
             nextTick(() => {
-                // 验证 DOM 元素拿到了正确的 src
                 const img = document.querySelector(opts.containerSelector(result?.id ?? '')) as HTMLImageElement | null
-                log('log',
-                    `[${opts.debugTag}:refresh] nextTick dom-check id=${result?.id} ` +
-                    `img.src.head="${img?.src?.slice(0, 60) ?? 'NOT_FOUND'}" ` +
-                    `naturalWidth=${img?.naturalWidth ?? 'N/A'}`,
-                )
-                // data URL 在浏览器中通常同步解码, naturalWidth > 0 时直接 ready
+                console.log(`[${opts.debugTag}:refresh] nextTick dom-check: img=${img ? 'FOUND' : 'NOT_FOUND'} naturalWidth=${img?.naturalWidth ?? 'N/A'} src=${img?.src?.slice(0, 80) ?? 'N/A'}`)
                 if (img && img.naturalWidth > 0) {
                     imgReady.value = true
+                    console.log(`[${opts.debugTag}:refresh] img naturalWidth > 0, imgReady=true`)
                     return
                 }
                 scheduleImgFallback(result?.id ?? '')

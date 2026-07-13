@@ -27,6 +27,8 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::OnceLock;
 
+use windows::Win32::UI::WindowsAndMessaging::HICON;
+
 use crate::config::icon as icon_cfg;
 
 /// 平台无关的图标提取器接口.
@@ -150,32 +152,230 @@ fn log_icon_debug(stage: &str, path: &str, detail: &str) {
     }
     log::warn!(
         "[icon-debug] stage={} path={} detail={}",
-        stage, path, detail,
+        stage,
+        path,
+        detail,
     );
 }
 
 /// 实际提取. 任意步骤失败 -> None (不抛错).
 ///
-/// size: 边长像素. 现在统一用 `icon_cfg::SIZE` (32), 但签名已抽象
+/// size: 边长像素. 现在统一用 `icon_cfg::SIZE` (256), 但签名已抽象
 /// 以便未来 `IconExtractor` impl 走不同尺寸 (例如 macOS NSWorkspace
 /// 可按 16/32/64 任意).
 #[cfg(windows)]
 fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
-    use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDIBits, SelectObject,
-        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HDC,
-    };
-    use windows::Win32::UI::Shell::{SHGetFileInfoW, SHGFI_ICON, SHGFI_LARGEICON, SHFILEINFOW};
-    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, HICON};
     use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::{
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetObjectW, SelectObject,
+        BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC,
+    };
+    use windows::Win32::UI::Shell::{
+        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, HICON};
 
-    // 1) SHGetFileInfoW -> HICON
+    // 优先: IShellItemImageFactory — Windows Vista+ 推荐方式, 支持高分辨率图标
+    // 返回 HBITMAP, 直接读取像素数据
     let wide_path: Vec<u16> = path
         .to_string_lossy()
         .encode_utf16()
         .chain(std::iter::once(0))
         .collect();
 
+    let shell_item: windows::core::Result<IShellItemImageFactory> =
+        unsafe { SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None) };
+    if let Ok(shell_item) = shell_item {
+        let hbitmap = unsafe {
+            shell_item.GetImage(
+                windows::Win32::Foundation::SIZE { cx: size, cy: size },
+                SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK,
+            )
+        };
+        if let Ok(hbitmap) = hbitmap {
+            if !hbitmap.is_invalid() {
+                let rgba = extract_rgba_from_hbitmap(&hbitmap, size);
+                unsafe {
+                    let _ = DeleteObject(hbitmap.into());
+                }
+                if let Some(rgba) = rgba {
+                    if !is_blank_icon(&rgba) {
+                        return encode_png(&rgba, size as u32, size as u32);
+                    }
+                }
+            }
+        }
+    }
+
+    // 回退: get_hicon + DrawIconEx 传统方式
+    let hicon: HICON = get_hicon(path)?;
+
+    let screen_dc: HDC = unsafe { CreateCompatibleDC(None) };
+    if screen_dc.is_invalid() {
+        unsafe {
+            let _ = DestroyIcon(hicon);
+        }
+        return None;
+    }
+
+    let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
+    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
+    bmi.bmiHeader.biWidth = size;
+    bmi.bmiHeader.biHeight = -(size as i32);
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB.0;
+
+    let mut bits_ptr: *mut std::ffi::c_void = std::ptr::null_mut();
+
+    let section_hbm = unsafe {
+        CreateDIBSection(
+            Some(screen_dc),
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits_ptr,
+            None,
+            0,
+        )
+    };
+
+    if section_hbm.is_err() || bits_ptr.is_null() {
+        log_icon_debug(
+            "create-dibsection-failed",
+            &path.to_string_lossy(),
+            "CreateDIBSection returned invalid",
+        );
+        unsafe {
+            let _ = DeleteDC(screen_dc);
+            let _ = DestroyIcon(hicon);
+        }
+        return None;
+    }
+
+    let section_hbm = section_hbm.unwrap();
+
+    let prev = unsafe { SelectObject(screen_dc, section_hbm.into()) };
+    let _ = prev;
+
+    let di_flags = windows::Win32::UI::WindowsAndMessaging::DI_FLAGS(0x0003);
+    let draw_ok =
+        unsafe { DrawIconEx(screen_dc, 0, 0, hicon, size, size, 0, None, di_flags).is_ok() };
+    if !draw_ok {
+        log_icon_debug(
+            "draw-icon-failed",
+            &path.to_string_lossy(),
+            "DrawIconEx returned err",
+        );
+        unsafe {
+            let _ = DeleteObject(section_hbm.into());
+            let _ = DeleteDC(screen_dc);
+            let _ = DestroyIcon(hicon);
+        }
+        return None;
+    }
+
+    let byte_len = (size as usize) * (size as usize) * 4;
+    let mut rgba = Vec::with_capacity(byte_len);
+    unsafe {
+        let src = std::slice::from_raw_parts(bits_ptr as *const u8, byte_len);
+        for chunk in src.chunks_exact(4) {
+            rgba.push(chunk[2]);
+            rgba.push(chunk[1]);
+            rgba.push(chunk[0]);
+            rgba.push(chunk[3]);
+        }
+    }
+
+    unsafe {
+        let _ = DeleteObject(section_hbm.into());
+        let _ = DeleteDC(screen_dc);
+        let _ = DestroyIcon(hicon);
+    }
+
+    if is_blank_icon(&rgba) {
+        log_icon_debug(
+            "blank-icon-rejected",
+            &path.to_string_lossy(),
+            "icon appears blank",
+        );
+        return None;
+    }
+
+    /// 从 HBITMAP 直接提取 RGBA 像素数据
+    fn extract_rgba_from_hbitmap(hbitmap: &HBITMAP, size: i32) -> Option<Vec<u8>> {
+        let mut bmp: BITMAP = unsafe { std::mem::zeroed() };
+        let result = unsafe {
+            GetObjectW(
+                (*hbitmap).into(),
+                std::mem::size_of::<BITMAP>() as i32,
+                Some(&mut bmp as *mut _ as *mut _),
+            )
+        };
+        if result == 0 {
+            return None;
+        }
+
+        if bmp.bmBitsPixel != 32 {
+            return None;
+        }
+
+        if bmp.bmWidth != size || bmp.bmHeight.abs() != size {
+            return None;
+        }
+
+        let byte_len = (size as usize) * (size as usize) * 4;
+        let mut rgba = Vec::with_capacity(byte_len);
+
+        unsafe {
+            let src = std::slice::from_raw_parts(bmp.bmBits as *const u8, byte_len);
+            for chunk in src.chunks_exact(4) {
+                rgba.push(chunk[2]);
+                rgba.push(chunk[1]);
+                rgba.push(chunk[0]);
+                rgba.push(chunk[3]);
+            }
+        }
+
+        Some(rgba)
+    }
+
+    // 7) PNG 编码
+    encode_png(&rgba, size as u32, size as u32)
+}
+
+/// 从路径获取 HICON. 优先 ExtractIconExW, 回退到 SHGetFileInfoW.
+/// IShellItemImageFactory 的高质量提取已移到 extract_icon_windows 中处理.
+#[cfg(windows)]
+fn get_hicon(path: &Path) -> Option<HICON> {
+    use windows::core::PCWSTR;
+    use windows::Win32::UI::Shell::{
+        ExtractIconExW, SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::HICON;
+
+    let wide_path: Vec<u16> = path
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // 优先: ExtractIconExW — 直接从文件提取图标
+    let mut icons: [HICON; 1] = unsafe { std::mem::zeroed() };
+    let extracted = unsafe {
+        ExtractIconExW(
+            PCWSTR(wide_path.as_ptr()),
+            0,
+            None,
+            Some(icons.as_mut_ptr()),
+            1,
+        )
+    };
+
+    if extracted > 0 && !icons[0].0.is_null() {
+        return Some(icons[0]);
+    }
+
+    // 回退: SHGetFileInfoW
     let mut info: SHFILEINFOW = unsafe { std::mem::zeroed() };
     let flags = SHGFI_ICON | SHGFI_LARGEICON;
     let result = unsafe {
@@ -187,124 +387,17 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
             flags,
         )
     };
-    if result == 0 {
-        log_icon_debug("shgetfileinfo-zero", &path.to_string_lossy(), "SHGetFileInfoW returned 0");
-        return None;
-    }
-    let hicon: HICON = info.hIcon;
-    if hicon.0.is_null() {
-        log_icon_debug("hicon-null", &path.to_string_lossy(), "SHGetFileInfoW returned null hIcon");
-        return None;
-    }
 
-    // 2) 准备 DC + Bitmap + 把 HICON 画上去
-    let screen_dc: HDC = unsafe { CreateCompatibleDC(None) };
-    if screen_dc.is_invalid() {
-        log_icon_debug("create-dc-failed", &path.to_string_lossy(), "CreateCompatibleDC returned invalid HDC");
-        unsafe {
-            let _ = DestroyIcon(hicon);
-        }
+    if result == 0 || info.hIcon.0.is_null() {
+        log_icon_debug(
+            "no-hicon",
+            &path.to_string_lossy(),
+            "IShellItemImageFactory, ExtractIconEx and SHGetFileInfo all failed",
+        );
         return None;
     }
 
-    let hbm = unsafe { CreateCompatibleBitmap(screen_dc, size, size) };
-    if hbm.is_invalid() {
-        log_icon_debug("create-bitmap-failed", &path.to_string_lossy(), "CreateCompatibleBitmap returned invalid HBITMAP");
-        unsafe {
-            let _ = DeleteDC(screen_dc);
-            let _ = DestroyIcon(hicon);
-        }
-        return None;
-    }
-
-    let prev = unsafe { SelectObject(screen_dc, hbm.into()) };
-    let _ = prev; // 不主动恢复: 整个 DC 接下来就释放
-
-    // DI_NORMAL = 0x0003
-    let di_flags = windows::Win32::UI::WindowsAndMessaging::DI_FLAGS(0x0003);
-    let draw_ok = unsafe {
-        DrawIconEx(
-            screen_dc,
-            0,
-            0,
-            hicon,
-            size,
-            size,
-            0,
-            None,
-            di_flags,
-        )
-        .is_ok()
-    };
-    if !draw_ok {
-        log_icon_debug("draw-icon-failed", &path.to_string_lossy(), "DrawIconEx returned err");
-        unsafe {
-            let _ = DeleteDC(screen_dc);
-            let _ = DestroyIcon(hicon);
-        }
-        return None;
-    }
-
-    // 3) GetDIBits -> RGBA
-    let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
-    bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
-    bmi.bmiHeader.biWidth = size;
-    // 负值高度 = top-down DIB, 我们要的就是 top-down
-    bmi.bmiHeader.biHeight = -size;
-    bmi.bmiHeader.biPlanes = 1;
-    bmi.bmiHeader.biBitCount = 32;
-    bmi.bmiHeader.biCompression = BI_RGB.0;
-
-    // buffer 长度按 size 算, 不再硬写 32*32*4; 防止未来 macOS impl
-    // 传非 32 时 OOB.
-    let byte_len = (size as usize) * (size as usize) * 4;
-    let mut buffer: Vec<u8> = vec![0u8; byte_len];
-
-    let scan = unsafe {
-        GetDIBits(
-            screen_dc,
-            hbm,
-            0,
-            size as u32,
-            Some(buffer.as_mut_ptr() as *mut _),
-            &mut bmi,
-            DIB_RGB_COLORS,
-        )
-    };
-
-    // 资源清理
-    unsafe {
-        let _ = DeleteObject(hbm.into());
-        let _ = DeleteDC(screen_dc);
-        let _ = DestroyIcon(hicon);
-    }
-
-    if scan == 0 {
-        log_icon_debug("getdibits-zero", &path.to_string_lossy(), "GetDIBits returned 0");
-        return None;
-    }
-
-    // 4) BGRA -> RGBA 转换 (Windows DIB 32-bit 是 BGRA byte order)
-    let mut rgba = Vec::with_capacity(buffer.len());
-    for chunk in buffer.chunks_exact(4) {
-        rgba.push(chunk[2]); // R = 原 B
-        rgba.push(chunk[1]); // G = 原 G
-        rgba.push(chunk[0]); // B = 原 R
-        rgba.push(chunk[3]); // A
-    }
-
-    // 5) 检测"空白图标" (Windows 对缺失 .lnk 目标会返回通用空白方块)
-    // 旧版会把空白 PNG 当合法图标返回, 用户看到的就是一格 32x32 白色方块.
-    // 现在检测到后返回 None, 让前端走 Lucide 兜底.
-    if is_blank_icon(&rgba) {
-        log_icon_debug("blank-icon-rejected", &path.to_string_lossy(),
-            "icon appears blank (low color count or low luma variance), likely missing .lnk target");
-        log::warn!("[icon] blank-icon-rejected path={} (Windows returned blank icon, likely .lnk with missing target)", path.to_string_lossy());
-        return None;
-    }
-
-    // 6) PNG 编码
-    encode_png(&rgba, size as u32, size as u32)
+    Some(info.hIcon)
 }
 
 /// 检测 RGBA buffer 是否是"空白图标".
@@ -403,7 +496,11 @@ fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
         }
     };
     if result.is_err() {
-        log_icon_debug("png-write-failed", "<rgba>", &result.err().map(|e| e.to_string()).unwrap_or_default());
+        log_icon_debug(
+            "png-write-failed",
+            "<rgba>",
+            &result.err().map(|e| e.to_string()).unwrap_or_default(),
+        );
         return None;
     }
     Some(out)
@@ -439,12 +536,14 @@ mod tests {
     fn png_encoder_produces_valid_output() {
         // 2x2 全红 RGBA
         let rgba = vec![
-            255, 0, 0, 255, 255, 0, 0, 255,
-            255, 0, 0, 255, 255, 0, 0, 255,
+            255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
         ];
         let png = encode_png(&rgba, 2, 2).expect("encode ok");
         // PNG magic: 89 50 4E 47 0D 0A 1A 0A
-        assert_eq!(&png[0..8], &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        assert_eq!(
+            &png[0..8],
+            &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]
+        );
     }
 
     // === is_blank_icon 单元测试 ===
@@ -502,7 +601,10 @@ mod tests {
             }
         }
         // 新逻辑: 色数 2, 亮度方差巨大 (黑+白) → std_dev = 127.5 → 通过!
-        assert!(!is_blank_icon(&rgba), "高对比度 2 色图标应通过 (亮度方差判据)");
+        assert!(
+            !is_blank_icon(&rgba),
+            "高对比度 2 色图标应通过 (亮度方差判据)"
+        );
     }
 
     /// 极少颜色 (3-5 种) = 仍被判为空白. 真实图标至少 16+ 色 或 有亮度梯度.

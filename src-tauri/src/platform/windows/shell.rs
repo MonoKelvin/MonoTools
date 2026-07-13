@@ -58,10 +58,30 @@ pub fn open_path(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// 解析 .lnk 快捷方式（简化）：读目标的 FileDescription
-/// 真实实现可使用 mslink crate 或 Win32 IShellLink，不在本 MVP 中
+/// 解析 .lnk 快捷方式的目标路径
 pub fn resolve_shortcut(path: &PathBuf) -> Result<PathBuf> {
-    Ok(path.clone())
+    let output = std::process::Command::new("powershell")
+        .arg("-Command")
+        .arg(format!(
+            "(New-Object -ComObject WScript.Shell).CreateShortcut('{}').TargetPath",
+            path.to_string_lossy()
+        ))
+        .output()
+        .map_err(|e| AppError::Other(format!("执行 PowerShell 失败: {e}")))?;
+
+    if !output.status.success() {
+        return Ok(path.clone());
+    }
+
+    let target_path = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .to_string();
+
+    if target_path.is_empty() {
+        return Ok(path.clone());
+    }
+
+    Ok(PathBuf::from(target_path))
 }
 
 /// 从 SearchResult 派发

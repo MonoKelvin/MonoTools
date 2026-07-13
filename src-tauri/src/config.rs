@@ -18,17 +18,19 @@
 
 pub mod icon {
     /// 图标像素尺寸. 与前端 `ICON_CONFIG.size` 对齐.
-    pub const SIZE: i32 = 32;
+    /// 使用 256x256 获取高质量图标, 前端可按需缩放显示.
+    pub const SIZE: i32 = 256;
 
     /// 后端 base64 最短长度 (字符数).
-    /// 32x32 RGBA PNG 压缩后通常 100-500 chars, 64 是安全下限.
-    pub const MIN_BASE64_LEN: usize = 64;
+    /// 256x256 RGBA PNG 压缩后通常 1000-5000 chars, 256 是安全下限.
+    pub const MIN_BASE64_LEN: usize = 256;
 
     /// PNG magic 89 50 4E 47 0D 0A 1A 0A 的 base64 编码.
     pub const PNG_MAGIC_BASE64: &'static str = "iVBORw0KGgo";
 
-    /// 32x32 RGBA 图标的字节数 (4 通道).
-    pub const RGBA32_BYTES: usize = (SIZE as usize) * (SIZE as usize) * 4;
+    /// 256x256 RGBA 图标的字节数 (4 通道).
+    /// 用于空白检测时判断 buffer 是否完整.
+    pub const BUF_SIZE: usize = 256 * 256 * 4;
 
     /// 空白/单色图标检测阈值 —— icon.rs::is_blank_icon 用.
     /// 用于过滤"图标被提取了但实际上是全黑/全白/纯灰, 不应展示"的场景.

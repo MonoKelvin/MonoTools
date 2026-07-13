@@ -12,8 +12,9 @@ export const ICON_CONFIG = {
   /**
    * 图标像素尺寸. 与后端 `config::icon::SIZE` 对齐, 两者必须一致.
    * 改这里记得同步改后端, 否则会触发 base64 长度校验失败.
+   * 使用 256x256 获取高质量图标, 前端可按需缩放显示.
    */
-  size: 32,
+  size: 256,
 
   /**
    * imgReady 兜底 timer (ms).
@@ -28,20 +29,20 @@ export const ICON_CONFIG = {
    * 因此每次进入 png/svg 路径时启动该 timer. 若 @load 在这之前已触发,
    * 提前 clearTimeout 取消兜底. 若 @load 丢失, 兜底强制显示.
    *
-   * 350ms 经验值: 弱机 32x32 PNG 解码一般 < 50ms, 350ms 已足够覆盖
+   * 500ms 经验值: 弱机 256x256 PNG 解码一般 < 100ms, 500ms 已足够覆盖
    * 99% 场景, 又不会让用户觉得"等太久".
    */
-  loadFallbackMs: 350,
+  loadFallbackMs: 500,
 
   /**
    * 后端 base64 最短长度 (字符数).
    *
-   * 32x32 RGBA PNG 压缩后通常 100-500 chars, 64 是安全下限:
+   * 256x256 RGBA PNG 压缩后通常 1000-5000 chars, 256 是安全下限:
    * 低于此长度一定不是合法 PNG (PNG magic iVBORw0KGgo 自身就 12 chars
    * + 必然的 IDAT/IEND header). 用于 useAppIcon 在拼 data URL 前做严格
    * 校验, 避免 Chromium 静默吞掉"假成功"的短 base64.
    */
-  minBase64Length: 64,
+  minBase64Length: 256,
 
   /**
    * PNG magic 89 50 4E 47 0D 0A 1A 0A 的 base64 编码.

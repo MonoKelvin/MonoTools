@@ -18,10 +18,10 @@ import { FallbackIconSource } from './fallback'
 
 /** 单一 registry 数组 —— useAppIcon 在创建图标状态时按顺序遍历. */
 export const iconSourceRegistry: IconSource[] = [
-  new KnownIconSource(),
-  new LobehubIconSource(),
-  new IpcIconSource(),
-  new FallbackIconSource(),
+    new IpcIconSource(),
+    new LobehubIconSource(),
+    new KnownIconSource(),
+    new FallbackIconSource(),
 ]
 
 /**
@@ -29,9 +29,9 @@ export const iconSourceRegistry: IconSource[] = [
  * 让编排器 (useAppIcon) 能写出准确的 "icon-trace:known / lobehub / ipc / fallback" 日志.
  */
 export interface IconSourceHit {
-  /** source 名称, 与 IconLogLevel 兼容. */
-  source: string
-  state: import('./types').IconState
+    /** source 名称, 与 IconLogLevel 兼容. */
+    source: string
+    state: import('./types').IconState
 }
 
 /**
@@ -39,23 +39,25 @@ export interface IconSourceHit {
  * (调用方应自己给一个默认 fallback).
  */
 export async function resolveIconByRegistry(
-  item: import('@/types/search').SearchResult,
-  sources: IconSource[] = iconSourceRegistry,
+    item: import('@/types/search').SearchResult,
+    sources: IconSource[] = iconSourceRegistry,
 ): Promise<IconSourceHit | null> {
-  for (const src of sources) {
-    try {
-      const r = await src.resolve(item)
-      // 关键: 既要拒绝 null, 也要拒绝 undefined (vitest mockResolvedValue(null)
-      // 在 3.x 中 await 出来是 undefined). 用 `!= null` 一并拒绝两者.
-      if (r != null) {
-        return { source: src.name, state: r as import('./types').IconState }
-      }
-    } catch {
-      // 单个 source 失败不应阻塞后续 source; 继续 try 下一个.
-      continue
+    console.log(`[resolveIconByRegistry] START resolving icon for item=${item.title}, id=${item.id}`)
+    for (const src of sources) {
+        try {
+            console.log(`[resolveIconByRegistry] trying source=${src.name}`)
+            const r = await src.resolve(item)
+            if (r != null) {
+                console.log(`[resolveIconByRegistry] SUCCESS: source=${src.name} returned icon`)
+                return { source: src.name, state: r as import('./types').IconState }
+            }
+            console.log(`[resolveIconByRegistry] source=${src.name} returned null, trying next`)
+        } catch (e) {
+            console.log(`[resolveIconByRegistry] source=${src.name} threw error: ${e}`)
+        }
     }
-  }
-  return null
+    console.log(`[resolveIconByRegistry] ALL sources returned null for item=${item.title}`)
+    return null
 }
 
 // 类型重导出 (避免循环 import)

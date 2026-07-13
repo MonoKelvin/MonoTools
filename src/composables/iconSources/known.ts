@@ -12,12 +12,12 @@ import type { IconSource, IconState } from './types'
 import type { SearchResult } from '@/types/search'
 
 export class KnownIconSource implements IconSource {
-  readonly name = 'known'
+    readonly name = 'known'
 
-  resolve(item: SearchResult): IconState | null {
-    const path = extractPath(item)
-    return lookupKnownIcon(item?.title ?? '', path ?? undefined)
-  }
+    resolve(item: SearchResult): IconState | null {
+        const path = extractPath(item)
+        return lookupKnownIcon(item?.title ?? '', path ?? undefined)
+    }
 }
 
 /**
@@ -30,13 +30,18 @@ export class KnownIconSource implements IconSource {
  * 与 `useAppIcon.ts::extractPath` 行为一致, 抽到 iconSources/ 共享.
  */
 export function extractPath(item: SearchResult): string {
-  const a = item?.action
-  if (!a) return ''
-  if ((a.type === 'launch' || a.type === 'open') && typeof a.data === 'string') {
-    return a.data
-  }
-  if (a.type === 'navigate' && typeof a.data === 'string') {
-    return a.data
-  }
-  return ''
+    const a = item?.action
+    if (!a) {
+        console.log(`[extractPath] item=${item?.title} action is undefined/null`)
+        return ''
+    }
+    console.log(`[extractPath] item=${item?.title} action.type=${a.type} action.data=${typeof a.data === 'string' ? a.data.slice(0, 100) : JSON.stringify(a.data)}`)
+    if ((a.type === 'launch' || a.type === 'open') && typeof a.data === 'string') {
+        return a.data
+    }
+    if (a.type === 'navigate' && typeof a.data === 'string') {
+        return a.data
+    }
+    console.log(`[extractPath] item=${item?.title} no matching action type, returning empty`)
+    return ''
 }

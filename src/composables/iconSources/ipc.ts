@@ -17,43 +17,48 @@ import type { IconSource, IconState } from './types'
 import type { SearchResult } from '@/types/search'
 
 export class IpcIconSource implements IconSource {
-  readonly name = 'ipc'
+    readonly name = 'ipc'
 
-  async resolve(item: SearchResult): Promise<IconState | null> {
-    if (!isTauri) return null
-    const path = extractPath(item)
-    if (!path) return null
+    async resolve(item: SearchResult): Promise<IconState | null> {
+        if (!isTauri) return null
+        const path = extractPath(item)
+        if (!path) return null
 
-    try {
-      const base64 = await appIconApi.get(path)
-      if (
-        typeof base64 !== 'string' ||
-        base64.length < ICON_CONFIG.minBase64Length ||
-        !/^[A-Za-z0-9+/=]+$/.test(base64) ||
-        !base64.startsWith(ICON_CONFIG.pngMagicBase64)
-      ) {
-        logIconFailure({
-          stage: 'appIconApi-empty',
-          id: item?.id ?? '',
-          title: item?.title ?? '',
-          path,
-          resultType: item?.resultType ?? '',
-          reason: `无效 base64: type=${typeof base64} length=${(base64 as any)?.length ?? 'null'} (期望 ≥ ${ICON_CONFIG.minBase64Length})`,
-        })
-        return null
-      }
-      // 后端返回纯 base64, 拼 data URL 前缀给 <img src>.
-      return { kind: 'png', value: `data:image/png;base64,${base64}` }
-    } catch (e) {
-      logIconFailure({
-        stage: 'appIconApi-throw',
-        id: item?.id ?? '',
-        title: item?.title ?? '',
-        path,
-        resultType: item?.resultType ?? '',
-        reason: String(e),
-      })
-      return null
+        try {
+            console.log(`[IpcIconSource] START resolving icon for item=${item.title}, path=${path}`)
+            const base64 = await appIconApi.get(path)
+            console.log(`[IpcIconSource] appIconApi.get returned: type=${typeof base64}, length=${(base64 as string)?.length ?? 'null'}, startsWithMagic=${(base64 as string)?.startsWith(ICON_CONFIG.pngMagicBase64) ?? false}`)
+            
+            if (
+                typeof base64 !== 'string' ||
+                base64.length < ICON_CONFIG.minBase64Length ||
+                !/^[A-Za-z0-9+/=]+$/.test(base64) ||
+                !base64.startsWith(ICON_CONFIG.pngMagicBase64)
+            ) {
+                console.log(`[IpcIconSource] base64 validation failed, returning null`)
+                logIconFailure({
+                    stage: 'appIconApi-empty',
+                    id: item?.id ?? '',
+                    title: item?.title ?? '',
+                    path,
+                    resultType: item?.resultType ?? '',
+                    reason: `无效 base64: type=${typeof base64} length=${(base64 as any)?.length ?? 'null'} (期望 ≥ ${ICON_CONFIG.minBase64Length})`,
+                })
+                return null
+            }
+            console.log(`[IpcIconSource] SUCCESS! returning PNG data URL`)
+            return { kind: 'png', value: `data:image/png;base64,${base64}` }
+        } catch (e) {
+            console.error(`[IpcIconSource] ERROR for path=${path}:`, e)
+            logIconFailure({
+                stage: 'appIconApi-throw',
+                id: item?.id ?? '',
+                title: item?.title ?? '',
+                path,
+                resultType: item?.resultType ?? '',
+                reason: String(e),
+            })
+            return null
+        }
     }
-  }
 }
