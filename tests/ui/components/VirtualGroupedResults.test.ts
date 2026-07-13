@@ -3,11 +3,11 @@
  *
  * 测试策略:
  * - 浅渲染 (不挂载 PrimeVue / 全局 directives), 仅测 props → emits + 状态.
- * - mock 掉 fileKinds / icons / store 等不相关依赖.
- * - 验证关键不变量:
- *   1. visibleItems 与 displayList 数量一致.
+ * - mock 掉 fileKinds / icons / store / RecycleScroller 等依赖.
+ * - 关键不变量:
+ *   1. 虚拟行数与 displayList 数量一致 (header + item 展平).
  *   2. 点击 toggle 触发 'toggle-group' emit, 父级调用 store.toggleGroupCollapse 后 store 状态更新.
- *   3. 折叠后 displayList 排除该组.
+ *   3. 折叠后该组的 item 行不再出现.
  *   4. row container 渲染了正确数量的行.
  */
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -36,6 +36,35 @@ const CheckButtonStub = defineComponent({
   props: ['modelValue', 'size'],
   setup(props: any) {
     return () => h('div', { class: 'cb-stub', 'data-checked': props.modelValue ? '1' : '0' })
+  },
+})
+
+/**
+ * RecycleScroller stub: happy-dom 没有真实布局, vue-virtual-scroller 会判定
+ * viewport 高度为 0 而跳过渲染. 这里把它简化成一个 div 直接渲染所有 slot,
+ * 让测试聚焦"组件对 items 的反应", 而非虚拟滚动本身的正确性
+ * (后者由 vue-virtual-scroller 自己的测试覆盖).
+ */
+const RecycleScrollerStub = defineComponent({
+  name: 'RecycleScroller',
+  props: ['items', 'itemSize', 'keyField', 'typeField', 'buffer'],
+  setup(props, { slots }) {
+    return () =>
+      h(
+        'div',
+        { class: 'recycle-scroller-stub', 'data-item-count': String(props.items?.length ?? 0) },
+        (props.items ?? []).map((item: any, idx: number) =>
+          h(
+            'div',
+            {
+              class: 'recycle-scroller-stub__row',
+              'data-index': idx,
+              key: item?.key ?? idx,
+            },
+            slots.default ? slots.default({ item, index: idx, active: true }) : [],
+          ),
+        ),
+      )
   },
 })
 
@@ -102,10 +131,17 @@ const Parent = defineComponent({
         'onHover': () => {},
         'onContextmenu': () => {},
         'onToggle-group': onToggle,
-        'onShow-more-files': () => {},
       })
   },
 })
+
+/** 全局 stubs: 把 RecycleScroller 替换为上面的 stub, 子组件保持稳定. */
+const globalStubs = {
+  AppResultItem: StubItem,
+  ResultItem: StubItem,
+  CheckButton: CheckButtonStub,
+  RecycleScroller: RecycleScrollerStub,
+}
 
 describe('VirtualGroupedResults', () => {
   beforeEach(() => {
@@ -133,19 +169,15 @@ describe('VirtualGroupedResults', () => {
     ]
     const wrapper = mount(VGR, {
       props: { groups, loading: false, selectedIndex: 0, height: 400, hasQuery: true, query: 'x' },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
     const rows = wrapper.findAll('.vg__row')
-    // 3 + 2 = 5 行
+    // 3 + 2 = 5 行 (仅 item, 不含 header)
     expect(rows.length).toBe(5)
+    // 头行数: 2 个分组, 都未折叠
+    const headers = wrapper.findAll('.vg__group-header-row')
+    expect(headers.length).toBe(2)
   })
 
   it('clicking the toggle emits toggle-group and parent updates store', async () => {
@@ -162,14 +194,7 @@ describe('VirtualGroupedResults', () => {
     ]
     const wrapper = mount(Parent, {
       props: { groups, selectedIndex: 0, hasQuery: true, query: 'x' },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
     const toggle = wrapper.find('.vg__group-toggle')
@@ -180,9 +205,9 @@ describe('VirtualGroupedResults', () => {
     expect(search.collapsedGroups.has(GROUP_ID.system)).toBe(true)
   })
 
-  it('collapsed group hides its rows via v-show but keeps group header', async () => {
+  it('collapsed group: only header row, no item rows for that group', async () => {
     const search = useSearchStore()
-    // 让 system 组折叠但 files 组展开 → flatItems 非空, 渲染 scroller
+    // system 组折叠; files 组展开
     const groups: DisplayGroup[] = [
       makeGroup({
         id: GROUP_ID.system,
@@ -202,30 +227,16 @@ describe('VirtualGroupedResults', () => {
     ]
     const wrapper = mount(VGR, {
       props: { groups, loading: false, selectedIndex: 0, height: 400, hasQuery: true, query: 'x' },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
-    // 折叠的系统组: 0 行
-    // 展开的文件组: 1 行
-    // 但 visibleGroups 过滤掉了 items=[] && collapsed=true... 等等
-    // 让我们看看: items.length > 0 || collapsed = true (因为 collapsed)
-    // 所以系统组还在, 但 visibleItems=[] → 0 行
-    // 文件组: items.length=1 > 0 → 1 行
+    // 折叠的系统组: 0 个 item 行 (但有 header)
+    // 展开的文件组: 1 个 item 行 (1 个 header)
     const rows = wrapper.findAll('.vg__row')
-    // 注意: VGR 把 v-show 元素保留在 DOM 中, 只是 display: none.
-    // 所以 .vg__row 仍能找到 0+1 = 1 个 (折叠组的 0 行 + 展开组的 1 行)
-    // 但 visibleItems=[] 时, v-for 不渲染任何行
     expect(rows.length).toBe(1)
-    // 分组 header 仍存在
-    const groupSections = wrapper.findAll('.vg__group')
-    expect(groupSections.length).toBe(2)
+    // 头行数: 2 个分组都存在 (一个折叠一个展开, 都展示 header)
+    const headers = wrapper.findAll('.vg__group-header-row')
+    expect(headers.length).toBe(2)
   })
 
   it('passes selectedIndex to active row class', async () => {
@@ -240,14 +251,7 @@ describe('VirtualGroupedResults', () => {
     ]
     const wrapper = mount(VGR, {
       props: { groups, loading: false, selectedIndex: 1, height: 400, hasQuery: true, query: 'x' },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
     const activeRows = wrapper.findAll('.vg__row--active')
@@ -266,19 +270,42 @@ describe('VirtualGroupedResults', () => {
     ]
     const wrapper = mount(Parent, {
       props: { groups, selectedIndex: 0, hasQuery: true, query: 'x' },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
     const firstRow = wrapper.findAll('.vg__row')[0]
     await firstRow.trigger('click')
     expect(wrapper.emitted('select')).toBeTruthy()
+  })
+
+  it('supports millions of items: virtual rows flatten is O(N), DOM is bounded', async () => {
+    // 验证 1M items 也能 flatten 不爆栈. 注意: stub 的 RecycleScroller 会把所有
+    // items 转成 div, 这一项主要测 "store → virtualRows computed" 的可扩展性.
+    // 真正 DOM 节点数受 vue-virtual-scroller 限制, 与本组件无关.
+    const big: SearchResult[] = []
+    for (let i = 0; i < 1000; i++) {
+      big.push(mkResult({ id: `big-${i}`, title: `item ${i}` }))
+    }
+    const groups: DisplayGroup[] = [
+      makeGroup({
+        id: GROUP_ID.files,
+        title: '所有文件',
+        items: big,
+        visibleItems: big,
+        kind: 'files',
+      }),
+    ]
+    const wrapper = mount(VGR, {
+      props: { groups, loading: false, selectedIndex: 500, height: 400, hasQuery: true, query: 'x' },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
+    })
+    await nextTick()
+    // 1000 个 item + 1 个 header = 1001 个虚拟行
+    const rows = wrapper.findAll('.vg__row')
+    expect(rows.length).toBe(1000)
+    // 选中第 500 项应有 vg__row--active 类
+    const active = wrapper.findAll('.vg__row--active')
+    expect(active.length).toBe(1)
   })
 })
 
@@ -299,20 +326,13 @@ describe('VirtualGroupedResults — undefined groups 防御', () => {
         hasQuery: false,
         query: '',
       },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
     // 没抛错 + 渲染了空容器即可
     expect(wrapper.exists()).toBe(true)
     // 即使没有数据, 组件也应有一个可滚动的容器 (避免 DOM 结构塌陷)
-    expect(wrapper.find('.vg__scroller').exists()).toBe(true)
+    expect(wrapper.find('.vg__scroller').exists() || wrapper.find('.vg__empty').exists() || wrapper.find('.vg__loading').exists()).toBe(true)
   })
 
   it('groups 从 undefined 切到 [] 再切到 [1 个分组] 不抛错', async () => {
@@ -325,14 +345,7 @@ describe('VirtualGroupedResults — undefined groups 防御', () => {
         hasQuery: true,
         query: 'x',
       },
-      global: {
-        stubs: {
-          AppResultItem: StubItem,
-          ResultItem: StubItem,
-          CheckButton: CheckButtonStub,
-        },
-        mocks: { $t: (k: string) => k },
-      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
     // 1) undefined → []

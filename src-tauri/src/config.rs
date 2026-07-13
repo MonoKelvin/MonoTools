@@ -54,20 +54,7 @@ pub mod window {
 }
 
 pub mod search {
-    /// 实时搜索结果上限 (有 query 时).
-    pub const REALTIME_LIMIT: u32 = 200;
-    /// 空查询结果上限 (首屏全量).
-    pub const EMPTY_QUERY_LIMIT: u32 = 2000;
-    /// 客户端可 override 的最大上限.
-    pub const MAX_CLIENT_OVERRIDE: u32 = 2000;
-    /// "加载更多" 按钮每次步长.
-    pub const LOAD_MORE_LIMIT: u32 = 50;
-    /// "加载更多" 客户端可 override 的最大上限.
-    pub const LOAD_MORE_MAX: u32 = 500;
-    /// CLI 命令默认 limit.
-    pub const CLI_DEFAULT_LIMIT: u32 = 20;
-
-    /// 文件搜索引擎空查询返回上限 (实际命中数, 2000 是 IPC 层最大可能上限).
+    /// 文件搜索引擎空查询返回上限 (实际命中数, 防止索引极大时单帧 IPC 阻塞).
     pub const ALL_FILES_EMPTY_QUERY_CAP: u32 = 500;
 
     /// 应用索引扫描目录最大深度.

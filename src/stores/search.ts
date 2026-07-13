@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { SearchResult, SearchOptions } from '@/types/search'
 import { searchApi } from '@/services/searchApi'
 import { pinApi } from '@/services/api'
-import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS, SEARCH_LIMITS_VISIBLE } from '@/config'
+import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE } from '@/config'
 import { getFileKind } from '@/utils/fileKinds'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
@@ -51,10 +51,6 @@ export interface DisplayGroup {
   visibleItems: SearchResult[]
   /** 该组类型, VGR 据此选用图标与色板. */
   kind: 'pinned' | 'recent' | 'system' | 'commands' | 'apps' | 'files'
-  /** 未搜索时, "所有文件" 分组的可见项上限 (UI 性能保护). */
-  fileVisibleLimit?: number
-  /** 未搜索时, "所有文件" 分组总命中数 (用于"显示更多 (+N)"). */
-  hiddenCount?: number
 }
 
 export const useSearchStore = defineStore('search', () => {
@@ -318,15 +314,6 @@ export const useSearchStore = defineStore('search', () => {
   // ==========================================================================
 
   /**
-   * 进入 VGR 的"原始"分组数据. 每个组含该类的全部命中, 不受折叠影响.
-   * VGR 只需决定渲染哪些 (根据 collapsed), 不用再算 groups.
-   *
-   * 注: 文件分组在未搜索状态下做了 `fileVisibleLimit` 截断, 避免 500+
-   * 个 DOM 节点同屏 paint. hiddenCount 用来展示"显示更多 (+N)".
-   */
-  const fileVisibleLimit = ref<number>(SEARCH_LIMITS_VISIBLE.fileVisibleInitial)
-
-  /**
    * 对 files 分组应用文件类型过滤: 仅保留命中 selectedFileKinds 的项.
    * 未搜索时过滤生效; 搜索时 (query 非空) 也过滤 (保持用户偏好).
    */
@@ -354,16 +341,12 @@ export const useSearchStore = defineStore('search', () => {
       .slice(0, SEARCH_LIMITS_VISIBLE.commandsMax)
   })
 
+  // 不再截断: 后端返回全量, vue-virtual-scroller 负责渲染.
   const filesAllUnfiltered = computed<SearchResult[]>(() => {
-    return filteredResults.value
-      .filter((r) => r.category === 'files')
-      .slice(0, query.value ? SEARCH_LIMITS.realtime : SEARCH_LIMITS.emptyQuery)
+    return filteredResults.value.filter((r) => r.category === 'files')
   })
 
   const allAppsItems = computed<SearchResult[]>(() => {
-    // 搜索时仍然按全量返回; 未搜索时 = 全量 (因为后端 ALL_FILES_EMPTY_QUERY_CAP
-    // 已限制 2000, 这里不再二次截断).
-    if (query.value) return allAppsSorted.value
     return allAppsSorted.value
   })
 
@@ -436,18 +419,9 @@ export const useSearchStore = defineStore('search', () => {
       kind: 'apps',
     })
 
-    // 6) 所有文件 - 受 fileVisibleLimit 控制 + 折叠影响 + 文件类型过滤
+    // 6) 所有文件 - 折叠影响 + 文件类型过滤 (无截断, vue-virtual-scroller 渲染)
     const allFiles = filesAllUnfiltered.value
-    let filesItems: SearchResult[]
-    let hiddenCount: number
-    if (q) {
-      filesItems = applyFileKindFilter(allFiles, fileKindFilter.value)
-      hiddenCount = 0
-    } else {
-      const limit = Math.min(fileVisibleLimit.value, SEARCH_LIMITS_VISIBLE.fileVisibleHardCap)
-      filesItems = applyFileKindFilter(allFiles.slice(0, limit), fileKindFilter.value)
-      hiddenCount = Math.max(0, allFiles.length - limit)
-    }
+    const filesItems = applyFileKindFilter(allFiles, fileKindFilter.value)
     out.push({
       id: GROUP_ID.files,
       title: '所有文件',
@@ -455,8 +429,6 @@ export const useSearchStore = defineStore('search', () => {
       visibleItems: isCollapsed(GROUP_ID.files) ? [] : filesItems,
       collapsed: isCollapsed(GROUP_ID.files),
       kind: 'files',
-      fileVisibleLimit: fileVisibleLimit.value,
-      hiddenCount,
     })
 
     return out
@@ -488,16 +460,6 @@ export const useSearchStore = defineStore('search', () => {
     if (next.has(id)) next.delete(id)
     else next.add(id)
     collapsedGroups.value = next
-  }
-
-  /**
-   * "所有文件" 分组增量展开: 每次 +50 个 (硬上限由 SEARCH_LIMITS_VISIBLE.fileVisibleHardCap 控制).
-   */
-  function showMoreFiles() {
-    fileVisibleLimit.value = Math.min(
-      fileVisibleLimit.value + SEARCH_LIMITS_VISIBLE.fileVisibleStep,
-      SEARCH_LIMITS_VISIBLE.fileVisibleHardCap,
-    )
   }
 
   function selectNext() {
@@ -665,6 +627,5 @@ export const useSearchStore = defineStore('search', () => {
     displayMax,
     toggleGroupCollapse,
     setFileKindFilter,
-    showMoreFiles,
   }
 })

@@ -1,6 +1,6 @@
 //! Tauri IPC Commands - 前端 ↔ 后端
 
-use crate::config::{ipc_events, search, window};
+use crate::config::{ipc_events, window};
 use crate::models::SearchAction;
 use crate::models::{CustomCommand, SearchResult, Settings};
 use crate::platform::windows::shell;
@@ -8,28 +8,28 @@ use crate::services::app_state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, LogicalSize, Manager, State};
 
+/// search_cmd 不再设置上限. 客户端可传 `options.limit` 截断 (兼容性保留),
+/// 但默认走 `u32::MAX` 让后端返回所有命中. 渲染侧由 vue-virtual-scroller
+/// 处理百万级数据, 不会因为 list 大而卡顿.
+///
+/// 注: 文件引擎空查询仍受 `search::ALL_FILES_EMPTY_QUERY_CAP` 实际限制
+/// (防止索引极大时单帧 IPC 阻塞, 详见 [file_search::FileSearchEngine::all_files]).
 #[tauri::command]
 pub async fn search_cmd(
     state: State<'_, Arc<AppState>>,
     query: String,
     options: Option<serde_json::Value>,
 ) -> Result<Vec<SearchResult>, String> {
-    // 实时搜索: 关键字搜索时 cap=200; 空查询 (首屏) cap=2000 让所有文件
-    // 分组在未输入关键字时也能展示完整索引列表 (受后端 ALL_FILES_EMPTY_QUERY_CAP
-    // = 500 实际限制, 2000 只是 IPC 层的最大可能上限).
-    //
-    // 客户端可通过 `options.limit` 覆盖默认上限 (用于 "显示更多" 增量加载).
     let limit = options
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
-        .map(|n| n.min(search::MAX_CLIENT_OVERRIDE as u64) as u32)
-        .unwrap_or(if query.is_empty() { search::EMPTY_QUERY_LIMIT } else { search::REALTIME_LIMIT });
+        .map(|n| n.min(u32::MAX as u64) as u32)
+        .unwrap_or(u32::MAX);
     let results = state.search_engine.search(&query, limit);
     Ok(results)
 }
 
-/// 分页搜索: 从 `after_id` 之后继续取 `limit` 条, 给前端"显示更多"用.
-/// 比单纯加大 search 限制更稳定, 不会一次性占用大块 IPC 带宽.
+/// 分页搜索: 兼容性保留, 给前端的"显示更多"用.
 #[tauri::command]
 pub async fn search_more_cmd(
     state: State<'_, Arc<AppState>>,
@@ -40,8 +40,8 @@ pub async fn search_more_cmd(
     let limit = options
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
-        .map(|n| n.min(search::LOAD_MORE_MAX as u64) as u32)
-        .unwrap_or(search::LOAD_MORE_LIMIT);
+        .map(|n| n.min(u32::MAX as u64) as u32)
+        .unwrap_or(200); // 默认 page size, 与旧 LOAD_MORE_LIMIT=50 接近
     let results = state.search_engine.search_after(&query, after_id, limit);
     Ok(results)
 }

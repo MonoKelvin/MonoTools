@@ -325,7 +325,6 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
         @hover="onHover"
         @contextmenu="handleContextMenu"
         @toggle-group="(id) => search.toggleGroupCollapse(id)"
-        @show-more-files="search.showMoreFiles"
       >
         <template #empty>
           <div class="empty-state">
