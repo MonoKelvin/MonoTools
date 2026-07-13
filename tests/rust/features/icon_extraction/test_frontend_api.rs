@@ -1,11 +1,23 @@
 use std::fs::{self, File};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use monotools_lib::platform::windows::{icon, shell};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
-const OUTPUT_DIR: &str = "tests/output/icons";
+/// 根目录下的 `tests/output/icons/` — 与 `test.rs` 的 `get_output_dir` 用同样的
+/// 显式绝对路径解析方式, 不依赖 cargo test 时的 CWD.
+///
+/// `env!("CARGO_MANIFEST_DIR")` = `src-tauri/`, `.parent()` = 仓库根,
+/// `.join("tests/output/icons")` = 绝对路径, 不管从哪个目录跑测试都正确.
+fn output_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("CARGO_MANIFEST_DIR has a parent (workspace root)")
+        .join("tests")
+        .join("output")
+        .join("icons")
+}
 
 fn collect_test_paths() -> Vec<(String, String)> {
     let mut paths: Vec<(String, String)> = Vec::new();
@@ -61,7 +73,8 @@ fn sanitize_filename(name: &str) -> String {
 }
 
 pub async fn run_frontend_api_test() {
-    fs::create_dir_all(OUTPUT_DIR).unwrap();
+    let output_dir = output_dir();
+    fs::create_dir_all(&output_dir).unwrap();
 
     let test_paths = collect_test_paths();
     println!("Testing {} paths with frontend API flow:", test_paths.len());
@@ -85,7 +98,7 @@ pub async fn run_frontend_api_test() {
                 let base64_str = BASE64.encode(&bytes);
                 
                 let sanitized_label = sanitize_filename(label);
-                let output_path = Path::new(OUTPUT_DIR).join(format!("{}.png", sanitized_label));
+                let output_path = output_dir.join(format!("{}.png", sanitized_label));
 
                 if let Ok(mut file) = File::create(&output_path) {
                     if file.write_all(&bytes).is_ok() {
@@ -163,7 +176,7 @@ pub async fn run_frontend_api_test() {
         }
     }
 
-    let report_path = Path::new(OUTPUT_DIR).join("report.txt");
+    let report_path = output_dir.join("report.txt");
     if let Ok(mut file) = File::create(&report_path) {
         writeln!(file, "Frontend API Icon Test Report").unwrap();
         writeln!(file, "=================================").unwrap();

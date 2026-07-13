@@ -160,23 +160,179 @@ fn log_icon_debug(stage: &str, path: &str, detail: &str) {
 
 /// 实际提取. 任意步骤失败 -> None (不抛错).
 ///
-/// size: 边长像素. 现在统一用 `icon_cfg::SIZE` (256), 但签名已抽象
-/// 以便未来 `IconExtractor` impl 走不同尺寸 (例如 macOS NSWorkspace
-/// 可按 16/32/64 任意).
+/// 4-tier 优先级链 (高分辨率原生 → 高质量缩放):
+/// - **Tier 1**: `SHGetImageList(SHIL_JUMBO)` + `IImageList2::GetIcon` — Vista+ 系统
+///   维护的 256x256 图像列表, 与 Windows 资源管理器/任务栏同一来源. Win 8.1+ 多数
+///   应用注册了真正的 256x256 图标, 这一步直接拿到**原生 256x256 HICON**, 0 锯齿.
+/// - **Tier 2**: `IShellItemImageFactory::GetImage(SIIGBF_ICONONLY)` —
+///   **不带** `SIIGBF_BIGGERSIZEOK` (不带强制缩放), 仅当返回位图实际尺寸 ==
+///   请求尺寸时使用, 否则视为 fallback. 解决旧版把 16x16 强制拉伸到 256x256
+///   造成全图模糊的问题.
+/// - **Tier 3**: `ExtractIconExW` (32x32) + HALFTONE 高质量拉伸. `SetStretchBltMode`
+///   + `HALFTONE` 让 32x32 → 256x256 用高质量插值, 不再是默认 nearest-neighbor
+///   锯齿.
+/// - **Tier 4**: `SHGetFileInfoW(SHGFI_LARGEICON)` + DrawIconEx + HALFTONE
+///   高质量拉伸, 兜底路径.
+///
+/// `size`: 边长像素. 统一用 `icon_cfg::SIZE` (256), 签名抽象以便未来
+/// macOS NSWorkspace 等 impl 走不同尺寸.
 #[cfg(windows)]
 fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
-    use windows::core::PCWSTR;
-    use windows::Win32::Graphics::Gdi::{
-        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GetObjectW, SelectObject,
-        BITMAP, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HBITMAP, HDC,
-    };
-    use windows::Win32::UI::Shell::{
-        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
-    };
-    use windows::Win32::UI::WindowsAndMessaging::{DestroyIcon, DrawIconEx, HICON};
+    use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
 
-    // 优先: IShellItemImageFactory — Windows Vista+ 推荐方式, 支持高分辨率图标
-    // 返回 HBITMAP, 直接读取像素数据
+    // Tier 1: SHIL_JUMBO 系统图像列表 (256x256 原生优先)
+    if let Some(hicon) = extract_hicon_via_shil_jumbo(path) {
+        if let Some(rgba) = draw_hicon_to_rgba(hicon, size) {
+            unsafe {
+                let _ = DestroyIcon(hicon);
+            }
+            if !is_blank_icon(&rgba) {
+                return encode_png(&rgba, size as u32, size as u32);
+            }
+        }
+        unsafe {
+            let _ = DestroyIcon(hicon);
+        }
+        log_icon_debug(
+            "tier1-failed",
+            &path.to_string_lossy(),
+            "SHIL_JUMBO returned icon but draw/blank-check failed",
+        );
+    }
+
+    // Tier 2: IShellItemImageFactory (无 BIGGERSIZEOK, 仅接受原生命尺寸)
+    if let Some(rgba) = extract_rgba_via_shell_item_factory(path, size) {
+        if !is_blank_icon(&rgba) {
+            return encode_png(&rgba, size as u32, size as u32);
+        }
+        log_icon_debug(
+            "tier2-blank",
+            &path.to_string_lossy(),
+            "IShellItemImageFactory returned blank icon",
+        );
+    }
+
+    // Tier 3/4: ExtractIconExW / SHGetFileInfoW + HALFTONE 高质量拉伸
+    if let Some(hicon) = get_hicon(path) {
+        if let Some(rgba) = draw_hicon_to_rgba(hicon, size) {
+            unsafe {
+                let _ = DestroyIcon(hicon);
+            }
+            if !is_blank_icon(&rgba) {
+                return encode_png(&rgba, size as u32, size as u32);
+            }
+        }
+        unsafe {
+            let _ = DestroyIcon(hicon);
+        }
+        log_icon_debug(
+            "tier3-4-failed",
+            &path.to_string_lossy(),
+            "ExtractIconExW/SHGetFileInfoW + HALFTONE draw returned blank/none",
+        );
+    }
+
+    None
+}
+
+/// Tier 1: 通过 `SHGetImageList(SHIL_JUMBO)` + `IImageList2::GetIcon` 拿到系统
+/// 为该 path 注册的**原生 256x256 HICON**.
+///
+/// 实现步骤:
+/// 1. `SHGetFileInfoW` 配合 `SHGFI_SYSICONINDEX` 拿到该 path 在系统图像列表中的
+///    索引 (`iIcon`).
+/// 2. `SHGetImageList(SHIL_JUMBO)` 拿到系统 256x256 图像列表 (`IImageList2`).
+/// 3. `IImageList2::GetIcon(iIcon, ILD_TRANSPARENT)` 拿到 HICON.
+///
+/// 任何一步失败都返回 `None`, 由 `extract_icon_windows` 继续 Tier 2/3/4.
+#[cfg(windows)]
+fn extract_hicon_via_shil_jumbo(path: &Path) -> Option<HICON> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
+    use windows::Win32::UI::Controls::{IImageList2, ILD_TRANSPARENT};
+    use windows::Win32::UI::Shell::{
+        SHGetFileInfoW, SHGetImageList, SHIL_JUMBO, SHFILEINFOW, SHGFI_SYSICONINDEX,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::HICON;
+
+    let wide_path: Vec<u16> = path
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    // Step 1: 拿该 path 在系统图像列表中的索引
+    let mut info: SHFILEINFOW = unsafe { std::mem::zeroed() };
+    let ok = unsafe {
+        SHGetFileInfoW(
+            PCWSTR(wide_path.as_ptr()),
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            Some(&mut info),
+            std::mem::size_of::<SHFILEINFOW>() as u32,
+            SHGFI_SYSICONINDEX,
+        )
+    };
+    if ok == 0 {
+        log_icon_debug(
+            "tier1-shiinfo-failed",
+            &path.to_string_lossy(),
+            "SHGetFileInfoW(SHGFI_SYSICONINDEX) returned 0",
+        );
+        return None;
+    }
+    let i_icon = info.iIcon;
+
+    // Step 2: 拿系统 256x256 图像列表 (Vista+ 提供, SHIL_JUMBO = 4)
+    let image_list: IImageList2 = match unsafe { SHGetImageList(SHIL_JUMBO as i32) } {
+        Ok(l) => l,
+        Err(e) => {
+            log_icon_debug(
+                "tier1-shil-jumbo-failed",
+                &path.to_string_lossy(),
+                &format!("SHGetImageList(SHIL_JUMBO) failed: {}", e),
+            );
+            return None;
+        }
+    };
+
+    // Step 3: 拿到原生 256x256 HICON
+    let hicon: HICON = match unsafe { image_list.GetIcon(i_icon, ILD_TRANSPARENT.0) } {
+        Ok(h) => h,
+        Err(e) => {
+            log_icon_debug(
+                "tier1-geticon-failed",
+                &path.to_string_lossy(),
+                &format!("IImageList2::GetIcon(i={}) failed: {}", i_icon, e),
+            );
+            return None;
+        }
+    };
+
+    // 校验 HICON 有效 (32-bit HICON, .0 is_invalid 判断)
+    if hicon.0.is_null() {
+        log_icon_debug(
+            "tier1-null-hicon",
+            &path.to_string_lossy(),
+            "IImageList2::GetIcon returned null HICON",
+        );
+        return None;
+    }
+
+    Some(hicon)
+}
+
+/// Tier 2: `IShellItemImageFactory` 不带 `SIIGBF_BIGGERSIZEOK`.
+///
+/// 不带 BIGGERSIZEOK 时, 系统返回"最接近请求尺寸的原生位图"; 实际尺寸若 != 请求
+/// 尺寸就放弃这一层 (return None), 避免 16x16 被强制放大. 这是修锯齿的关键.
+#[cfg(windows)]
+fn extract_rgba_via_shell_item_factory(path: &Path, size: i32) -> Option<Vec<u8>> {
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::DeleteObject;
+    use windows::Win32::UI::Shell::{
+        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY,
+    };
+
     let wide_path: Vec<u16> = path
         .to_string_lossy()
         .encode_utf16()
@@ -185,36 +341,114 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
 
     let shell_item: windows::core::Result<IShellItemImageFactory> =
         unsafe { SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None) };
-    if let Ok(shell_item) = shell_item {
-        let hbitmap = unsafe {
-            shell_item.GetImage(
-                windows::Win32::Foundation::SIZE { cx: size, cy: size },
-                SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK,
-            )
-        };
-        if let Ok(hbitmap) = hbitmap {
-            if !hbitmap.is_invalid() {
-                let rgba = extract_rgba_from_hbitmap(&hbitmap, size);
-                unsafe {
-                    let _ = DeleteObject(hbitmap.into());
-                }
-                if let Some(rgba) = rgba {
-                    if !is_blank_icon(&rgba) {
-                        return encode_png(&rgba, size as u32, size as u32);
-                    }
-                }
-            }
+    let shell_item = match shell_item {
+        Ok(s) => s,
+        Err(e) => {
+            log_icon_debug(
+                "tier2-shcreate-failed",
+                &path.to_string_lossy(),
+                &format!("SHCreateItemFromParsingName failed: {}", e),
+            );
+            return None;
         }
+    };
+
+    let hbitmap = unsafe {
+        shell_item.GetImage(
+            windows::Win32::Foundation::SIZE { cx: size, cy: size },
+            SIIGBF_ICONONLY, // 关键: 不带 BIGGERSIZEOK, 避免强制放大
+        )
+    };
+    let hbitmap = match hbitmap {
+        Ok(h) if !h.is_invalid() => h,
+        _ => {
+            log_icon_debug(
+                "tier2-getimage-failed",
+                &path.to_string_lossy(),
+                "IShellItemImageFactory::GetImage returned invalid hbitmap",
+            );
+            return None;
+        }
+    };
+
+    // 关键: 实际位图尺寸必须 == 请求尺寸, 否则视为这一层失败 (不强制放大).
+    // 此前使用 BIGGERSIZEOK 时, 系统会把 16x16 强制拉伸到 256x256 导致锯齿;
+    // 改用原生位图后, 小于 size 的位图直接放弃, 交给 Tier 3/4 处理.
+    let rgba = extract_rgba_from_hbitmap_strict(&hbitmap, size);
+    unsafe {
+        let _ = DeleteObject(hbitmap.into());
+    }
+    rgba
+}
+
+/// 从 HBITMAP 直接读取像素. **严格模式**: 实际位图尺寸必须 == size, 否则返回
+/// `None` (Tier 2 用此保证不接受拉伸位图).
+#[cfg(windows)]
+fn extract_rgba_from_hbitmap_strict(
+    hbitmap: &windows::Win32::Graphics::Gdi::HBITMAP,
+    size: i32,
+) -> Option<Vec<u8>> {
+    use windows::Win32::Graphics::Gdi::{BITMAP, GetObjectW};
+
+    let mut bmp: BITMAP = unsafe { std::mem::zeroed() };
+    let result = unsafe {
+        GetObjectW(
+            (*hbitmap).into(),
+            std::mem::size_of::<BITMAP>() as i32,
+            Some(&mut bmp as *mut _ as *mut _),
+        )
+    };
+    if result == 0 {
+        return None;
+    }
+    if bmp.bmBitsPixel != 32 {
+        return None;
+    }
+    // 严格: bmWidth/bmHeight 必须 == size, 不接受拉伸后的尺寸
+    if bmp.bmWidth != size || bmp.bmHeight.abs() != size {
+        log_icon_debug(
+            "tier2-strict-size-mismatch",
+            "<hbitmap>",
+            &format!(
+                "BITMAP size {}x{} != target {}x{}",
+                bmp.bmWidth, bmp.bmHeight.abs(), size, size
+            ),
+        );
+        return None;
     }
 
-    // 回退: get_hicon + DrawIconEx 传统方式
-    let hicon: HICON = get_hicon(path)?;
+    let byte_len = (size as usize) * (size as usize) * 4;
+    let mut rgba = Vec::with_capacity(byte_len);
+    unsafe {
+        let src = std::slice::from_raw_parts(bmp.bmBits as *const u8, byte_len);
+        for chunk in src.chunks_exact(4) {
+            rgba.push(chunk[2]);
+            rgba.push(chunk[1]);
+            rgba.push(chunk[0]);
+            rgba.push(chunk[3]);
+        }
+    }
+    Some(rgba)
+}
+
+/// Tier 3/4 共用: 把 `HICON` 绘制到 `size x size` 的 32-bit DIB section, 转 RGBA.
+///
+/// **关键**: 调用 `SetStretchBltMode(HALFTONE)` + `SetBrushOrgEx(0, 0, None)` 让
+/// GDI 拉伸时使用高质量插值 (类似双三次), 避免 32x32 → 256x256 时的 nearest-neighbor
+/// 锯齿.
+#[cfg(windows)]
+fn draw_hicon_to_rgba(
+    hicon: windows::Win32::UI::WindowsAndMessaging::HICON,
+    size: i32,
+) -> Option<Vec<u8>> {
+    use windows::Win32::Graphics::Gdi::{
+        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CreateCompatibleDC, CreateDIBSection,
+        DIB_RGB_COLORS, DeleteDC, DeleteObject, HDC, SelectObject, SetBrushOrgEx,
+        SetStretchBltMode, HALFTONE,
+    };
 
     let screen_dc: HDC = unsafe { CreateCompatibleDC(None) };
     if screen_dc.is_invalid() {
-        unsafe {
-            let _ = DestroyIcon(hicon);
-        }
         return None;
     }
 
@@ -239,37 +473,47 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
         )
     };
 
-    if section_hbm.is_err() || bits_ptr.is_null() {
-        log_icon_debug(
-            "create-dibsection-failed",
-            &path.to_string_lossy(),
-            "CreateDIBSection returned invalid",
-        );
-        unsafe {
-            let _ = DeleteDC(screen_dc);
-            let _ = DestroyIcon(hicon);
+    let section_hbm = match section_hbm {
+        Ok(h) if !bits_ptr.is_null() => h,
+        _ => {
+            unsafe {
+                let _ = DeleteDC(screen_dc);
+            }
+            return None;
         }
-        return None;
+    };
+
+    unsafe {
+        let _ = SelectObject(screen_dc, section_hbm.into());
     }
 
-    let section_hbm = section_hbm.unwrap();
-
-    let prev = unsafe { SelectObject(screen_dc, section_hbm.into()) };
-    let _ = prev;
+    // 关键: 高质量拉伸. HALFTONE 模式让 GDI 用类似双三次的算法拉伸 32x32 →
+    // 256x256, 消除默认拉伸的锯齿. SetBrushOrgEx(0,0) 是 HALFTONE 的配套调用,
+    // 没有它 HALFTONE 会产生奇怪的网格纹理.
+    unsafe {
+        let _ = SetStretchBltMode(screen_dc, HALFTONE);
+        let _ = SetBrushOrgEx(screen_dc, 0, 0, None);
+    }
 
     let di_flags = windows::Win32::UI::WindowsAndMessaging::DI_FLAGS(0x0003);
-    let draw_ok =
-        unsafe { DrawIconEx(screen_dc, 0, 0, hicon, size, size, 0, None, di_flags).is_ok() };
+    let draw_ok = unsafe {
+        windows::Win32::UI::WindowsAndMessaging::DrawIconEx(
+            screen_dc,
+            0,
+            0,
+            hicon,
+            size,
+            size,
+            0,
+            None,
+            di_flags,
+        )
+    }
+    .is_ok();
     if !draw_ok {
-        log_icon_debug(
-            "draw-icon-failed",
-            &path.to_string_lossy(),
-            "DrawIconEx returned err",
-        );
         unsafe {
             let _ = DeleteObject(section_hbm.into());
             let _ = DeleteDC(screen_dc);
-            let _ = DestroyIcon(hicon);
         }
         return None;
     }
@@ -289,58 +533,9 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
     unsafe {
         let _ = DeleteObject(section_hbm.into());
         let _ = DeleteDC(screen_dc);
-        let _ = DestroyIcon(hicon);
     }
 
-    if is_blank_icon(&rgba) {
-        log_icon_debug(
-            "blank-icon-rejected",
-            &path.to_string_lossy(),
-            "icon appears blank",
-        );
-        return None;
-    }
-
-    /// 从 HBITMAP 直接提取 RGBA 像素数据
-    fn extract_rgba_from_hbitmap(hbitmap: &HBITMAP, size: i32) -> Option<Vec<u8>> {
-        let mut bmp: BITMAP = unsafe { std::mem::zeroed() };
-        let result = unsafe {
-            GetObjectW(
-                (*hbitmap).into(),
-                std::mem::size_of::<BITMAP>() as i32,
-                Some(&mut bmp as *mut _ as *mut _),
-            )
-        };
-        if result == 0 {
-            return None;
-        }
-
-        if bmp.bmBitsPixel != 32 {
-            return None;
-        }
-
-        if bmp.bmWidth != size || bmp.bmHeight.abs() != size {
-            return None;
-        }
-
-        let byte_len = (size as usize) * (size as usize) * 4;
-        let mut rgba = Vec::with_capacity(byte_len);
-
-        unsafe {
-            let src = std::slice::from_raw_parts(bmp.bmBits as *const u8, byte_len);
-            for chunk in src.chunks_exact(4) {
-                rgba.push(chunk[2]);
-                rgba.push(chunk[1]);
-                rgba.push(chunk[0]);
-                rgba.push(chunk[3]);
-            }
-        }
-
-        Some(rgba)
-    }
-
-    // 7) PNG 编码
-    encode_png(&rgba, size as u32, size as u32)
+    Some(rgba)
 }
 
 /// 从路径获取 HICON. 优先 ExtractIconExW, 回退到 SHGetFileInfoW.

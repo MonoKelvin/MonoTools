@@ -12,7 +12,16 @@ export const ICON_CONFIG = {
   /**
    * 图标像素尺寸. 与后端 `config::icon::SIZE` 对齐, 两者必须一致.
    * 改这里记得同步改后端, 否则会触发 base64 长度校验失败.
-   * 使用 256x256 获取高质量图标, 前端可按需缩放显示.
+   *
+   * 后端提取策略 (`platform/windows/icon.rs::extract_icon_windows`)
+   * 按"高分辨率原生 → 高质量缩放"4-tier 优先级:
+   * - Tier 1: `SHGetImageList(SHIL_JUMBO)` + `IImageList2::GetIcon` — Vista+
+   *   系统 256x256 图像列表, 与 Windows 资源管理器任务栏同一来源; Win 8.1+
+   *   多数应用注册了真正的 256x256, 这一步直接拿到原生 256x256 HICON, 0 锯齿.
+   * - Tier 2: `IShellItemImageFactory::GetImage(SIIGBF_ICONONLY)` — 不带
+   *   `SIIGBF_BIGGERSIZEOK`, 严格只接受原生命尺寸位图, 避免强制放大.
+   * - Tier 3/4: `ExtractIconExW` / `SHGetFileInfoW` + `SetStretchBltMode(HALFTONE)`
+   *   高质量 GDI 拉伸, 避免默认 nearest-neighbor 锯齿.
    */
   size: 256,
 
