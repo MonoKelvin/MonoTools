@@ -380,28 +380,26 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
   position: relative;
 }
 
-/* 容器: 黑白灰 + 极轻玻璃 + 圆角 (上对齐, 无多余装饰) */
+/* 容器: Win11 使用透明背景让 Mica 效果显示，Win10 使用 CSS backdrop-filter */
 .search-container {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background: transparent;
   border-radius: 0;
-  border-top: 1px solid var(--glass-border);
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
   overflow: hidden;
   /* 220ms 对齐 ICON_CONFIG.fadeInMs (见 @/config/icon.ts). 改 SCSS 同步改 TS. */
   animation: search-container-fade-in 220ms var(--ease-out);
 }
 
-/* 当 Mica 不支持 (Win10 及以下) 时, 退化为柔化背景 */
-@supports not ((backdrop-filter: blur(40px)) or (-webkit-backdrop-filter: blur(40px))) {
-  .search-container {
-    background: var(--canvas);
-  }
+/* Win10 使用纯 CSS backdrop-filter 实现毛玻璃效果 */
+.os-win10 .search-container {
+  background: rgba(18, 18, 21, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
 }
 
 @keyframes search-container-fade-in {

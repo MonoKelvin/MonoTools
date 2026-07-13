@@ -196,24 +196,63 @@ const itemVirtualIndexes = computed<Int32Array>(() => {
  * `InstanceType` 拿到的是 DefineComponent 的 props/ctx 类型, 不包含实例方法.
  */
 const scrollerRef = ref<RecycleScrollerInstance | null>(null)
+const shouldScroll = ref(true)
+const isHoverTriggered = ref(false)
 
-/**
- * 滚动到 selectedIndex 对应的 item 行.
- *
- * 关键: 不再用 `querySelector + scrollIntoView` (虚拟列表里元素可能不在 DOM),
- * 改用 RecycleScroller 自带的 `scrollToItem(virtualIdx)`.
- *
- * 注: RecycleScroller 的 `scrollToItem` 内部使用 `scrollToPosition` (像素),
- * 固定 44px 行高 × virtualIdx 即可, 不需要测高度.
- */
+function setScrollEnabled(enabled: boolean) {
+  shouldScroll.value = enabled
+}
+
+function setHoverTriggered(hovering: boolean) {
+  isHoverTriggered.value = hovering
+}
+
+function isItemVisible(virtualIdx: number): boolean {
+  if (!scrollerRef.value) return true
+  const el = scrollerRef.value.$el as HTMLElement
+  if (!el) return true
+
+  const scrollTop = el.scrollTop
+  const viewportHeight = el.clientHeight
+  const itemTop = virtualIdx * props.itemHeight
+
+  return itemTop >= scrollTop && itemTop + props.itemHeight <= scrollTop + viewportHeight
+}
+
 function scrollToSelected() {
+  if (!shouldScroll.value) return
+
   const target = props.selectedIndex
   if (target < 0 || !scrollerRef.value) return
   const map = itemVirtualIndexes.value
   if (target >= map.length) return
   const virtualIdx = map[target]
   if (virtualIdx == null) return
-  scrollerRef.value.scrollToItem(virtualIdx)
+
+  if (isHoverTriggered.value) {
+    return
+  }
+
+  if (isItemVisible(virtualIdx)) {
+    return
+  }
+
+  const el = scrollerRef.value.$el as HTMLElement
+  if (!el) {
+    scrollerRef.value.scrollToItem(virtualIdx)
+    return
+  }
+
+  const scrollTop = el.scrollTop
+  const viewportHeight = el.clientHeight
+  const itemHeight = props.itemHeight
+  const itemTop = virtualIdx * itemHeight
+
+  if (itemTop < scrollTop) {
+    scrollerRef.value.scrollToItem(virtualIdx, 'start')
+  } else {
+    scrollerRef.value.scrollToItem(virtualIdx, 'end')
+  }
 }
 
 watch(() => props.selectedIndex, (v) => {
@@ -234,11 +273,10 @@ watch(() => (props.groups ?? []).map((g) => `${g.id}:${g.collapsed}`).join('|'),
 })
 
 watch(
-  () => props.groups,
+  () => props.query,
   () => {
     if (scrollerRef.value) scrollerRef.value.scrollToPosition(0)
   },
-  { deep: false },
 )
 
 // === 文件类型过滤 ===
@@ -363,15 +401,34 @@ const isLoading = computed(() => props.loading && props.hasQuery)
 const nothingNow = computed(() => !props.loading && virtualRows.value.length === 0)
 
 /** 单击 → 只更新 selectedIndex (无副作用). 双击 → 真正打开. */
-function onPickItem(item: SearchResult) {
+function onPickItem(item: SearchResult, event: MouseEvent) {
+  const idx = search.displayList.findIndex((r) => r.id === item.id)
+  if (idx >= 0) {
+    search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
+  }
   emit('select', item)
+
+  const virtualIdx = virtualRows.value.findIndex(row =>
+    row.kind === 'item' && row.result.id === item.id
+  )
+
+  if (virtualIdx >= 0 && scrollerRef.value && !isItemVisible(virtualIdx)) {
+    scrollerRef.value.scrollToItem(virtualIdx)
+  }
 }
 
 function onOpenItem(item: SearchResult) {
   emit('open', item)
 }
 
-function onItemHover(idx: number) { emit('hover', idx) }
+function onItemHover(idx: number) {
+  isHoverTriggered.value = true
+  emit('hover', idx)
+}
+
+function onItemLeave() {
+  isHoverTriggered.value = false
+}
 
 /** 切换分组折叠: 通知 store. */
 function onToggleGroup(id: GroupId) {
@@ -492,12 +549,16 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
         <div
           v-else
           class="vg__row"
-          :class="{ 'vg__row--active': item.globalIndex === selectedIndex }"
+          :class="{
+            'vg__row--active': item.globalIndex === selectedIndex,
+            'vg__row--selected': search.isSelected(item.result.id)
+          }"
           :data-global-idx="item.globalIndex"
           :data-group-kind="item.groupKind"
-          @click="onPickItem(item.result)"
+          @click="(e) => onPickItem(item.result, e)"
           @dblclick="onOpenItem(item.result)"
-          @mouseover="onItemHover(item.globalIndex)"
+          @mouseenter="onItemHover(item.globalIndex)"
+          @mouseleave="onItemLeave"
           @contextmenu.prevent="(e) => emit('contextmenu', e, item.result)"
         >
           <AppResultItem
@@ -524,7 +585,9 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   min-height: 0;
   position: relative;
   overflow: hidden;
-  padding: 4px 10px 0 10px;
+  padding: 4px 4px 0 10px;
+  display: flex;
+  flex-direction: column;
 }
 
 /* RecycleScroller 自身带 overflow:auto, 不需要再设.
@@ -533,6 +596,33 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   width: 100%;
   scrollbar-gutter: stable;
   scroll-behavior: smooth;
+  flex: 1;
+  min-height: 0;
+  padding-right: 6px;
+}
+
+/* 自定义滚动条样式 */
+.vg__scroller::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.vg__scroller::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+  transition: background var(--dur-fast) var(--ease-out);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.vg__scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.vg__scroller::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* === 分组头行: 44px 高, 与 item 行同高. === */
@@ -719,6 +809,13 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   overflow: visible;
 }
 
+.os-win10 .vg__filter-panel {
+  background: rgba(28, 28, 32, 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border-default);
+}
+
 .vg__filter-panel--down {
   top: calc(100% + 8px);
   right: 0;
@@ -892,6 +989,18 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
 .vg__row--active:hover {
   background: var(--list-selected-bg);
   filter: brightness(1.1);
+}
+
+.vg__row--selected {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.vg__row--selected:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.vg__row--selected.vg__row--active {
+  background: var(--list-selected-bg);
 }
 
 /* === 加载 / 空态 === */

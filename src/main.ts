@@ -3,6 +3,21 @@ import App from './App.vue'
 
 import './assets/styles/main.scss'
 
+function detectWindowsVersion(): string | null {
+    const ua = navigator.userAgent
+    const match = ua.match(/Windows NT (\d+\.\d+)/)
+    if (!match) return null
+    const version = parseFloat(match[1])
+    if (version < 10.0) return 'win8'
+    if (version === 10.0) return 'win10'
+    return 'win11'
+}
+
+const winVersion = detectWindowsVersion()
+if (winVersion === 'win10') {
+    document.documentElement.classList.add('os-win10')
+}
+
 import PrimeVue from 'primevue/config'
 import Aura from '@primeuix/themes/aura'
 import Tooltip from 'primevue/tooltip'
@@ -17,14 +32,14 @@ const app = createApp(App)
 app.use(pinia)
 app.use(router)
 app.use(PrimeVue, {
-  theme: {
-    preset: Aura,
-    options: {
-      darkModeSelector: '.theme-dark, :root',
-      cssLayer: false,
+    theme: {
+        preset: Aura,
+        options: {
+            darkModeSelector: '.theme-dark, :root',
+            cssLayer: false,
+        },
     },
-  },
-  ripple: true,
+    ripple: true,
 })
 app.directive('tooltip', Tooltip)
 
@@ -39,22 +54,22 @@ app.directive('tooltip', Tooltip)
  * 不污染线上 bundle 的运行时.
  */
 if (import.meta.env.DEV) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(window as any).__iconDebug = {
-    enable: () => useAppIcon().setDebug(true),
-    disable: () => useAppIcon().setDebug(false),
-    dump: () => {
-      dumpIconTraceSummary()
-    },
-    reset: () => {
-      resetIconTrace()
-    },
-  }
-  // eslint-disable-next-line no-console
-  console.info(
-    '[icon-debug] window.__iconDebug 已挂载; ' +
-      '在控制台调用 __iconDebug.dump() 查看图标加载分布.',
-  )
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ; (window as any).__iconDebug = {
+        enable: () => useAppIcon().setDebug(true),
+        disable: () => useAppIcon().setDebug(false),
+        dump: () => {
+            dumpIconTraceSummary()
+        },
+        reset: () => {
+            resetIconTrace()
+        },
+    }
+    // eslint-disable-next-line no-console
+    console.info(
+        '[icon-debug] window.__iconDebug 已挂载; ' +
+        '在控制台调用 __iconDebug.dump() 查看图标加载分布.',
+    )
 }
 
 app.mount('#app')

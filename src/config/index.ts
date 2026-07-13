@@ -24,4 +24,5 @@ export {
 export {
   SEARCH_DEBOUNCE_MS,
   SEARCH_LIMITS_VISIBLE,
+  SEARCH_LIMITS,
 } from './search'

@@ -121,6 +121,16 @@ const bodyMaxHeight = computed(() => {
   overflow: hidden;
 }
 
+.os-win10 .mt-modal {
+  --mt-modal-bg: rgb(28 28 32 / 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border-default);
+  box-shadow:
+    0 12px 32px rgba(0, 0, 0, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
 .mt-modal__header {
   display: flex;
   align-items: center;

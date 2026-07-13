@@ -252,6 +252,13 @@ input, textarea {
   border: 1px solid var(--glass-border);
 }
 
+.os-win10 .glass {
+  background: rgba(28, 28, 32, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-color: var(--border-subtle);
+}
+
 .muted { color: var(--text-secondary); }
 .dim { color: var(--text-tertiary); }
 .mono { font-family: var(--font-mono); }

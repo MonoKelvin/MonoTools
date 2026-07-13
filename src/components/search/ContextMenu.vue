@@ -130,6 +130,14 @@ onBeforeUnmount(() => {
   backdrop-filter: blur(20px);
 }
 
+.os-win10 .context-menu {
+  background: rgba(28, 28, 32, 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border-default);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
 .context-menu__item {
   display: flex;
   align-items: center;

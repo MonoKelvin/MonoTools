@@ -57,6 +57,13 @@ pub mod search {
     /// 文件搜索引擎空查询返回上限 (实际命中数, 防止索引极大时单帧 IPC 阻塞).
     pub const ALL_FILES_EMPTY_QUERY_CAP: u32 = 500;
 
+    /// 默认搜索返回条数上限. 与前端 `SEARCH_LIMITS.defaultLimit` 同步.
+    pub const DEFAULT_LIMIT: u32 = 200;
+    /// 空查询时返回条数上限. 与前端 `SEARCH_LIMITS.emptyQueryLimit` 同步.
+    pub const EMPTY_QUERY_LIMIT: u32 = 2000;
+    /// 最大允许返回条数. 与前端 `SEARCH_LIMITS.maxLimit` 同步.
+    pub const MAX_LIMIT: u32 = 2000;
+
     /// 应用索引扫描目录最大深度.
     pub const APP_SCAN_MAX_DEPTH: usize = 5;
     /// 空查询时应用的兜底分数.

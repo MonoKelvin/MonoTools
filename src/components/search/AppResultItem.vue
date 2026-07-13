@@ -142,24 +142,6 @@ const tooltipOptions = computed(() => {
   background: var(--list-selected-bg);
 }
 
-.app-result-item--active::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow);
-  animation: app-active-bar-in 280ms var(--ease-spring);
-}
-
-@keyframes app-active-bar-in {
-  0% { transform: scaleY(0.4); opacity: 0; }
-  100% { transform: scaleY(1); opacity: 1; }
-}
-
 .app-result-item__icon {
   flex-shrink: 0;
   width: 28px;

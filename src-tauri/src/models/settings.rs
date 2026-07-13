@@ -38,7 +38,7 @@ pub struct Settings {
 }
 
 fn default_pin_to_top() -> bool {
-    true
+    false
 }
 
 fn default_search_roots() -> Vec<PathBuf> {

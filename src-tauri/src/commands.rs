@@ -8,9 +8,9 @@ use crate::services::app_state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, LogicalSize, Manager, State};
 
-/// search_cmd 不再设置上限. 客户端可传 `options.limit` 截断 (兼容性保留),
-/// 但默认走 `u32::MAX` 让后端返回所有命中. 渲染侧由 vue-virtual-scroller
-/// 处理百万级数据, 不会因为 list 大而卡顿.
+/// search_cmd 设置默认返回限制, 避免一次性返回过多结果导致 IPC 序列化阻塞.
+/// 客户端可传 `options.limit` 覆盖此值, 虚拟滚动列表可通过 search_more_cmd 分页加载更多.
+/// 渲染侧由 vue-virtual-scroller 处理百万级数据, 不会因为 list 大而卡顿.
 ///
 /// 注: 文件引擎空查询仍受 `search::ALL_FILES_EMPTY_QUERY_CAP` 实际限制
 /// (防止索引极大时单帧 IPC 阻塞, 详见 [file_search::FileSearchEngine::all_files]).
@@ -20,11 +20,16 @@ pub async fn search_cmd(
     query: String,
     options: Option<serde_json::Value>,
 ) -> Result<Vec<SearchResult>, String> {
+    let default_limit = if query.is_empty() {
+        crate::config::search::EMPTY_QUERY_LIMIT
+    } else {
+        crate::config::search::DEFAULT_LIMIT
+    };
     let limit = options
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
-        .map(|n| n.min(u32::MAX as u64) as u32)
-        .unwrap_or(u32::MAX);
+        .map(|n| n.min(crate::config::search::MAX_LIMIT as u64) as u32)
+        .unwrap_or(default_limit);
     let results = state.search_engine.search(&query, limit);
     Ok(results)
 }
@@ -384,10 +389,12 @@ pub async fn set_pin_top(
         .map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window("search") {
         let _ = w.set_always_on_top(value);
-        // 置顶时立即显示并聚焦窗口
+        // 置顶时立即显示并聚焦窗口，取消置顶时立即隐藏窗口
         if value {
             let _ = w.show();
             let _ = w.set_focus();
+        } else {
+            let _ = w.hide();
         }
     }
     Ok(())
@@ -495,8 +502,8 @@ pub async fn dispatch_command(
 pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
-    let bytes = crate::platform::windows::icon::get_or_extract_cached(&path)
-        .map_err(|e| e.to_string())?;
+    let bytes =
+        crate::platform::windows::icon::get_or_extract_cached(&path).map_err(|e| e.to_string())?;
 
     Ok(bytes.map(|v| BASE64.encode(&v)))
 }
@@ -514,8 +521,8 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     let mut out: Vec<Option<String>> = Vec::with_capacity(paths.len());
     for p in &paths {
-        let bytes = crate::platform::windows::icon::get_or_extract_cached(p)
-            .map_err(|e| e.to_string())?;
+        let bytes =
+            crate::platform::windows::icon::get_or_extract_cached(p).map_err(|e| e.to_string())?;
         out.push(bytes.map(|v| BASE64.encode(&v)));
     }
     log::info!(

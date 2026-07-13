@@ -231,6 +231,16 @@ onBeforeUnmount(() => {
   user-select: none;
 }
 
+.os-win10 .mt-menu__content {
+  --mt-menu-bg: rgb(28 28 32 / 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border-color: var(--border-default);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.4),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
 .mt-menu__list {
   list-style: none;
   margin: 0;

@@ -44,6 +44,10 @@ pub mod app {
                                     return;
                                 }
                             }
+                            let settings = state.settings_repo.get();
+                            if settings.pin_to_top {
+                                return;
+                            }
                         }
                         let _ = window.hide();
                     }
@@ -54,40 +58,28 @@ pub mod app {
                 log::info!("[boot] setup: enter");
                 let app_handle = app.handle().clone();
 
-                // === 应用原生 Mica / Tabbed 效果 ===
-                // tauri.conf.json 已配置 windowEffects, 但为兼容性:
-                //  - Win10 走模糊
-                //  - Win11 21H2+ 走 Mica (DWMSBT_MAINWINDOW)
-                // 这里额外补一次设置以确保生效 (Tauri 2.x 在 setup 阶段 set_effects 仍可用)
+                // === 应用毛玻璃效果 ===
+                // Win11 使用 window-vibrancy 的 Mica 效果 (性能最好)
+                // Win10 使用纯 CSS backdrop-filter (避免 window-vibrancy 的性能问题)
                 #[cfg(windows)]
                 {
                     if let Some(window) = app.get_webview_window("search") {
-                        use tauri::window::{EffectsBuilder, Effect};
+                        let (major, minor) = unsafe {
+                            let os_version = windows_sys::Win32::System::SystemInformation::GetVersion();
+                            ((os_version >> 8) & 0xFF, (os_version >> 16) & 0xFF)
+                        };
 
-                        // 优先 Acrylic -> Tabbed -> Blur
-                        // Mica 需要 transparent: true, 但 dev 模式下 WebView2 在透明窗口中渲染异常,
-                        // 改用 Acrylic 效果 (可在不透明窗口上启用, 仅 Win11 22H2+ 完美支持)
-                        let effects = EffectsBuilder::new()
-                            .effects(vec![
-                                Effect::Acrylic,
-                                Effect::Tabbed,
-                                Effect::Blur,
-                            ])
-                            .radius(20.0)
-                            .state(tauri::window::EffectState::Active)
-                            .build();
-
-                        if let Err(e) = window.set_effects(effects) {
-                            log::warn!("[effects] set_effects 失败: {e}, 尝试 DWM API");
-                            // 退化到 DWM API
-                            use crate::platform::windows::mica;
-                            use windows_sys::Win32::Foundation::HWND;
-                            if let Ok(hwnd_raw) = window.hwnd() {
-                                let hwnd = hwnd_raw.0 as HWND;
-                                mica::enable_acrylic(hwnd);
+                        if major >= 10 && minor >= 0 && (major > 10 || minor >= 22000) {
+                            match window_vibrancy::apply_mica(&window, None) {
+                                Ok(_) => {
+                                    log::info!("[effects] window-vibrancy mica 效果已应用 (Win11+)");
+                                }
+                                Err(e) => {
+                                    log::warn!("[effects] window-vibrancy apply_mica 失败: {e}, 回退到 CSS backdrop-filter");
+                                }
                             }
                         } else {
-                            log::info!("[effects] Acrylic/Tabbed/Blur 效果已应用");
+                            log::info!("[effects] Win10 环境，使用 CSS backdrop-filter 实现毛玻璃效果");
                         }
                     }
                 }
@@ -142,6 +134,13 @@ pub mod app {
                                     }
                                     if let Err(e) = window.set_always_on_top(next) {
                                         log::warn!("set_always_on_top 失败: {e}");
+                                    }
+                                    // 置顶时立即显示并聚焦窗口，取消置顶时立即隐藏窗口
+                                    if next {
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                    } else {
+                                        let _ = window.hide();
                                     }
                                     // 同步菜单复选框状态
                                     let _ = pin_item.set_checked(next);
@@ -303,28 +302,30 @@ pub mod app {
                     let start = std::time::Instant::now();
                     let app_for_progress = app_handle_for_index.clone();
                     let res = file_search_clone
-                        .build_index_with_volume_progress(move |volume, idx, cumulative, total_volumes| {
-                            let drive = crate::platform::windows::usn::drive_label(volume);
-                            let msg = if total_volumes == 0 {
-                                format!("正在索引 {}", drive)
-                            } else {
-                                format!(
-                                    "正在索引 {}（{}/{}） — 已累计 {} 个文件",
-                                    drive, idx, total_volumes, cumulative
-                                )
-                            };
-                            let _ = app_for_progress.emit(
-                                "index_progress",
-                                serde_json::json!({
-                                    "status": "building",
-                                    "message": msg,
-                                    "files": cumulative,
-                                    "volumes": total_volumes,
-                                    "current_volume": drive,
-                                    "current_index": idx,
-                                }),
-                            );
-                        })
+                        .build_index_with_volume_progress(
+                            move |volume, idx, cumulative, total_volumes| {
+                                let drive = crate::platform::windows::usn::drive_label(volume);
+                                let msg = if total_volumes == 0 {
+                                    format!("正在索引 {}", drive)
+                                } else {
+                                    format!(
+                                        "正在索引 {}（{}/{}） — 已累计 {} 个文件",
+                                        drive, idx, total_volumes, cumulative
+                                    )
+                                };
+                                let _ = app_for_progress.emit(
+                                    "index_progress",
+                                    serde_json::json!({
+                                        "status": "building",
+                                        "message": msg,
+                                        "files": cumulative,
+                                        "volumes": total_volumes,
+                                        "current_volume": drive,
+                                        "current_index": idx,
+                                    }),
+                                );
+                            },
+                        )
                         .await;
                     match res {
                         Err(e) => {

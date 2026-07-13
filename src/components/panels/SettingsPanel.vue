@@ -13,7 +13,7 @@ const newKey = ref('')
 const recording = ref(false)
 const message = ref('')
 const savingPin = ref(false)
-const pinToTop = ref(true)
+const pinToTop = ref(false)
 
 const hotkey = computed({
   get: () => newKey.value || settingsStore.settings.hotkey,
@@ -32,12 +32,15 @@ async function togglePin(value: boolean) {
   if (isTauri) {
     try {
       await pinTopApi.set(value)
-      if (value) {
-        const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+      const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
         const win = WebviewWindow.getCurrent()
-        try { await win.show(); await win.setFocus(); await win.setAlwaysOnTop(true) }
-        catch {}
-      }
+        if (value) {
+          try { await win.show(); await win.setFocus(); await win.setAlwaysOnTop(true) }
+          catch {}
+        } else {
+          try { await win.hide() }
+          catch {}
+        }
     } catch {}
   }
   try { await settingsStore.update({ pinToTop: value }) }
