@@ -505,31 +505,15 @@ pub async fn dispatch_command(
 pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
-    log::debug!("[icon-ipc] get_app_icon called for path={}", path);
-
     let resolved_path =
         crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(&path))
             .unwrap_or(std::path::PathBuf::from(&path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
-
-    if resolved_path_str != path {
-        log::debug!(
-            "[icon-ipc] resolved .lnk from {} to {}",
-            path,
-            resolved_path_str
-        );
-    }
-
     let bytes = crate::platform::windows::icon::get_or_extract_cached(&resolved_path_str)
         .map_err(|e| e.to_string())?;
 
     if let Some(ref b) = bytes {
         let base64_str = BASE64.encode(b);
-        log::debug!(
-            "[icon-ipc] extracted successfully, bytes={}, base64_length={}",
-            b.len(),
-            base64_str.len()
-        );
         Ok(Some(base64_str))
     } else {
         log::debug!(
@@ -588,4 +572,27 @@ pub async fn pin_item(state: State<'_, Arc<AppState>>, id: String) -> Result<(),
 pub async fn unpin_item(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
     state.pin_repo.remove(&id);
     Ok(())
+}
+
+/// 打开文件所在位置 (在资源管理器中选中文件).
+#[tauri::command]
+pub async fn open_file_location(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    crate::platform::windows::shell::open_path(&p).map_err(|e| e.to_string())
+}
+
+/// 显示文件属性对话框.
+#[tauri::command]
+pub async fn show_file_properties(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    crate::platform::windows::shell::show_file_properties(&p).map_err(|e| e.to_string())
+}
+
+/// 删除文件到回收站.
+///
+/// 注意: Windows 上会弹出确认对话框; 非 Windows 平台可能直接永久删除.
+#[tauri::command]
+pub async fn delete_file_to_recycle_bin(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    crate::platform::windows::shell::delete_to_recycle_bin(&p).map_err(|e| e.to_string())
 }

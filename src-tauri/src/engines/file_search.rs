@@ -79,7 +79,10 @@ impl FileSearchEngine {
      *    在后台 `spawn_blocking` 中调用。
      */
     pub fn new_with_db_path_and_roots(db_path: PathBuf, roots: Vec<PathBuf>) -> Result<Self> {
-        log::info!("[boot] FileSearchEngine::new 入口 (路径: {:?}, in-memory 占位)", db_path);
+        log::info!(
+            "[boot] FileSearchEngine::new 入口 (路径: {:?}, in-memory 占位)",
+            db_path
+        );
         // 注意: 这里**不**创建磁盘 DB 的父目录, 把所有磁盘 I/O 推迟到 ensure_db().
         // (create_dir_all 在已有目录上是廉价的, 但严格遵循"构造零 I/O"原则更安全。)
 
@@ -99,9 +102,7 @@ impl FileSearchEngine {
             // 注意：new_lazy 不会失败，所以 unwrap() 是安全的。
             Some(NtfsIndexer::new_lazy().expect("NtfsIndexer::new_lazy 不可能失败"))
         };
-        log::info!(
-            "[boot] FileSearchEngine 构造完成(尚未枚举盘符; 懒枚举模式; 尚未打开磁盘 DB)"
-        );
+        log::info!("[boot] FileSearchEngine 构造完成(尚未枚举盘符; 懒枚举模式; 尚未打开磁盘 DB)");
 
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -177,8 +178,12 @@ impl FileSearchEngine {
             Ok(c) => c,
             Err(_) => return false,
         };
-        let ver: i64 = conn.query_row("PRAGMA user_version", [], |r| r.get(0)).unwrap_or(0);
-        let psize: i64 = conn.query_row("PRAGMA page_size", [], |r| r.get(0)).unwrap_or(0);
+        let ver: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap_or(0);
+        let psize: i64 = conn
+            .query_row("PRAGMA page_size", [], |r| r.get(0))
+            .unwrap_or(0);
         ver < fs_cfg::SCHEMA_VERSION || psize != fs_cfg::REQUIRED_PAGE_SIZE
     }
 
@@ -319,10 +324,11 @@ impl FileSearchEngine {
         let now = std::time::Instant::now();
 
         // 把回调装入 Arc<Mutex<Box<dyn FnMut + Send>>> ,以便在 spawn_blocking 闭包内调用。
-        let cb_slot: std::sync::Arc<std::sync::Mutex<Box<dyn FnMut(&str, usize, usize, usize) + Send>>> =
-            std::sync::Arc::new(std::sync::Mutex::new(Box::new(move |v, i, c, t| {
-                on_volume(v, i, c, t);
-            })));
+        let cb_slot: std::sync::Arc<
+            std::sync::Mutex<Box<dyn FnMut(&str, usize, usize, usize) + Send>>,
+        > = std::sync::Arc::new(std::sync::Mutex::new(Box::new(move |v, i, c, t| {
+            on_volume(v, i, c, t);
+        })));
 
         // 同理把 self 的 Arc 套进来。调用方会传入 &Self (生命周期 = future lifetime),
         // 因为 FileSearchEngine 内部所有字段都已 Arc/Sync, 我们用裸指针技巧安全重建一个 &'static Self,
@@ -353,7 +359,11 @@ impl FileSearchEngine {
 
         let _ = cb_slot; // not used after spawn_blocking
 
-        log::info!("文件索引构建完成: {} 个文件, 耗时 {:?}", total, now.elapsed());
+        log::info!(
+            "文件索引构建完成: {} 个文件, 耗时 {:?}",
+            total,
+            now.elapsed()
+        );
         *self.is_indexing.lock() = false;
         Ok(())
     }
@@ -374,35 +384,126 @@ impl FileSearchEngine {
         // 首次进入索引构建时, 懒打开磁盘 DB (在 spawn_blocking 线程中执行, 不阻塞 UI)。
         self.ensure_db()?;
 
-        // === 1. 准备阶段: 清空表 + 开启事务 + 卸载 FTS5 触发器 ===
+        // === 1. 准备阶段: 清空表 + 卸载 FTS5 触发器 ===
         {
-            let mut conn = self.db.lock();
+            let conn = self.db.lock();
             conn.execute("DELETE FROM files", [])?;
             conn.execute("DELETE FROM dirs", [])?;
-            self.begin_batch_insert(&mut conn)?;
+            // 卸载 FTS5 触发器: 批量插入阶段不更新 FTS, 最后统一 rebuild, 性能更好.
+            conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
+            conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
+            conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
+            conn.execute("PRAGMA synchronous=OFF", [])?;
             drop(conn);
-            log::info!("[idx] 已清空 files/dirs, 事务已开启, FTS5 触发器已卸载");
+            log::info!("[idx] 已清空 files/dirs, FTS5 触发器已卸载");
         }
 
-        const CHUNK_SIZE: usize = 50_000;
-        let mut buffer: Vec<UsnRecord> = Vec::with_capacity(CHUNK_SIZE);
+        /// 每多少条文件记录提交一次事务并通知进度.
+        /// 5000 条 ≈ 几十毫秒一次提交, 兼顾写入性能与 UI 实时性.
+        const INCREMENTAL_FLUSH_INTERVAL: usize = 5_000;
+        let mut buffer: Vec<UsnRecord> = Vec::with_capacity(INCREMENTAL_FLUSH_INTERVAL);
         let mut total_inserted: usize = 0;
 
-        // === 2. 枚举 + 流式写入 ===
+        // 提交一个 chunk 并返回插入数量.
+        // 为了增量可见, 每写完一批就 COMMIT 一次, 让读侧能立即查到.
+        let flush_and_commit = |engine: &Self, buf: &[UsnRecord]| -> usize {
+            if buf.is_empty() {
+                return 0;
+            }
+            let conn = engine.db.lock();
+            // 开启事务
+            if let Err(e) = conn.execute("BEGIN TRANSACTION", []) {
+                log::error!("[idx] BEGIN TRANSACTION 失败: {}", e);
+                return 0;
+            }
+            let mut dir_stmt = match conn.prepare(
+                "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, ?2, ?3)",
+            ) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("[idx] dir_stmt prepare 失败: {}", e);
+                    let _ = conn.execute("ROLLBACK", []);
+                    return 0;
+                }
+            };
+
+            // 第一轮: 先插入所有目录, 确保 dirs 表数据完整
+            let mut dir_count = 0usize;
+            for record in buf {
+                if record.is_directory {
+                    let path_str = record.full_path.to_string_lossy().to_string();
+                    if dir_stmt
+                        .execute(rusqlite::params![record.file_name, 0i64, path_str,])
+                        .is_ok()
+                    {
+                        dir_count += 1;
+                    }
+                }
+            }
+            drop(dir_stmt);
+
+            let mut file_stmt =
+                match conn.prepare("INSERT INTO files(name, dir_id) VALUES (?1, ?2)") {
+                    Ok(s) => s,
+                    Err(e) => {
+                        log::error!("[idx] file_stmt prepare 失败: {}", e);
+                        let _ = conn.execute("ROLLBACK", []);
+                        return 0;
+                    }
+                };
+
+            // 第二轮: 再插入所有文件, 此时目录已全部就绪
+            let mut inserted = 0usize;
+            for record in buf {
+                if !record.is_directory {
+                    let dir_path = if let Some(p) = record.full_path.parent() {
+                        p.to_string_lossy().to_string()
+                    } else {
+                        String::new()
+                    };
+                    let dir_id: i64 = conn
+                        .query_row(
+                            "SELECT id FROM dirs WHERE full_path = ?1",
+                            [dir_path.as_str()],
+                            |r| r.get(0),
+                        )
+                        .unwrap_or(0);
+                    if dir_id > 0 {
+                        if file_stmt
+                            .execute(rusqlite::params![record.file_name, dir_id,])
+                            .is_ok()
+                        {
+                            inserted += 1;
+                        }
+                    }
+                }
+            }
+            drop(file_stmt);
+
+            // 提交事务: 让数据立即可见
+            if let Err(e) = conn.execute("COMMIT", []) {
+                log::error!("[idx] COMMIT 失败: {}", e);
+                let _ = conn.execute("ROLLBACK", []);
+                return 0;
+            }
+            drop(conn);
+            log::debug!(
+                "[idx] flush_and_commit: 目录 {}, 文件 {}",
+                dir_count,
+                inserted
+            );
+            inserted
+        };
+
+        // === 2. 枚举 + 流式写入 + 增量提交 ===
         if let Some(indexer) = &self.ntfs_indexer {
-            // 注意: 这里是同步盘符枚举(可能耗时!). 这是已知路径, 已被 spawn_blocking 包裹.
             log::info!("[idx] 开始枚举盘符 (NtfsIndexer::get_volumes)");
             let volumes = indexer.get_volumes();
             let total_volumes = volumes.len();
-            log::info!(
-                "[idx] 盘符枚举完成，共 {} 个: {:?}",
-                total_volumes,
-                volumes
-            );
+            log::info!("[idx] 盘符枚举完成，共 {} 个: {:?}", total_volumes, volumes);
 
             if total_volumes == 0 {
                 log::warn!("[idx] 未发现可用卷(盘符列表为空)，跳过");
-                // 即使 0 卷也要 finalize (COMMIT 事务), 否则连接卡在事务中.
                 let mut conn = self.db.lock();
                 self.finalize_batch_insert(&mut conn)?;
                 return Ok(0);
@@ -413,7 +514,6 @@ impl FileSearchEngine {
                 log::info!("[idx] 准备枚举第 {}/{} 个卷: {}", n, total_volumes, volume);
                 on_volume(volume, n, total_inserted, total_volumes);
 
-                // 内联原 enumerate_volume 逻辑: 回调内边枚举边分块 flush.
                 let mut vol_count: usize = 0;
                 let mut vol_skipped: usize = 0;
                 let result = indexer.enumerate_volume_files(volume, |record| {
@@ -424,14 +524,19 @@ impl FileSearchEngine {
                     buffer.push(record);
                     vol_count += 1;
 
-                    // buffer 满 → flush 到 DB 并清空, 控制峰值内存.
-                    if buffer.len() >= CHUNK_SIZE {
-                        let inserted = self.flush_chunk_to_db(&buffer);
+                    // 每积累 INCREMENTAL_FLUSH_INTERVAL 条就刷入 DB 并提交事务,
+                    // 让读侧 (search 空查询) 能立即看到新数据.
+                    if buffer.len() >= INCREMENTAL_FLUSH_INTERVAL {
+                        let inserted = flush_and_commit(self, &buffer);
                         total_inserted += inserted;
                         buffer.clear();
+                        // 通知进度: 调用方可以通过 IPC 把"已索引 N 个文件"推给前端
+                        on_volume(volume, n, total_inserted, total_volumes);
                         log::debug!(
-                            "[idx] 已插入 {} 条记录 (当前卷: {})",
-                            total_inserted, volume
+                            "[idx] 增量提交 {} 条 (当前卷: {}, 累计: {})",
+                            inserted,
+                            volume,
+                            total_inserted
                         );
                     }
                 });
@@ -440,9 +545,19 @@ impl FileSearchEngine {
                     log::warn!("[idx] 枚举卷 {} 失败: {}", volume, e);
                 }
 
+                // 卷内剩余 buffer 也刷入并提交
+                if !buffer.is_empty() {
+                    let inserted = flush_and_commit(self, &buffer);
+                    total_inserted += inserted;
+                    buffer.clear();
+                }
+
                 log::info!(
                     "[idx] 卷 {} 枚举完成，有效: {}, 跳过: {}, 累计已写入: {}",
-                    volume, vol_count, vol_skipped, total_inserted
+                    volume,
+                    vol_count,
+                    vol_skipped,
+                    total_inserted
                 );
                 on_volume(volume, n, total_inserted, total_volumes);
             }
@@ -453,15 +568,7 @@ impl FileSearchEngine {
             return Ok(0);
         }
 
-        // === 3. 刷入剩余记录 (< CHUNK_SIZE 的尾巴) ===
-        if !buffer.is_empty() {
-            let inserted = self.flush_chunk_to_db(&buffer);
-            total_inserted += inserted;
-            buffer.clear();
-            log::info!("[idx] 刷入最后 {} 条, 总计 {}", inserted, total_inserted);
-        }
-
-        // === 4. 收尾: 重建 FTS5 触发器 + 全量 rebuild + COMMIT ===
+        // === 3. 收尾: 重建 FTS5 触发器 + 全量 rebuild + 恢复 synchronous ===
         log::info!("[idx] 开始 FTS5 全量重建 ({} 条记录)", total_inserted);
         {
             let mut conn = self.db.lock();
@@ -503,82 +610,10 @@ impl FileSearchEngine {
         false
     }
 
-    /// 批量写入阶段 1/3: 开启事务 + 卸载 FTS5 触发器。
-    /// 在 `build_index_ntfs_internal` 开头调用一次, 与 `flush_chunk_to_db` / `finalize_batch_insert` 配合。
-    fn begin_batch_insert(&self, conn: &mut Connection) -> Result<()> {
-        conn.execute("PRAGMA synchronous=OFF", [])?;
-        conn.execute("BEGIN TRANSACTION", [])?;
-        conn.execute("DROP TRIGGER IF EXISTS files_ai", [])?;
-        conn.execute("DROP TRIGGER IF EXISTS files_ad", [])?;
-        conn.execute("DROP TRIGGER IF EXISTS files_au", [])?;
-        Ok(())
-    }
-
-    /// 批量写入阶段 2/3: 将一个 chunk (<= CHUNK_SIZE) 写入 files_meta。
-    /// **短时获取 DB lock** (lock → prepare → insert loop → drop), 不跨调用持有。
-    /// 返回成功插入的条数 (INSERT OR IGNORE 可能跳过重复行, 但此处为全量重建, 一般全部成功)。
-    fn flush_chunk_to_db(&self, buffer: &[UsnRecord]) -> usize {
-        if buffer.is_empty() {
-            return 0;
-        }
-        let conn = self.db.lock();
-        let mut dir_stmt = match conn.prepare(
-            "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, ?2, ?3)",
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("[idx] dir_stmt prepare 失败: {}", e);
-                return 0;
-            }
-        };
-        let mut file_stmt = match conn.prepare(
-            "INSERT INTO files(name, dir_id) VALUES (?1, ?2)",
-        ) {
-            Ok(s) => s,
-            Err(e) => {
-                log::error!("[idx] file_stmt prepare 失败: {}", e);
-                return 0;
-            }
-        };
-
-        let mut inserted = 0usize;
-        for record in buffer {
-            let path_str = record.full_path.to_string_lossy().to_string();
-            if record.is_directory {
-                let _ = dir_stmt.execute(rusqlite::params![
-                    record.file_name,
-                    0i64,
-                    path_str,
-                ]);
-            } else {
-                let dir_path = if let Some(p) = record.full_path.parent() {
-                    p.to_string_lossy().to_string()
-                } else {
-                    String::new()
-                };
-                let dir_id: i64 = conn.query_row(
-                    "SELECT id FROM dirs WHERE full_path = ?1",
-                    [dir_path],
-                    |r| r.get(0),
-                ).unwrap_or(0);
-                if dir_id > 0 {
-                    let _ = file_stmt.execute(rusqlite::params![
-                        record.file_name,
-                        dir_id,
-                    ]);
-                    inserted += 1;
-                }
-            }
-        }
-        drop(dir_stmt);
-        drop(file_stmt);
-        drop(conn);
-        inserted
-    }
-
-    /// 批量写入阶段 3/3: 重建 FTS5 触发器 + 全量 rebuild + COMMIT + 恢复 synchronous。
-    /// 在 `build_index_ntfs_internal` 末尾调用一次。FTS5 rebuild 会全量扫描 files_meta
+    /// 批量写入阶段 3/3: 重建 FTS5 触发器 + 全量 rebuild + 恢复 synchronous。
+    /// 在 `build_index_ntfs_internal` 末尾调用一次。FTS5 rebuild 会全量扫描 files
     /// 重建倒排索引; 配合 `temp_store=FILE` 排序临时表落盘, 控制内存。
+    /// 注意: 数据已在增量 flush 时通过多次小事务 COMMIT, 此处不再 COMMIT。
     fn finalize_batch_insert(&self, conn: &mut Connection) -> Result<()> {
         conn.execute_batch(
             r#"
@@ -593,7 +628,6 @@ impl FileSearchEngine {
                 INSERT INTO files_fts(rowid, name) VALUES (new.id, new.name);
             END;
             INSERT INTO files_fts(files_fts) VALUES('rebuild');
-            COMMIT;
             PRAGMA synchronous=NORMAL;
             PRAGMA wal_checkpoint(TRUNCATE);
             PRAGMA incremental_vacuum;
@@ -692,7 +726,10 @@ impl FileSearchEngine {
             Err(e) => {
                 log::error!(
                     "[search] prepare failed: query={:?} fts={:?} sql=`{}` err={}",
-                    query, fts_query, sql, e
+                    query,
+                    fts_query,
+                    sql,
+                    e
                 );
                 return Vec::new();
             }
@@ -723,7 +760,9 @@ impl FileSearchEngine {
             Err(e) => {
                 log::error!(
                     "[search] query_map failed: query={:?} fts={:?} err={}",
-                    query, fts_query, e
+                    query,
+                    fts_query,
+                    e
                 );
                 return Vec::new();
             }
@@ -743,7 +782,8 @@ impl FileSearchEngine {
         if row_parse_errors > 0 {
             log::warn!(
                 "[search] {} row(s) failed to parse, skipped (query={:?})",
-                row_parse_errors, query
+                row_parse_errors,
+                query
             );
         }
 
@@ -764,12 +804,7 @@ impl FileSearchEngine {
 
     /// 分页搜索: 给"显示更多"按钮用. 从 `after_id` 之后继续取 `limit` 条.
     /// 用稳定的 (rank, id) 二元排序保证分页不漏不重.
-    pub fn search_after(
-        &self,
-        query: &str,
-        after_id: i64,
-        limit: u32,
-    ) -> Vec<SearchResult> {
+    pub fn search_after(&self, query: &str, after_id: i64, limit: u32) -> Vec<SearchResult> {
         if query.is_empty() {
             // 空查询不走 FTS5, 直接从 files 表分页.
             return self
@@ -797,33 +832,34 @@ impl FileSearchEngine {
                 return Vec::new();
             }
         };
-        let iter = match stmt.query_map(
-            rusqlite::params![fts_query, after_id, limit],
-            |row| {
-                let dir_path: String = row.get(0)?;
-                let name: String = row.get(1)?;
-                let full_path = PathBuf::from(dir_path).join(&name);
-                let ext = name.rsplit('.').next().and_then(|e| {
-                    if e.len() < 5 && e.len() > 0 && !name.starts_with('.') {
-                        Some(e.to_string())
-                    } else {
-                        None
-                    }
-                });
-                Ok(FileResult {
-                    path: full_path,
-                    name,
-                    extension: ext,
-                    size: 0,
-                    modified_at: 0,
-                    is_directory: false,
-                    id: None,
-                })
-            },
-        ) {
+        let iter = match stmt.query_map(rusqlite::params![fts_query, after_id, limit], |row| {
+            let dir_path: String = row.get(0)?;
+            let name: String = row.get(1)?;
+            let full_path = PathBuf::from(dir_path).join(&name);
+            let ext = name.rsplit('.').next().and_then(|e| {
+                if e.len() < 5 && e.len() > 0 && !name.starts_with('.') {
+                    Some(e.to_string())
+                } else {
+                    None
+                }
+            });
+            Ok(FileResult {
+                path: full_path,
+                name,
+                extension: ext,
+                size: 0,
+                modified_at: 0,
+                is_directory: false,
+                id: None,
+            })
+        }) {
             Ok(it) => it,
             Err(e) => {
-                log::error!("[search_after] query_map failed: query={:?} err={}", query, e);
+                log::error!(
+                    "[search_after] query_map failed: query={:?} err={}",
+                    query,
+                    e
+                );
                 return Vec::new();
             }
         };
@@ -1010,7 +1046,12 @@ impl crate::engines::search_source::SearchSource for FileSearchEngine {
     fn search(&self, query: &str, limit: u32) -> Vec<crate::models::SearchResult> {
         self.search(query, limit)
     }
-    fn search_after(&self, query: &str, after_id: i64, limit: u32) -> Vec<crate::models::SearchResult> {
+    fn search_after(
+        &self,
+        query: &str,
+        after_id: i64,
+        limit: u32,
+    ) -> Vec<crate::models::SearchResult> {
         self.search_after(query, after_id, limit)
     }
     fn total(&self) -> usize {
@@ -1023,7 +1064,9 @@ impl crate::engines::search_source::SearchSource for FileSearchEngine {
 
 fn get_db_path() -> PathBuf {
     if let Ok(app_data) = std::env::var("APPDATA") {
-        PathBuf::from(app_data).join("MonoTools").join(fs_cfg::DB_NAME)
+        PathBuf::from(app_data)
+            .join("MonoTools")
+            .join(fs_cfg::DB_NAME)
     } else {
         PathBuf::from(fs_cfg::DB_NAME)
     }
@@ -1075,8 +1118,7 @@ pub(crate) fn build_fts_query(query: &str) -> String {
                 .map(|c| match c {
                     // FTS5 特殊操作符必须转义, 否则查询解析失败返回 0 行.
                     // 包含全部 12 个有特殊语义的字符.
-                    '"' | '\'' | '\\' | '^' | '$' | '@' | '~'
-                    | '*' | '(' | ')' | '.' | ':'
+                    '"' | '\'' | '\\' | '^' | '$' | '@' | '~' | '*' | '(' | ')' | '.' | ':'
                     | '+' | '-' => {
                         format!("\\{}", c)
                     }
@@ -1280,10 +1322,12 @@ mod tests {
         .unwrap();
 
         let q = build_fts_query("s");
-        let mut stmt = conn.prepare(&format!(
-            "SELECT name FROM files_fts WHERE files_fts MATCH '{}' ORDER BY rank",
-            q
-        )).unwrap();
+        let mut stmt = conn
+            .prepare(&format!(
+                "SELECT name FROM files_fts WHERE files_fts MATCH '{}' ORDER BY rank",
+                q
+            ))
+            .unwrap();
         let names: Vec<String> = stmt
             .query_map([], |r| r.get::<_, String>(0))
             .unwrap()
@@ -1321,7 +1365,8 @@ mod tests {
         let db_path = dir.join("test.db");
         {
             let conn = rusqlite::Connection::open(&db_path).unwrap();
-            conn.execute_batch("PRAGMA user_version = 9; PRAGMA page_size = 4096;").unwrap();
+            conn.execute_batch("PRAGMA user_version = 9; PRAGMA page_size = 4096;")
+                .unwrap();
         }
         assert!(
             !FileSearchEngine::db_needs_migration(&db_path),
@@ -1411,7 +1456,10 @@ mod tests {
         // .git 例外, 不应被跳过
         let e = make_engine_for_skip_tests();
         let r = make_record(".git", r"D:\projects\mono\.git");
-        assert!(!e.should_skip_path(&r), ".git 目录不应被跳过 (用户可能想搜)");
+        assert!(
+            !e.should_skip_path(&r),
+            ".git 目录不应被跳过 (用户可能想搜)"
+        );
     }
 
     #[test]

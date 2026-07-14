@@ -180,7 +180,7 @@ describe('VirtualGroupedResults', () => {
     expect(headers.length).toBe(2)
   })
 
-  it('clicking the toggle emits toggle-group and parent updates store', async () => {
+  it('clicking the header emits toggle-group and parent updates store', async () => {
     const search = useSearchStore()
     expect(search.collapsedGroups.has(GROUP_ID.system)).toBe(false)
     const groups: DisplayGroup[] = [
@@ -197,9 +197,9 @@ describe('VirtualGroupedResults', () => {
       global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
     })
     await nextTick()
-    const toggle = wrapper.find('.vg__group-toggle')
-    expect(toggle.exists()).toBe(true)
-    await toggle.trigger('click')
+    const header = wrapper.find('.vg__group-header-row')
+    expect(header.exists()).toBe(true)
+    await header.trigger('click')
     await nextTick()
     // 通过 Parent 桥接, store 状态应已折叠该组
     expect(search.collapsedGroups.has(GROUP_ID.system)).toBe(true)

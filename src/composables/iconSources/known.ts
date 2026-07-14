@@ -32,16 +32,13 @@ export class KnownIconSource implements IconSource {
 export function extractPath(item: SearchResult): string {
     const a = item?.action
     if (!a) {
-        console.log(`[extractPath] item=${item?.title} action is undefined/null`)
         return ''
     }
-    console.log(`[extractPath] item=${item?.title} action.type=${a.type} action.data=${typeof a.data === 'string' ? a.data.slice(0, 100) : JSON.stringify(a.data)}`)
     if ((a.type === 'launch' || a.type === 'open') && typeof a.data === 'string') {
         return a.data
     }
     if (a.type === 'navigate' && typeof a.data === 'string') {
         return a.data
     }
-    console.log(`[extractPath] item=${item?.title} no matching action type, returning empty`)
     return ''
 }

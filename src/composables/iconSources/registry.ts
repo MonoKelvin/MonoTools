@@ -42,21 +42,16 @@ export async function resolveIconByRegistry(
     item: import('@/types/search').SearchResult,
     sources: IconSource[] = iconSourceRegistry,
 ): Promise<IconSourceHit | null> {
-    console.log(`[resolveIconByRegistry] START resolving icon for item=${item.title}, id=${item.id}`)
     for (const src of sources) {
         try {
-            console.log(`[resolveIconByRegistry] trying source=${src.name}`)
             const r = await src.resolve(item)
             if (r != null) {
-                console.log(`[resolveIconByRegistry] SUCCESS: source=${src.name} returned icon`)
                 return { source: src.name, state: r as import('./types').IconState }
             }
-            console.log(`[resolveIconByRegistry] source=${src.name} returned null, trying next`)
         } catch (e) {
-            console.log(`[resolveIconByRegistry] source=${src.name} threw error: ${e}`)
+            console.error(`[resolveIconByRegistry] source=${src.name} threw error: ${e}`)
         }
     }
-    console.log(`[resolveIconByRegistry] ALL sources returned null for item=${item.title}`)
     return null
 }
 

@@ -96,7 +96,7 @@ pub async fn run_frontend_api_test() {
         match icon_result {
             Ok(Some(bytes)) => {
                 let base64_str = BASE64.encode(&bytes);
-                
+
                 let sanitized_label = sanitize_filename(label);
                 let output_path = output_dir.join(format!("{}.png", sanitized_label));
 

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ChevronUp, ChevronDown, CornerDownLeft, Keyboard, Loader2, CheckCircle, AlertCircle } from "@lucide/vue"
+import { ChevronUp, ChevronDown, CornerDownLeft, Keyboard, Loader2, CheckCircle, AlertCircle, Info } from "@lucide/vue"
 import type { SearchResult } from '@/types/search'
 import { ACTION_BAR_TIMEOUTS, FONT_SIZES, ICON_CONFIG } from '@/config'
 import { resultTypeMeta } from '@/utils/resultTypeMeta'
+import { useStatusMessages } from '@/composables/useStatusMessages'
 
 const props = defineProps<{
   results: SearchResult[]
@@ -20,6 +21,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'showHotkeys'): void
 }>()
+
+const { currentMessage: statusMessage, hasMessages: hasStatusMessages } = useStatusMessages()
 
 const showIndexStatus = ref(false)
 const autoHideTimer = ref<number | null>(null)
@@ -80,25 +83,48 @@ const volumeProgress = computed(() => {
   return ''
 })
 
+// 展示文本: 优先显示状态栏消息管理器中的消息, 其次显示索引状态, 最后显示选中项信息
 const displayText = computed(() => {
-  // 构建中时优先展示多盘符进度(若后端已上报), 否则显示后端原始 message.
+  // 优先级1: 状态栏消息管理器中的消息（统一入口）
+  if (statusMessage.value) {
+    return statusMessage.value.text
+  }
+  // 优先级2: 索引状态
   if (showIndexStatus.value) {
     if (props.indexStatus === 'building' && volumeProgress.value) {
       return volumeProgress.value
     }
     return props.indexMessage
   }
+  // 优先级3: 选中项 / 结果统计
   return statusText.value
+})
+
+// 当前状态图标: 根据消息管理器中的消息类型决定
+const currentStatusType = computed(() => {
+  if (statusMessage.value) {
+    return statusMessage.value.type
+  }
+  if (showIndexStatus.value) {
+    return props.indexStatus as 'building' | 'completed' | 'error' | 'idle'
+  }
+  return null
+})
+
+// 是否显示状态样式背景
+const showStatusActive = computed(() => {
+  return !!statusMessage.value || (showIndexStatus.value && props.indexStatus !== 'idle')
 })
 </script>
 
 <template>
   <div class="action-bar">
     <div class="action-bar__left">
-      <span class="action-bar__status" :class="{ 'action-bar__status--active': showIndexStatus }">
-        <Loader2 v-if="showIndexStatus && indexStatus === 'building'" :size="12" class="action-bar__status-spinner" />
-        <CheckCircle v-else-if="showIndexStatus && indexStatus === 'completed'" :size="12" class="action-bar__status-icon action-bar__status-icon--success" />
-        <AlertCircle v-else-if="showIndexStatus && indexStatus === 'error'" :size="12" class="action-bar__status-icon action-bar__status-icon--error" />
+      <span class="action-bar__status" :class="{ 'action-bar__status--active': showStatusActive }">
+        <Loader2 v-if="currentStatusType === 'building' || currentStatusType === 'loading'" :size="12" class="action-bar__status-spinner" />
+        <CheckCircle v-else-if="currentStatusType === 'completed' || currentStatusType === 'success'" :size="12" class="action-bar__status-icon action-bar__status-icon--success" />
+        <AlertCircle v-else-if="currentStatusType === 'error'" :size="12" class="action-bar__status-icon action-bar__status-icon--error" />
+        <Info v-else-if="currentStatusType === 'info'" :size="12" class="action-bar__status-icon action-bar__status-icon--info" />
         <span>{{ displayText }}</span>
       </span>
     </div>
@@ -224,6 +250,10 @@ const displayText = computed(() => {
 
 .action-bar__status-icon--error {
   color: var(--color-danger);
+}
+
+.action-bar__status-icon--info {
+  color: var(--text-secondary);
 }
 
 @keyframes spin {

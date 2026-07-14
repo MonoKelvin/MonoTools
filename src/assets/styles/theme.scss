@@ -26,10 +26,10 @@
   --accent-warm-soft: rgba(251, 191, 36, 0.10);
 
   /* === LIST STATES (更细微, 不喧宾夺主) === */
-  --list-hover-bg: rgba(255, 255, 255, 0.025);
-  --list-selected-bg: rgba(255, 255, 255, 0.05);
-  --list-selected-ring: rgba(255, 255, 255, 0.10);
-  --list-hover-ring: rgba(255, 255, 255, 0.05);
+  --list-hover-bg: rgba(255, 255, 255, 0.04);
+  --list-selected-bg: rgba(255, 255, 255, 0.10);
+  --list-selected-ring: rgba(255, 255, 255, 0.12);
+  --list-hover-ring: rgba(255, 255, 255, 0.06);
 
   /* === BORDERS (细微, 黑白灰) === */
   --border-subtle: rgba(255, 255, 255, 0.06);
@@ -137,9 +137,9 @@
   --accent-soft: rgba(24, 24, 27, 0.06);
   --accent-glow: rgba(24, 24, 27, 0.12);
 
-  --list-hover-bg: rgba(24, 24, 27, 0.04);
-  --list-selected-bg: rgba(24, 24, 27, 0.08);
-  --list-selected-ring: rgba(24, 24, 27, 0.16);
+  --list-hover-bg: rgba(24, 24, 27, 0.06);
+  --list-selected-bg: rgba(24, 24, 27, 0.12);
+  --list-selected-ring: rgba(24, 24, 27, 0.18);
   --list-hover-ring: rgba(24, 24, 27, 0.08);
 
   --border-subtle: rgba(24, 24, 27, 0.06);

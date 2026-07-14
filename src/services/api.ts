@@ -145,6 +145,18 @@ export const shellApi = {
     open(path: string) {
         return call<void>('execute_result', { item: { action: { Open: path } } })
     },
+    /** 在文件管理器中打开并选中指定文件 */
+    openFileLocation(path: string) {
+        return call<void>('open_file_location', { path })
+    },
+    /** 显示文件属性对话框 */
+    showProperties(path: string) {
+        return call<void>('show_file_properties', { path })
+    },
+    /** 删除文件到回收站 */
+    deleteToRecycleBin(path: string) {
+        return call<void>('delete_file_to_recycle_bin', { path })
+    },
 }
 
 export const commandSpecsApi = {

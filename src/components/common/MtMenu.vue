@@ -33,28 +33,55 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLElement | null>(null)
 const activeIndex = ref(-1)
 const ignoreTarget = ref<EventTarget | null>(null)
+const adjustedX = ref(0)
+const adjustedY = ref(0)
 
 const visible = computed(() => props.modelValue)
 
-const menuStyle = computed(() => {
+/**
+ * 根据实际测量的菜单尺寸调整位置, 确保不超出视口.
+ * 由于菜单宽度是自适应的(max-content + 60vw上限),
+ * 必须等 DOM 渲染后才能拿到真实宽高做边界校准.
+ *
+ * 偏移策略: 鼠标右下偏移 (4, 6) px, 避免菜单正好覆盖在光标上.
+ * 如果右侧空间不足, 则自动向左偏移贴边; 底部同理.
+ */
+function adjustPosition() {
+  if (!rootRef.value) return
+  const rect = rootRef.value.getBoundingClientRect()
   const vw = window.innerWidth
   const vh = window.innerHeight
-  const width = props.minWidth
-  const height = 200
-  let left = props.x ?? 0
-  let top = props.y ?? 0
+  const margin = 8
+  const offsetX = 4
+  const offsetY = 6
+
+  let left = (props.x ?? 0) + offsetX
+  let top = (props.y ?? 0) + offsetY
 
   if (props.anchor === 'center') {
-    left = (vw - width) / 2
-    top = (vh - height) / 2
+    left = (vw - rect.width) / 2
+    top = (vh - rect.height) / 2
+  } else {
+    if (left + rect.width > vw - margin) {
+      // 右边放不下: 贴右边, 并稍微往左偏移避免贴边
+      left = vw - rect.width - margin
+    }
+    if (top + rect.height > vh - margin) {
+      // 下边放不下: 贴底
+      top = vh - rect.height - margin
+    }
+    if (left < margin) left = margin
+    if (top < margin) top = margin
   }
-  if (left + width > vw - 8) left = vw - width - 8
-  if (top + height > vh - 8) top = vh - height - 8
-  if (left < 8) left = 8
-  if (top < 8) top = 8
 
-  return { left: `${left}px`, top: `${top}px` }
-})
+  adjustedX.value = left
+  adjustedY.value = top
+}
+
+const menuStyle = computed(() => ({
+  left: `${adjustedX.value}px`,
+  top: `${adjustedY.value}px`,
+}))
 
 function close() { emit('update:modelValue', false) }
 
@@ -115,23 +142,36 @@ function onKey(event: KeyboardEvent) {
   }
 }
 
+function onWindowScroll() {
+  close()
+}
+
 function bindGlobal() {
-  window.addEventListener('mousedown', onWindowPointer, true)
+  window.addEventListener('click', onWindowPointer, true)
   window.addEventListener('contextmenu', onWindowPointer, true)
   window.addEventListener('keydown', onKey)
+  window.addEventListener('scroll', onWindowScroll, true)
+  window.addEventListener('resize', onWindowScroll)
 }
 
 function unbindGlobal() {
-  window.removeEventListener('mousedown', onWindowPointer, true)
+  window.removeEventListener('click', onWindowPointer, true)
   window.removeEventListener('contextmenu', onWindowPointer, true)
   window.removeEventListener('keydown', onKey)
+  window.removeEventListener('scroll', onWindowScroll, true)
+  window.removeEventListener('resize', onWindowScroll)
 }
 
 watch(() => props.modelValue, (v) => {
   if (v) {
     activeIndex.value = -1
     ignoreTarget.value = window.event?.target ?? null
+    // 先把位置设为初始值(带鼠标偏移), 让菜单先渲染出来
+    adjustedX.value = (props.x ?? 0) + 4
+    adjustedY.value = (props.y ?? 0) + 6
     nextTick(() => {
+      // DOM 渲染后, 测量实际尺寸再校准位置
+      adjustPosition()
       bindGlobal()
       setTimeout(() => {
         ignoreTarget.value = null
@@ -202,6 +242,8 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: 9999;
   min-width: v-bind('`${minWidth}px`');
+  max-width: 60vw;
+  width: max-content;
 }
 
 .mt-menu__content {
@@ -232,9 +274,7 @@ onBeforeUnmount(() => {
 }
 
 .os-win10 .mt-menu__content {
-  --mt-menu-bg: rgb(28 28 32 / 0.98);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  --mt-menu-bg: rgb(28 28 32 / 0.7);
   border-color: var(--border-default);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.4),
@@ -269,6 +309,14 @@ onBeforeUnmount(() => {
 
 .mt-menu__row + .mt-menu__row {
   margin-top: 1px;
+}
+
+.mt-menu__row + .mt-menu__row--divider {
+  margin-top: 4px;
+}
+
+.mt-menu__row--divider + .mt-menu__row {
+  margin-top: 4px;
 }
 
 .mt-menu__row:hover:not(.mt-menu__row--divider):not(.mt-menu__row--disabled) {
@@ -306,6 +354,9 @@ onBeforeUnmount(() => {
 .mt-menu__label {
   flex: 1;
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .mt-menu__shortcut {
@@ -321,11 +372,20 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.mt-menu__divider {
+.mt-menu__row--divider {
   display: block;
+  min-height: 0;
   height: 1px;
+  padding: 0;
+  margin: 0 14px;
+  cursor: default;
+  pointer-events: none;
   background: var(--border-subtle);
-  margin: var(--sp-1) var(--sp-2);
+  border-radius: 0;
+}
+
+.mt-menu__divider {
+  display: none;
 }
 
 /* ========== 动画 ========== */

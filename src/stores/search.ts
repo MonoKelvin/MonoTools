@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { SearchResult, SearchOptions } from '@/types/search'
 import { searchApi } from '@/services/searchApi'
-import { pinApi } from '@/services/api'
+import { pinApi, pinTopApi } from '@/services/api'
 import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE, SEARCH_LIMITS } from '@/config'
 import { getFileKind } from '@/utils/fileKinds'
 
@@ -71,6 +71,7 @@ export const useSearchStore = defineStore('search', () => {
      */
     const selectedGlobalId = ref<string | null>(null)
     const visible = ref(false)
+    const alwaysOnTop = ref(false)
 
     /**
      * 多选模式下选中的项目ID集合.
@@ -114,6 +115,10 @@ export const useSearchStore = defineStore('search', () => {
     const collapsedGroups = ref<Set<GroupId>>(new Set())
 
     let debounceHandle: ReturnType<typeof setTimeout> | null = null
+    /** 增量搜索防抖: 防止索引过程中频繁重搜导致 UI 卡顿 */
+    let incrementalRefreshTimer: ReturnType<typeof setTimeout> | null = null
+    /** 增量刷新间隔（毫秒）: 索引过程中每 200ms 最多刷新一次列表 */
+    const INCREMENTAL_REFRESH_INTERVAL = 200
 
     const filteredResults = computed(() => {
         if (activeCategory.value === 'all') return results.value
@@ -136,15 +141,13 @@ export const useSearchStore = defineStore('search', () => {
     })
 
     /**
-     * "最近访问" 分组: 排除 pinned 后的剩余 results, 保持 launch_count 顺序.
-     * 这是"次重要"列表, 给用户**主动 pin 之前**浏览过/用过的应用和文件做临时推荐.
-     * 同样: 空列表时分组区域不显示.
+     * "最近访问" 分组: 按 launch_count 排序的前 N 个结果.
+     * 与 pinned 不互斥 —— 同一项目可同时出现在固定和最近中, 各自独立.
+     * 空列表时分组区域不显示.
      */
     const recent = computed<SearchResult[]>(() => {
         if (activeCategory.value === 'commands') return []
-        const pinnedSet = new Set(pinnedIds.value)
         return results.value
-            .filter((r) => !pinnedSet.has(r.id))
             .slice(0, RECENT_MAX)
     })
 
@@ -271,10 +274,15 @@ export const useSearchStore = defineStore('search', () => {
                     indexStats.value.apps = progress.apps
                 }
             }
+            if (typeof progress.apps === 'number') {
+                indexStats.value.apps = progress.apps
+            }
             if (indexStatus.value !== 'building') {
                 indexStatus.value = progress.status as IndexStatus
                 indexMessage.value = progress.message || ''
             }
+            // 增量刷新: 每收到应用索引进度就刷新一次列表（带防抖）
+            triggerIncrementalRefresh()
             return
         }
         // 文件索引阶段 (phase === 'files' 或缺省): 原逻辑
@@ -294,6 +302,8 @@ export const useSearchStore = defineStore('search', () => {
                 if (typeof progress.current_volume === 'string') {
                     indexCurrentVolume.value = progress.current_volume
                 }
+                // 增量刷新: 每收到文件索引进度就刷新一次列表（带防抖）
+                triggerIncrementalRefresh()
                 break
             case 'completed':
                 indexStatus.value = 'completed'
@@ -303,6 +313,8 @@ export const useSearchStore = defineStore('search', () => {
                 } else {
                     indexMessage.value = '索引完成'
                 }
+                // 完成后再刷新一次, 确保拿到最终结果
+                triggerIncrementalRefresh()
                 break
             case 'error':
                 indexStatus.value = 'error'
@@ -311,6 +323,21 @@ export const useSearchStore = defineStore('search', () => {
             default:
                 break
         }
+    }
+
+    /**
+     * 触发增量刷新。带 200ms 防抖，避免索引过程中频繁重搜。
+     * 仅在空查询时刷新，因为有查询词的搜索依赖 FTS5，FTS5 要最后才建好。
+     */
+    function triggerIncrementalRefresh() {
+        // 有查询词时不刷新: FTS5 索引最后才重建, 此时刷新意义不大
+        if (query.value !== '') return
+        if (incrementalRefreshTimer) {
+            clearTimeout(incrementalRefreshTimer)
+        }
+        incrementalRefreshTimer = setTimeout(() => {
+            runSearch().catch(() => undefined)
+        }, INCREMENTAL_REFRESH_INTERVAL)
     }
 
     function setCategory(c: ActiveCategory) {
@@ -633,19 +660,18 @@ export const useSearchStore = defineStore('search', () => {
     })
 
     /**
-     * 当 displayList 变化时 (搜索 / 索引刷新 / 折叠切换 / 分类筛选), 主动
-     * 重新定位 selectedIndex:
-     * 1) 如果有 ID 锚点 → 在新 displayList 中按 ID 查找, 找到了就定位过去;
-     * 2) 找不到 (被折叠 / 被过滤 / 列表为空) → 落到末尾, 清空 ID 锚点;
-     * 3) 都没 ID 锚点时, 仅做边界 clamp.
+     * 当 displayList 变化时 (搜索 / 索引刷新 / 折叠切换 / 分类筛选),
+     * 仅做边界 clamp, 不按 ID 重定位.
      *
-     * 关键改进: 之前 selectedIndex 可能停在越界位置, 视觉上看不到高亮 +
-     * Enter 无反应. 现在即使 displayList 剧烈重排, 选中态也会"跟着 ID 走".
+     * 设计说明: 同一 SearchResult 可能出现在多个分组中 (pinned / recent / apps),
+     * 每个分组中的项都是独立的. 若按 ID 追踪会导致选中跳转到第一个匹配的分组,
+     * 违反"列表项独立"的交互原则.
      *
-     * `flush: 'sync'` 同步触发 (默认 'pre' 是 microtask).
-     * 选 'sync' 的原因: displayList 变化常常在同一 tick 内被 selectByIndex 紧随读取,
-     * 默认 'pre' 会在 selectByIndex 之后才跑, 留下 selectedIndex 越界的窗口.
-     * 同步触发保证 clamp 立即生效, 行为对调用方完全可预测.
+     * - query 变化时: setQuery 中已主动重置 selectedIndex = 0
+     * - 增量刷新 (列表变长): 保持当前索引不动, 越界则 clamp
+     * - 折叠/展开分组: 仅做边界保护
+     *
+     * `flush: 'sync'` 同步触发, 避免同一 tick 内读取越界的 selectedIndex.
      */
     watch(
         displayMax,
@@ -655,18 +681,6 @@ export const useSearchStore = defineStore('search', () => {
                 selectedGlobalId.value = null
                 return
             }
-            // 优先按 ID 锚点重新定位
-            if (selectedGlobalId.value) {
-                const idx = displayList.value.findIndex((r) => r.id === selectedGlobalId.value)
-                if (idx >= 0) {
-                    selectedIndex.value = idx
-                    return
-                }
-                // 锚点丢失: 落到末尾, 保留上一个 ID 作为"上一次选中"的记忆 (便于后续 expand 恢复)
-                selectedIndex.value = displayMax.value - 1
-                return
-            }
-            // 无锚点: 单纯 clamp 边界
             if (selectedIndex.value > displayMax.value - 1) {
                 selectedIndex.value = displayMax.value - 1
             } else if (selectedIndex.value < 0) {
@@ -691,7 +705,27 @@ export const useSearchStore = defineStore('search', () => {
         try {
             await searchApi.execute(item)
         } finally {
-            visible.value = false
+            // 置顶模式下打开文件不隐藏窗口, 方便连续操作.
+            if (!alwaysOnTop.value) {
+                visible.value = false
+            }
+        }
+    }
+
+    async function refreshAlwaysOnTop() {
+        try {
+            alwaysOnTop.value = await pinTopApi.get()
+        } catch {
+            // ignore
+        }
+    }
+
+    async function setAlwaysOnTop(value: boolean) {
+        try {
+            await pinTopApi.set(value)
+            alwaysOnTop.value = value
+        } catch {
+            // ignore
         }
     }
 
@@ -728,6 +762,7 @@ export const useSearchStore = defineStore('search', () => {
         /** 选中项的全局 ID 锚点 (供 VGR / 测试 / hover 等场景同步使用). */
         selectedGlobalId,
         visible,
+        alwaysOnTop,
         indexStatus,
         indexMessage,
         indexStats,
@@ -756,6 +791,8 @@ export const useSearchStore = defineStore('search', () => {
         selectByIndex,
         executeSelected,
         executeItem,
+        refreshAlwaysOnTop,
+        setAlwaysOnTop,
         show,
         hide,
         toggle,

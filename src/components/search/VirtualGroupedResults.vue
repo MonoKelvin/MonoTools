@@ -56,7 +56,7 @@ interface Props {
   /** 当前全局选中项的下标 (来自 store.displayList). */
   selectedIndex: number
   height?: number
-  /** 单行高度 (header 与 item 共用, 默认 44px). */
+  /** 单行高度 (header 与 item 共用, 默认 45px, 含 1px 间距). */
   itemHeight?: number
   hasQuery?: boolean
   /** 当前查询关键字, 用于"搜索 X 中…"提示文案. */
@@ -66,7 +66,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   height: 400,
-  itemHeight: 44,
+  itemHeight: 45,
   hasQuery: false,
   query: '',
 })
@@ -75,7 +75,7 @@ const emit = defineEmits<{
   (e: 'select', item: SearchResult): void
   (e: 'open', item: SearchResult): void
   (e: 'hover', index: number): void
-  (e: 'contextmenu', event: MouseEvent, item: SearchResult): void
+  (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number): void
   (e: 'toggle-group', id: GroupId): void
 }>()
 
@@ -198,6 +198,7 @@ const itemVirtualIndexes = computed<Int32Array>(() => {
 const scrollerRef = ref<RecycleScrollerInstance | null>(null)
 const shouldScroll = ref(true)
 const isHoverTriggered = ref(false)
+const hoveredIndex = ref<number>(-1)
 
 function setScrollEnabled(enabled: boolean) {
   shouldScroll.value = enabled
@@ -400,16 +401,15 @@ const fileCountByKind = computed(() => {
 const isLoading = computed(() => props.loading && props.hasQuery)
 const nothingNow = computed(() => !props.loading && virtualRows.value.length === 0)
 
-/** 单击 → 只更新 selectedIndex (无副作用). 双击 → 真正打开. */
-function onPickItem(item: SearchResult, event: MouseEvent) {
-  const idx = search.displayList.findIndex((r) => r.id === item.id)
-  if (idx >= 0) {
-    search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
-  }
-  emit('select', item)
+/** 单击 → 只更新 selectedIndex (无副作用). 双击 → 真正打开.
+ *  直接用 globalIndex, 确保选中的是用户点击的那一项 (同一 id 在不同分组中是独立的).
+ */
+function onPickItem(result: SearchResult, globalIndex: number, event: MouseEvent) {
+  search.selectWithModifiers(globalIndex, event.ctrlKey || event.metaKey, event.shiftKey)
+  emit('select', result)
 
   const virtualIdx = virtualRows.value.findIndex(row =>
-    row.kind === 'item' && row.result.id === item.id
+    row.kind === 'item' && row.globalIndex === globalIndex
   )
 
   if (virtualIdx >= 0 && scrollerRef.value && !isItemVisible(virtualIdx)) {
@@ -423,11 +423,13 @@ function onOpenItem(item: SearchResult) {
 
 function onItemHover(idx: number) {
   isHoverTriggered.value = true
+  hoveredIndex.value = idx
   emit('hover', idx)
 }
 
 function onItemLeave() {
   isHoverTriggered.value = false
+  hoveredIndex.value = -1
 }
 
 /** 切换分组折叠: 通知 store. */
@@ -463,12 +465,13 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
       :style="{ height: height + 'px' }"
     >
       <template v-slot="{ item }">
-        <!-- 分组头行: 标题 + 折叠箭头 + (files)筛选按钮 -->
+        <!-- 分组头行: 标题 + (files)筛选按钮 -->
         <div
           v-if="item.kind === 'header'"
           class="vg__group-header-row"
           :class="{ 'vg__group-header-row--first': item.key === 'header:group.pinned' || item.key === 'header:group.recent' }"
           :data-group-id="item.groupId"
+          @click="onToggleGroup(item.groupId)"
         >
           <div class="vg__group-header-left">
             <component :is="item.icon" :size="13" :stroke-width="1.8" class="vg__group-icon" />
@@ -529,19 +532,6 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
                 </div>
               </Transition>
             </div>
-
-            <!-- 折叠/展开箭头: 位于分组标题行最右侧 -->
-            <button
-              type="button"
-              class="vg__group-toggle"
-              :class="{ 'vg__group-toggle--collapsed': item.collapsed }"
-              @click.stop="onToggleGroup(item.groupId)"
-              :aria-expanded="!item.collapsed"
-              :aria-label="item.collapsed ? '展开分组' : '折叠分组'"
-              :title="item.collapsed ? '展开分组' : '折叠分组'"
-            >
-              <ChevronDown :size="13" :stroke-width="2.2" />
-            </button>
           </div>
         </div>
 
@@ -551,15 +541,16 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
           class="vg__row"
           :class="{
             'vg__row--active': item.globalIndex === selectedIndex,
+            'vg__row--hover': item.globalIndex === hoveredIndex,
             'vg__row--selected': search.isSelected(item.result.id)
           }"
           :data-global-idx="item.globalIndex"
           :data-group-kind="item.groupKind"
-          @click="(e) => onPickItem(item.result, e)"
+          @click="(e) => onPickItem(item.result, item.globalIndex, e)"
           @dblclick="onOpenItem(item.result)"
           @mouseenter="onItemHover(item.globalIndex)"
           @mouseleave="onItemLeave"
-          @contextmenu.prevent="(e) => emit('contextmenu', e, item.result)"
+          @contextmenu.prevent="(e) => emit('contextmenu', e, item.result, item.globalIndex)"
         >
           <AppResultItem
             v-if="isAppKind(item.groupKind)"
@@ -976,9 +967,11 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
     background var(--dur-fast) var(--ease-out),
     filter var(--dur-fast) var(--ease-out);
   box-sizing: border-box;
+  height: calc(100% - 1px);
 }
 
-.vg__row:hover {
+.vg__row:hover,
+.vg__row--hover {
   background: var(--list-hover-bg);
 }
 
@@ -986,9 +979,10 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   background: var(--list-selected-bg);
 }
 
-.vg__row--active:hover {
+.vg__row--active:hover,
+.vg__row--active.vg__row--hover {
   background: var(--list-selected-bg);
-  filter: brightness(1.1);
+  filter: brightness(1.08);
 }
 
 .vg__row--selected {

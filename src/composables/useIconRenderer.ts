@@ -118,11 +118,8 @@ export function useIconRenderer(opts: UseIconRendererOptions): UseIconRendererRe
     async function refresh(result: SearchResult) {
         const myToken = ++loadToken
         clearImgFallback()
-        console.log(`[${opts.debugTag}:refresh] START id=${result?.id} title="${result?.title}"`)
         const next = await loadIcon(result)
-        console.log(`[${opts.debugTag}:refresh] loadIcon returned: kind=${next.kind} valueType=${typeof next.value} valueLength=${(next.value as string)?.length ?? 'N/A'}`)
         if (myToken !== loadToken) {
-            console.log(`[${opts.debugTag}:refresh] token mismatch, discarding`)
             return
         }
 
@@ -131,29 +128,20 @@ export function useIconRenderer(opts: UseIconRendererOptions): UseIconRendererRe
             prev === next ||
             (prev?.kind === next.kind &&
                 (prev.kind === 'component' ? prev.value === (next as any).value : prev.kind === 'monogram' ? (prev as any).letter === (next as any).letter : prev.value === (next as any).value))
-        if (isSame) {
-            if (imgReady.value) {
-                console.log(`[${opts.debugTag}:refresh] iconState unchanged and imgReady=true, skipping`)
-                return
-            }
-            console.log(`[${opts.debugTag}:refresh] iconState unchanged but imgReady=false`)
+        if (isSame && imgReady.value) {
+            return
         }
 
         iconState.value = next
-        console.log(`[${opts.debugTag}:refresh] iconState set to: kind=${next.kind}`)
 
         if (next.kind === 'component' || next.kind === 'monogram') {
             imgReady.value = true
-            console.log(`[${opts.debugTag}:refresh] component/monogram, imgReady=true`)
         } else {
             imgReady.value = false
-            console.log(`[${opts.debugTag}:refresh] png/svg, imgReady=false, scheduling nextTick check`)
             nextTick(() => {
                 const img = document.querySelector(opts.containerSelector(result?.id ?? '')) as HTMLImageElement | null
-                console.log(`[${opts.debugTag}:refresh] nextTick dom-check: img=${img ? 'FOUND' : 'NOT_FOUND'} naturalWidth=${img?.naturalWidth ?? 'N/A'} src=${img?.src?.slice(0, 80) ?? 'N/A'}`)
                 if (img && img.naturalWidth > 0) {
                     imgReady.value = true
-                    console.log(`[${opts.debugTag}:refresh] img naturalWidth > 0, imgReady=true`)
                     return
                 }
                 scheduleImgFallback(result?.id ?? '')
@@ -162,12 +150,6 @@ export function useIconRenderer(opts: UseIconRendererOptions): UseIconRendererRe
     }
 
     function onImgLoad(ev: Event) {
-        const id = (iconState.value as any)?.id ?? ''
-        log('log',
-            `[${opts.debugTag}:img] @load id=${id} ` +
-            `naturalWidth=${(ev.target as HTMLImageElement)?.naturalWidth ?? 'N/A'} ` +
-            `srcHead="${srcOf(iconState.value)?.slice(0, 60) ?? 'N/A'}"`,
-        )
         imgReady.value = true
         clearImgFallback()
     }

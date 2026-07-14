@@ -10,26 +10,32 @@ pub mod command_trait;
 
 pub mod cmd_command;
 pub mod cmd_config;
+pub mod cmd_delete_file;
 pub mod cmd_help;
 pub mod cmd_index;
 pub mod cmd_launch;
 pub mod cmd_open;
+pub mod cmd_open_location;
 pub mod cmd_search;
+pub mod cmd_show_properties;
 pub mod cmd_stats;
 pub mod cmd_version;
 
-pub use command_registry::{CommandRegistry, build_default_registry, dispatch, registry_dispatch};
+pub use command_registry::{build_default_registry, dispatch, registry_dispatch, CommandRegistry};
 pub use command_trait::{Command, CommandSpec};
 
-pub use cmd_search::SearchCommand;
-pub use cmd_launch::LaunchCommand;
-pub use cmd_open::OpenCommand;
 pub use cmd_command::CustomCommandHandler;
 pub use cmd_config::ConfigCommand;
+pub use cmd_delete_file::DeleteFileCommand;
 pub use cmd_help::HelpCommand;
-pub use cmd_version::VersionCommand;
 pub use cmd_index::IndexCommand;
+pub use cmd_launch::LaunchCommand;
+pub use cmd_open::OpenCommand;
+pub use cmd_open_location::OpenLocationCommand;
+pub use cmd_search::SearchCommand;
+pub use cmd_show_properties::ShowPropertiesCommand;
 pub use cmd_stats::StatsCommand;
+pub use cmd_version::VersionCommand;
 
 pub use crate::repositories::settings_repo::SettingsRepo;
 
@@ -78,18 +84,26 @@ pub struct CommandContext {
 
 impl CommandContext {
     pub async fn new_headless() -> crate::error::Result<Self> {
-        let settings_repo = std::sync::Arc::new(crate::repositories::InMemorySettingsRepo::new(crate::models::Settings::default()));
+        let settings_repo = std::sync::Arc::new(crate::repositories::InMemorySettingsRepo::new(
+            crate::models::Settings::default(),
+        ));
         let command_repo: std::sync::Arc<dyn crate::repositories::CommandRepo> =
             std::sync::Arc::new(crate::repositories::InMemoryCommandRepo::new());
         let stats_repo = std::sync::Arc::new(crate::repositories::StatsRepo::new());
 
-        let app_search = std::sync::Arc::new(crate::engines::app_search::AppSearchEngine::new(settings_repo.clone()).await?);
+        let app_search = std::sync::Arc::new(
+            crate::engines::app_search::AppSearchEngine::new(settings_repo.clone()).await?,
+        );
         let _ = app_search.refresh_index().await;
 
-        let command_search = std::sync::Arc::new(crate::engines::command_search::CommandSearchEngine::new(command_repo.clone()));
+        let command_search = std::sync::Arc::new(
+            crate::engines::command_search::CommandSearchEngine::new(command_repo.clone()),
+        );
 
         let file_roots = settings_repo.get().file_search_roots.clone();
-        let file_search = std::sync::Arc::new(crate::engines::file_search::FileSearchEngine::new(file_roots)?);
+        let file_search = std::sync::Arc::new(crate::engines::file_search::FileSearchEngine::new(
+            file_roots,
+        )?);
 
         Ok(Self {
             app_search,

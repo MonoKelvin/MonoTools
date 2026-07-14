@@ -56,13 +56,18 @@ watch(() => props.result?.id, () => refresh(props.result))
 onBeforeUnmount(dispose)
 
 /**
- * 工具提示: 选中态(active)下不显示, 避免键盘导航时 tooltip 跟随高亮
- * 持续闪现造成视觉干扰. 未选中且鼠标悬停时才显示完整应用名.
+ * 工具提示: 显示应用的绝对路径, 便于用户确认程序位置.
+ * 选中态(active)下不显示, 避免键盘导航时 tooltip 跟随高亮
+ * 持续闪现造成视觉干扰.
  */
 const tooltipOptions = computed(() => {
   if (props.active) return undefined
+  const path = props.result?.action?.type === 'launch' || props.result?.action?.type === 'open'
+    ? props.result.action.data
+    : props.result?.subtitle || ''
+  if (!path) return undefined
   return {
-    value: props.result.title || '',
+    value: path,
     class: 'app-tooltip',
     showDelay: ICON_CONFIG.appTooltipDelayMs,
     fitContent: true,
@@ -122,24 +127,15 @@ const tooltipOptions = computed(() => {
   align-items: center;
   gap: var(--sp-4);
   padding: 7px 12px;
-  border-radius: var(--radius-md);
   cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
   user-select: none;
   background: transparent;
   position: relative;
   overflow: hidden;
-  border: none;
-}
-
-.app-result-item:hover {
-  background: var(--list-hover-bg);
-}
-
-.app-result-item--active {
-  background: var(--list-selected-bg);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  transition:
+    color var(--dur-fast) var(--ease-out);
 }
 
 .app-result-item__icon {

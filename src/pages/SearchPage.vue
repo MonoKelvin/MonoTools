@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed } from 'vue'
-import { Search } from '@lucide/vue'
-import { useSearchStore } from '@/stores/search'
+import { Search, Pin, Clock, Settings, Terminal, Sparkles, Folder } from '@lucide/vue'
+import { useSearchStore, GROUP_ID } from '@/stores/search'
+import type { DisplayGroup } from '@/stores/search'
 import { useSettingsStore } from '@/stores/settings'
 import { hotkeyApi, windowApi, shellApi } from '@/services'
 import { isTauri } from '@/services/env'
@@ -11,7 +12,7 @@ import type { SearchResult } from '@/types/search'
 import { WINDOW_DIMENSIONS, UI_DELAYS, SEARCH_LIMITS_VISIBLE } from '@/config'
 
 import SearchInput from '@/components/common/SearchInput.vue'
-import VirtualGroupedResults from '@/components/search/VirtualGroupedResults.vue'
+import GroupSection from '@/components/search/GroupSection.vue'
 import ActionBar from '@/components/search/ActionBar.vue'
 import ContextMenu from '@/components/search/ContextMenu.vue'
 import HotkeyModal from '@/components/common/HotkeyModal.vue'
@@ -72,7 +73,7 @@ const syncWindowHeight = () => {
  * 双击 / Enter / 业务触发 → executeItem (打开).
  * 这样避免"单击"与"双击"产生双重 IPC 调用, 也避免事件冒泡导致打开两次.
  */
-const onSelect = (item: SearchResult) => {
+const onSelect = (item: SearchResult, _globalIndex: number, _event: MouseEvent) => {
   // 通过 store.selectByIndex 选中, 自动同步 selectedGlobalId 锚点,
   // 避免列表重排时 selectedIndex 指向错误位置.
   search.selectByIndex(search.displayList.findIndex((r) => r.id === item.id))
@@ -83,9 +84,11 @@ const onOpen = (item: SearchResult) => {
 const onShowHotkeys = () => {
   showHotkeyModal.value = true
 }
-const onHover = (idx: number) => {
+const onHover = (globalIndex: number) => {
   // hover 也用 selectByIndex 同步 ID 锚点, 保持状态一致.
-  search.selectByIndex(idx)
+  if (globalIndex >= 0) {
+    search.selectByIndex(globalIndex)
+  }
 }
 const onQueryChange = (val: string) => search.setQuery(val)
 
@@ -233,15 +236,63 @@ async function handleGlobalKeydown(event: KeyboardEvent) {
 // 与 VGR 渲染严格 1:1.
 // ============================================================================
 
+// ============================================================================
+// 分组渲染: 每个分组使用 GroupSection 组件, 支持独立的显示模式切换
+// ============================================================================
+
 /**
- * 给 VirtualGroupedResults 的分组结构.
- * 单一真源: store.displayGroups 已经包含"折叠 + 分类 + 文件类型过滤"
- * 的全部计算. SearchPage 只做绑定, 不再二次加工.
- *
- * 注意: 这里必须用 `search.displayGroups` (而非 `displayList`) ,
- * VGR 期望的是"按组分类的二维结构", 不是扁平数组.
+ * 分组结构. 单一真源: store.displayGroups
  */
 const displayGroups = computed(() => search.displayGroups)
+
+/** 分组图标映射 */
+const GROUP_ICONS: Record<DisplayGroup['kind'], any> = {
+  pinned: Pin,
+  recent: Clock,
+  system: Settings,
+  commands: Terminal,
+  apps: Sparkles,
+  files: Folder,
+}
+
+/** 滚动容器 ref */
+const resultsScrollRef = ref<HTMLElement | null>(null)
+
+/**
+ * 计算每个分组的 startIndex (在 displayList 中的起始位置).
+ * 用于 GroupSection 的 selectedGlobalIndex / hoveredGlobalIndex 计算.
+ */
+const groupStartIndices = computed(() => {
+  const map = new Map<string, number>()
+  let idx = 0
+  for (const g of displayGroups.value) {
+    map.set(g.id, idx)
+    if (!g.collapsed) {
+      idx += g.visibleItems.length
+    }
+  }
+  return map
+})
+
+function onToggleGroup(groupId: string) {
+  search.toggleGroupCollapse(groupId)
+}
+
+/**
+ * 选中项变化时, 滚动到可见区域.
+ */
+watch(
+  () => search.selectedIndex,
+  () => {
+    nextTick(() => {
+      if (!resultsScrollRef.value) return
+      const activeEl = resultsScrollRef.value.querySelector('.gs-item--active') as HTMLElement | null
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    })
+  },
+)
 
 onMounted(async () => {
   commandsStore.loadFromBackend().catch(() => undefined)
@@ -300,7 +351,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 
 <template>
   <div class="search-page">
-    <div class="search-container" ref="containerRef">
+    <div class="search-container" id="search-container" ref="containerRef">
       <SearchInput
         ref="inputRef"
         :model-value="search.query"
@@ -312,21 +363,30 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
         autofocus
       />
 
-      <!-- Raycast 风格统一分组列表 (黑白灰, 简单分隔, 无卡片化) -->
-      <VirtualGroupedResults
-        :groups="displayGroups"
-        :loading="search.loading"
-        :selected-index="search.selectedIndex"
-        :height="contentHeight"
-        :has-query="!!search.query"
-        :query="search.query"
-        @select="onSelect"
-        @open="onOpen"
-        @hover="onHover"
-        @contextmenu="handleContextMenu"
-        @toggle-group="(id) => search.toggleGroupCollapse(id)"
-      >
-        <template #empty>
+      <!-- 分组列表: 每个分组使用 GroupSection 组件, 支持独立的显示模式切换 -->
+      <div class="results-scroll-container" ref="resultsScrollRef">
+        <template v-if="search.displayList.length > 0">
+          <GroupSection
+            v-for="group in displayGroups"
+            :key="group.id"
+            :id="group.id"
+            :title="group.title"
+            :icon="GROUP_ICONS[group.kind]"
+            :items="group.visibleItems"
+            :collapsed="group.collapsed"
+            :kind="group.kind"
+            :count="group.items.length"
+            :selected-global-index="search.selectedIndex"
+            :hovered-global-index="search.selectedIndex"
+            :start-index="groupStartIndices.get(group.id) ?? 0"
+            @toggle-collapse="onToggleGroup"
+            @select="onSelect"
+            @open="onOpen"
+            @hover="onHover"
+            @contextmenu="handleContextMenu"
+          />
+        </template>
+        <template v-else>
           <div class="empty-state">
             <div class="empty-state__icon">
               <Search :size="32" :stroke-width="1.5" />
@@ -340,7 +400,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
             </template>
           </div>
         </template>
-      </VirtualGroupedResults>
+      </div>
 
       <ActionBar
         :results="search.displayList"
@@ -413,6 +473,32 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
     transform: translateY(0) scale(1);
     filter: blur(0);
   }
+}
+
+.results-scroll-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--sp-2) var(--sp-3);
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.results-scroll-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.results-scroll-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.results-scroll-container::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 3px;
+}
+
+.results-scroll-container::-webkit-scrollbar-thumb:hover {
+  background: var(--text-quaternary);
 }
 
 .empty-state {

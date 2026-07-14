@@ -103,11 +103,35 @@ fn cache_key(p: &Path) -> String {
 
 /// 公共入口: 带缓存的图标提取. 永远不抛错.
 ///
+/// 特殊处理 - .lnk 快捷方式:
+/// - 若传入路径是 .lnk 文件, 先解析其目标路径, 再提取**目标文件**的图标.
+/// - 这与用户直觉一致: 快捷方式应该显示它指向的程序的图标, 而不是快捷方式本身的图标.
+/// - 缓存 key 仍用原始 .lnk 路径, 避免同目标不同快捷方式重复计算.
+///
 /// 失败诊断: 在 `mono_icon_debug` 环境变量被设置 (=1) 时, 任何
 /// `None` 返回都会写一条 `log::warn!` 含 path + 阶段, 方便前端/后端
 /// 联合排查"图标为什么是空白".
 pub fn get_or_extract_cached(path: &str) -> crate::error::Result<Option<Vec<u8>>> {
+    // 提前过滤 URL 路径: http:// / https:// / ftp:// 等不是本地文件,
+    // 直接返回 None, 避免 Path::exists() 误判 + 无意义的 warn 日志.
+    if path.starts_with("http://")
+        || path.starts_with("https://")
+        || path.starts_with("ftp://")
+        || path.starts_with("mailto:")
+    {
+        log_icon_debug("url-skipped", path, "非本地文件路径, 跳过图标提取");
+        return Ok(None);
+    }
+
     let p = Path::new(path);
+
+    // 路径包含 null / 控制字符等乱码时, Path::exists() 可能直接 false.
+    // 先做一次轻量校验: 含 \x00 或大量替换字符 (U+FFFD) 的直接跳过.
+    if path.contains('\x00') || path.chars().filter(|c| *c == '\u{FFFD}').count() > 2 {
+        log_icon_debug("garbled-path", path, "路径含乱码/非法字符, 跳过图标提取");
+        return Ok(None);
+    }
+
     if !p.exists() {
         log_icon_debug("file-missing", path, "Path::exists() == false");
         log::warn!("[icon] file-missing path={}", path);
@@ -122,20 +146,54 @@ pub fn get_or_extract_cached(path: &str) -> crate::error::Result<Option<Vec<u8>>
         }
     }
 
-    // 走 trait 抽象的默认实现 (Windows 平台). 调用方不感知具体 impl.
-    let extracted = get_extractor().extract(p, icon_cfg::SIZE);
+    // 对于 .lnk 快捷方式: 解析目标路径, 提取目标文件的图标.
+    // 目标文件图标提取失败时, 回退到提取 .lnk 本身的图标 (与资源管理器行为一致).
+    let is_lnk = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case("lnk"))
+        .unwrap_or(false);
+
+    let extracted = if is_lnk {
+        match crate::platform::windows::shell::resolve_shortcut(&p.to_path_buf()) {
+            Ok(target) if target.exists() => {
+                let target_icon = get_extractor().extract(&target, icon_cfg::SIZE);
+                if target_icon.is_some() {
+                    log_icon_debug(
+                        "lnk-target",
+                        path,
+                        &format!("resolved lnk target: {}", target.to_string_lossy()),
+                    );
+                    target_icon
+                } else {
+                    // 目标文件图标提取失败 → 回退到 .lnk 本身
+                    log_icon_debug(
+                        "lnk-fallback",
+                        path,
+                        "target icon extraction failed, falling back to lnk itself",
+                    );
+                    get_extractor().extract(p, icon_cfg::SIZE)
+                }
+            }
+            _ => {
+                // 解析失败 / 目标不存在 → 提取 .lnk 本身的图标
+                log_icon_debug(
+                    "lnk-resolve-failed",
+                    path,
+                    "failed to resolve lnk target, using lnk itself",
+                );
+                get_extractor().extract(p, icon_cfg::SIZE)
+            }
+        }
+    } else {
+        get_extractor().extract(p, icon_cfg::SIZE)
+    };
 
     if extracted.is_none() {
         log_icon_debug("extract-failed", path, "extractor returned None");
         log::warn!(
             "[icon] extract-failed path={} (file exists but extraction returned None)",
             path
-        );
-    } else {
-        log::info!(
-            "[icon] extracted path={} bytes={}",
-            path,
-            extracted.as_ref().unwrap().len()
         );
     }
     let mut cache = cache().lock();
@@ -251,7 +309,7 @@ fn extract_hicon_via_shil_jumbo(path: &Path) -> Option<HICON> {
     use windows::Win32::Storage::FileSystem::FILE_FLAGS_AND_ATTRIBUTES;
     use windows::Win32::UI::Controls::{IImageList2, ILD_TRANSPARENT};
     use windows::Win32::UI::Shell::{
-        SHGetFileInfoW, SHGetImageList, SHIL_JUMBO, SHFILEINFOW, SHGFI_SYSICONINDEX,
+        SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX, SHIL_JUMBO,
     };
     use windows::Win32::UI::WindowsAndMessaging::HICON;
 
@@ -388,7 +446,7 @@ fn extract_rgba_from_hbitmap_strict(
     hbitmap: &windows::Win32::Graphics::Gdi::HBITMAP,
     size: i32,
 ) -> Option<Vec<u8>> {
-    use windows::Win32::Graphics::Gdi::{BITMAP, GetObjectW};
+    use windows::Win32::Graphics::Gdi::{GetObjectW, BITMAP};
 
     let mut bmp: BITMAP = unsafe { std::mem::zeroed() };
     let result = unsafe {
@@ -411,7 +469,10 @@ fn extract_rgba_from_hbitmap_strict(
             "<hbitmap>",
             &format!(
                 "BITMAP size {}x{} != target {}x{}",
-                bmp.bmWidth, bmp.bmHeight.abs(), size, size
+                bmp.bmWidth,
+                bmp.bmHeight.abs(),
+                size,
+                size
             ),
         );
         return None;
@@ -442,9 +503,8 @@ fn draw_hicon_to_rgba(
     size: i32,
 ) -> Option<Vec<u8>> {
     use windows::Win32::Graphics::Gdi::{
-        BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CreateCompatibleDC, CreateDIBSection,
-        DIB_RGB_COLORS, DeleteDC, DeleteObject, HDC, SelectObject, SetBrushOrgEx,
-        SetStretchBltMode, HALFTONE,
+        CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, SelectObject, SetBrushOrgEx,
+        SetStretchBltMode, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS, HALFTONE, HDC,
     };
 
     let screen_dc: HDC = unsafe { CreateCompatibleDC(None) };
@@ -498,15 +558,7 @@ fn draw_hicon_to_rgba(
     let di_flags = windows::Win32::UI::WindowsAndMessaging::DI_FLAGS(0x0003);
     let draw_ok = unsafe {
         windows::Win32::UI::WindowsAndMessaging::DrawIconEx(
-            screen_dc,
-            0,
-            0,
-            hicon,
-            size,
-            size,
-            0,
-            None,
-            di_flags,
+            screen_dc, 0, 0, hicon, size, size, 0, None, di_flags,
         )
     }
     .is_ok();

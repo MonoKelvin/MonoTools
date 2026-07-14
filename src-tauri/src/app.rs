@@ -241,6 +241,7 @@ pub mod app {
                 log::info!("[boot] setup: AppState 就绪");
 
                 // 后台刷新应用索引（扫描开始菜单/桌面）— 不阻塞 setup，进度通过 index_progress 上报。
+                // 使用增量索引: 每扫描完一个目录就通知前端, 让用户能立即看到应用逐步出现。
                 {
                     let app_search_for_refresh = state.app_search.clone();
                     let app_handle_for_apps = app_handle.clone();
@@ -255,7 +256,28 @@ pub mod app {
                                 "phase": "apps",
                             }),
                         );
-                        match app_search_for_refresh.refresh_index().await {
+                        let app_handle_for_progress = app_handle_for_apps.clone();
+                        let result = app_search_for_refresh
+                            .refresh_index_incremental(move |count, phase| {
+                                let phase_label = match phase {
+                                    "common_start_menu" => "公共开始菜单",
+                                    "user_start_menu" => "用户开始菜单",
+                                    "desktop" => "桌面",
+                                    _ => phase,
+                                };
+                                let _ = app_handle_for_progress.emit(
+                                    "index_progress",
+                                    serde_json::json!({
+                                        "status": "building",
+                                        "message": format!("已加载 {} 个应用（{}）", count, phase_label),
+                                        "phase": "apps",
+                                        "apps": count,
+                                        "apps_phase": phase,
+                                    }),
+                                );
+                            })
+                            .await;
+                        match result {
                             Ok(()) => {
                                 let total = app_search_for_refresh.total();
                                 log::info!("应用索引刷新完成: {} 个应用", total);
@@ -297,6 +319,7 @@ pub mod app {
                         serde_json::json!({
                             "status": "building",
                             "message": "正在检测盘符...",
+                            "phase": "files",
                         }),
                     );
                     let start = std::time::Instant::now();
@@ -318,6 +341,7 @@ pub mod app {
                                     serde_json::json!({
                                         "status": "building",
                                         "message": msg,
+                                        "phase": "files",
                                         "files": cumulative,
                                         "volumes": total_volumes,
                                         "current_volume": drive,
@@ -335,6 +359,7 @@ pub mod app {
                                 serde_json::json!({
                                     "status": "error",
                                     "message": format!("索引构建失败: {}", e),
+                                    "phase": "files",
                                 }),
                             );
                         }
@@ -346,6 +371,7 @@ pub mod app {
                                 serde_json::json!({
                                     "status": "completed",
                                     "message": "索引构建完成",
+                                    "phase": "files",
                                     "files": total,
                                 }),
                             );
@@ -434,6 +460,9 @@ pub mod app {
                 crate::commands::list_pinned,
                 crate::commands::pin_item,
                 crate::commands::unpin_item,
+                crate::commands::open_file_location,
+                crate::commands::show_file_properties,
+                crate::commands::delete_file_to_recycle_bin,
             ])
             .run(tauri::generate_context!())
             .expect("error while running tauri application");

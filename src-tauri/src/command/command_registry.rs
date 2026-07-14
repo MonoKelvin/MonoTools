@@ -117,6 +117,9 @@ pub fn build_default_registry() -> CommandRegistry {
     reg.register(crate::command::cmd_search::SearchCommand);
     reg.register(crate::command::cmd_launch::LaunchCommand);
     reg.register(crate::command::cmd_open::OpenCommand);
+    reg.register(crate::command::cmd_open_location::OpenLocationCommand);
+    reg.register(crate::command::cmd_delete_file::DeleteFileCommand);
+    reg.register(crate::command::cmd_show_properties::ShowPropertiesCommand);
     reg.register(crate::command::cmd_command::CustomCommandHandler);
     reg.register(crate::command::cmd_config::ConfigCommand);
     reg.register(crate::command::cmd_help::HelpCommand);

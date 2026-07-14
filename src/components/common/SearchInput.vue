@@ -82,36 +82,34 @@ function isOverInteractiveArea(input: HTMLInputElement, clientX: number): boolea
   if (!cachedRect) return false
 
   const text = input.value || props.placeholder || ''
-  if (!text) return false
 
-  // 简单但足够: 等宽字宽 × 字符数 (中文 + Latin 混排时误差 ≤ 2px, 不可点击
-  // 边界 1-2px 不会让 UX 崩坏, 反而省掉了每帧 measureText).
+  // 可交互区域 = 文字长度 + 右侧预留 5 个字符宽度
+  // 预留区域用于点击后继续输入、光标定位等文本编辑操作.
   const charW = cachedCharWidth || 8
   const textWidth = text.length * charW
+  const reserveWidth = 5 * charW
 
-  return clientX >= cachedRect.left && clientX <= cachedRect.left + textWidth
+  return clientX >= cachedRect.left && clientX <= cachedRect.left + textWidth + reserveWidth
 }
 
 let rafScheduled = false
 let lastMoveX = 0
-let lastMoveEvent: MouseEvent | null = null
+let lastMoveWrapper: HTMLElement | null = null
 
 function handleSearchBarMousemove(event: MouseEvent) {
   lastMoveX = event.clientX
-  lastMoveEvent = event
+  lastMoveWrapper = event.currentTarget as HTMLElement
   if (rafScheduled) return
   rafScheduled = true
   requestAnimationFrame(() => {
     rafScheduled = false
-    if (!lastMoveEvent) return
+    if (!lastMoveWrapper) return
     const input = inputRef.value
     if (!input) return
-    // 缓存过期 (input 位置改变) 时刷新一次
     if (!cachedRect) refreshMeasureCache(input)
     const isInteractive = isOverInteractiveArea(input, lastMoveX)
     const cursor = isInteractive ? 'text' : 'default'
-    const wrapper = lastMoveEvent.currentTarget as HTMLElement
-    wrapper.style.cursor = cursor
+    lastMoveWrapper.style.cursor = cursor
     input.style.cursor = cursor
   })
 }
@@ -119,6 +117,8 @@ function handleSearchBarMousemove(event: MouseEvent) {
 function handleSearchBarMouseleave() {
   const input = inputRef.value
   if (input) input.style.cursor = ''
+  if (lastMoveWrapper) lastMoveWrapper.style.cursor = ''
+  lastMoveWrapper = null
   cachedRect = null
 }
 

@@ -239,24 +239,15 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: var(--sp-4);
   padding: 7px 12px;
-  border-radius: var(--radius-md);
   cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-out),
-    color var(--dur-fast) var(--ease-out);
   user-select: none;
   background: transparent;
   position: relative;
   overflow: hidden;
-  border: none;
-}
-
-.result-item:hover {
-  background: var(--list-hover-bg);
-}
-
-.result-item--active {
-  background: var(--list-selected-bg);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  transition:
+    color var(--dur-fast) var(--ease-out);
 }
 
 .result-item__icon {

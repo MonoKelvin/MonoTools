@@ -25,9 +25,7 @@ export class IpcIconSource implements IconSource {
         if (!path) return null
 
         try {
-            console.log(`[IpcIconSource] START resolving icon for item=${item.title}, path=${path}`)
             const base64 = await appIconApi.get(path)
-            console.log(`[IpcIconSource] appIconApi.get returned: type=${typeof base64}, length=${(base64 as string)?.length ?? 'null'}, startsWithMagic=${(base64 as string)?.startsWith(ICON_CONFIG.pngMagicBase64) ?? false}`)
             
             if (
                 typeof base64 !== 'string' ||
@@ -35,7 +33,6 @@ export class IpcIconSource implements IconSource {
                 !/^[A-Za-z0-9+/=]+$/.test(base64) ||
                 !base64.startsWith(ICON_CONFIG.pngMagicBase64)
             ) {
-                console.log(`[IpcIconSource] base64 validation failed, returning null`)
                 logIconFailure({
                     stage: 'appIconApi-empty',
                     id: item?.id ?? '',
@@ -46,7 +43,6 @@ export class IpcIconSource implements IconSource {
                 })
                 return null
             }
-            console.log(`[IpcIconSource] SUCCESS! returning PNG data URL`)
             return { kind: 'png', value: `data:image/png;base64,${base64}` }
         } catch (e) {
             console.error(`[IpcIconSource] ERROR for path=${path}:`, e)

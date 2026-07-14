@@ -2,11 +2,9 @@
 use crate::config::search as search_cfg;
 use crate::error::Result;
 use crate::models::{AppEntry, ResultType, SearchAction, SearchResult};
-use crate::repositories::{
-    SettingsRepo,
-};
-use crate::utils::path::is_executable;
 use crate::platform::windows::shell::resolve_shortcut;
+use crate::repositories::SettingsRepo;
+use crate::utils::path::is_executable;
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -35,40 +33,80 @@ impl AppSearchEngine {
     /// 仅供测试: 构造一个空 engine (不连真实 settings).
     pub fn new_empty_for_tests() -> Self {
         use crate::repositories::settings_repo::InMemorySettingsRepo;
-        Self::new_empty(Arc::new(InMemorySettingsRepo::new(crate::models::Settings::default())))
+        Self::new_empty(Arc::new(InMemorySettingsRepo::new(
+            crate::models::Settings::default(),
+        )))
     }
 
-    /// 重建索引；扫描开始菜单、桌面快捷方式、启动文件夹
+    /// 重建索引；扫描开始菜单、桌面快捷方式、启动文件夹。
+    /// 全量一次性完成，保持向后兼容。
     pub async fn refresh_index(&self) -> Result<()> {
-        let mut cache = self.cache.write();
-        cache.clear();
+        self.refresh_index_incremental(|_, _| {}).await
+    }
 
-        // 公共开始菜单
-        if let Ok(common) = std::env::var("ProgramData") {
-            let p = PathBuf::from(common)
-                .join("Microsoft\\Windows\\Start Menu\\Programs");
-            Self::scan_dir(&p, &mut cache);
-        }
-        // 用户开始菜单
-        if let Ok(roaming) = std::env::var("APPDATA") {
-            let p = PathBuf::from(roaming)
-                .join("Microsoft\\Windows\\Start Menu\\Programs");
-            Self::scan_dir(&p, &mut cache);
-        }
-        // 桌面
-        if let Ok(userprofile) = std::env::var("USERPROFILE") {
-            let p = PathBuf::from(userprofile).join("Desktop");
-            Self::scan_dir(&p, &mut cache);
+    /// 增量式重建索引。每完成一个扫描目录就调用一次 `on_progress`，
+    /// 调用方可通过 IPC 事件把"已就绪 N 个应用"实时推给前端，
+    /// 让用户一启动就能看到内容逐步出现，而非等全部扫完才显示。
+    ///
+    /// `on_progress(count, phase)`:
+    /// - `count`: 当前已索引的应用总数
+    /// - `phase`: 当前阶段名（"common_start_menu" / "user_start_menu" / "desktop"）
+    pub async fn refresh_index_incremental<F>(&self, mut on_progress: F) -> Result<()>
+    where
+        F: FnMut(usize, &str) + Send + 'static,
+    {
+        // 先清空缓存
+        {
+            let mut cache = self.cache.write();
+            cache.clear();
         }
 
-        log::info!("App index: {} applications", cache.len());
+        // 分阶段扫描，每阶段结束后释放写锁并通知进度，
+        // 这样读侧（search）能立即拿到已就绪的部分结果。
+        let phases: [(&str, Option<PathBuf>); 3] = [
+            (
+                "common_start_menu",
+                std::env::var("ProgramData")
+                    .ok()
+                    .map(|v| PathBuf::from(v).join("Microsoft\\Windows\\Start Menu\\Programs")),
+            ),
+            (
+                "user_start_menu",
+                std::env::var("APPDATA")
+                    .ok()
+                    .map(|v| PathBuf::from(v).join("Microsoft\\Windows\\Start Menu\\Programs")),
+            ),
+            (
+                "desktop",
+                std::env::var("USERPROFILE")
+                    .ok()
+                    .map(|v| PathBuf::from(v).join("Desktop")),
+            ),
+        ];
+
+        for (phase, dir) in phases {
+            if let Some(dir) = dir {
+                let count = Self::scan_dir_and_count(&dir, &self.cache);
+                on_progress(count, phase);
+            }
+        }
+
+        let total = self.total();
+        log::info!("App index: {} applications", total);
         Ok(())
     }
 
-    fn scan_dir(dir: &PathBuf, cache: &mut HashMap<String, AppEntry>) {
+    /// 扫描单个目录，把结果追加到缓存中，返回扫描后的总应用数。
+    /// 使用写锁只保护"插入"这一临界区，使扫描 I/O 与读缓存并行。
+    fn scan_dir_and_count(dir: &PathBuf, cache: &RwLock<HashMap<String, AppEntry>>) -> usize {
         if !dir.is_dir() {
-            return;
+            return cache.read().len();
         }
+
+        // 先在本地收集本目录的所有条目，再一次性写入缓存，
+        // 避免逐次加锁带来的开销。应用数量通常不大，本地缓冲完全 OK。
+        let mut batch: Vec<AppEntry> = Vec::new();
+
         for entry in WalkDir::new(dir)
             .max_depth(5)
             .into_iter()
@@ -94,11 +132,35 @@ impl AppSearchEngine {
                 p.to_path_buf()
             };
 
-            let name = p
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("")
-                .to_string();
+            // 有效性校验: 目标路径必须存在, 避免列出已卸载的程序残留 LNK.
+            // 同时排除系统目录中的可执行文件, 这些不是用户应用.
+            if !target.exists() {
+                continue;
+            }
+            if is_system_executable(&target) {
+                continue;
+            }
+
+            // 应用名称：对于 LNK 文件，使用目标程序的名称（避免 LNK 文件名误导），
+            // 但仍保留 LNK 自己的 file_stem 作为 fallback（防止目标解析失败）。
+            let name = if is_lnk {
+                target
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| {
+                        p.file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("")
+                            .to_string()
+                    })
+            } else {
+                p.file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
             if name.is_empty() {
                 continue;
             }
@@ -113,8 +175,17 @@ impl AppSearchEngine {
                 launch_count: 0,
                 alias: None,
             };
-            cache.insert(entry.path.to_string_lossy().to_string(), entry);
+            batch.push(entry);
         }
+
+        if !batch.is_empty() {
+            let mut cache_write = cache.write();
+            for entry in batch {
+                cache_write.insert(entry.path.to_string_lossy().to_string(), entry);
+            }
+        }
+
+        cache.read().len()
     }
 
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
@@ -264,14 +335,7 @@ fn category_of(path: &PathBuf, name: &str) -> String {
 
 /// 名称 → 分类查表. 见 [`category_of`] 说明.
 const APP_NAME_CATEGORIES: &[(&[&str], &str)] = &[
-    (
-        &[
-            "chrome",
-            "firefox",
-            "edge",
-        ],
-        "Browser",
-    ),
+    (&["chrome", "firefox", "edge"], "Browser"),
     (
         &[
             "vscode",
@@ -283,14 +347,8 @@ const APP_NAME_CATEGORIES: &[(&[&str], &str)] = &[
         ],
         "Development",
     ),
-    (
-        &["wechat", "slack", "discord"],
-        "Communication",
-    ),
-    (
-        &["spotify", "music"],
-        "Media",
-    ),
+    (&["wechat", "slack", "discord"], "Communication"),
+    (&["spotify", "music"], "Media"),
 ];
 
 /// 路径关键字 → System 分类.
@@ -298,6 +356,24 @@ const SYSTEM_PATH_KEYWORDS: &[&str] = &["microsoft"];
 
 /// 未匹配任何规则的默认分类.
 const DEFAULT_APP_CATEGORY: &str = "Applications";
+
+/// 系统目录列表. 这些目录中的可执行文件不是用户应用,
+/// 应从应用索引中排除, 避免将 dfrgui.exe (磁盘碎片整理) 这类系统工具
+/// 误识别为"酷狗音乐"等无关应用.
+const SYSTEM_DIR_KEYWORDS: &[&str] = &[
+    "\\windows\\system32\\",
+    "\\windows\\syswow64\\",
+    "\\windows\\winsxs\\",
+    "\\windows\\servicing\\",
+    "\\windows\\softwaredistribution\\",
+    "\\windows\\assembly\\",
+];
+
+/// 判断给定路径是否位于系统目录中, 是则不应作为用户应用索引.
+fn is_system_executable(path: &std::path::Path) -> bool {
+    let path_str = path.to_string_lossy().to_lowercase();
+    SYSTEM_DIR_KEYWORDS.iter().any(|kw| path_str.contains(kw))
+}
 
 fn app_type_of(path: &PathBuf) -> ResultType {
     let p = path.to_string_lossy().to_lowercase();
@@ -336,11 +412,25 @@ mod tests {
         // prefix: "chrome" 是 "chrome browser" 的前缀 → APP_SCORE_PREFIX
         let prefix = score_app_match("chrome", "Chrome Browser", r"c:\apps\chrome\browser.exe", 0);
         // substr: "chrome" 是 "Google Chrome" 的子串 (但不是前缀) → APP_SCORE_SUBSTR
-        let substr = score_app_match("chrome", "Google Chrome", r"c:\program files\google\chrome.exe", 0);
+        let substr = score_app_match(
+            "chrome",
+            "Google Chrome",
+            r"c:\program files\google\chrome.exe",
+            0,
+        );
         let _fuzzy = score_app_match("chrome", "Chrm", r"c:\apps\chrm\chrm.exe", 0);
-        assert!(exact >= search_cfg::APP_SCORE_EXACT, "完全匹配应至少给 EXACT 分数, got {exact}");
-        assert!(prefix >= search_cfg::APP_SCORE_PREFIX, "前缀匹配应至少给 PREFIX 分数, got {prefix}");
-        assert!(substr >= search_cfg::APP_SCORE_SUBSTR, "子串匹配应至少给 SUBSTR 分数, got {substr}");
+        assert!(
+            exact >= search_cfg::APP_SCORE_EXACT,
+            "完全匹配应至少给 EXACT 分数, got {exact}"
+        );
+        assert!(
+            prefix >= search_cfg::APP_SCORE_PREFIX,
+            "前缀匹配应至少给 PREFIX 分数, got {prefix}"
+        );
+        assert!(
+            substr >= search_cfg::APP_SCORE_SUBSTR,
+            "子串匹配应至少给 SUBSTR 分数, got {substr}"
+        );
         // 完全 > 前缀 > 子串 (按阈值从大到小)
         assert!(
             exact >= prefix && prefix >= substr,
@@ -351,7 +441,12 @@ mod tests {
     /// 多 token 搜索: 拆分后每段独立加分, 加 launch_count 权重.
     #[test]
     fn score_multi_term_and_launch_count() {
-        let s0 = score_app_match("vs code", "Visual Studio Code", r"c:\program files\vs\code.exe", 0);
+        let s0 = score_app_match(
+            "vs code",
+            "Visual Studio Code",
+            r"c:\program files\vs\code.exe",
+            0,
+        );
         let s_high = score_app_match(
             "vs code",
             "Visual Studio Code",
@@ -409,7 +504,10 @@ mod tests {
         // "vscode" 子串匹配 (实际 bin 名为 "Code - Insiders.exe" 时也常含 "vscode")
         assert_eq!(category_of(&p(r"c:\x"), "vscode.exe"), "Development");
         // " intellij" 带前导空格, 避免误匹配 "intelligence" 等
-        assert_eq!(category_of(&p(r"c:\x"), "JetBrains IntelliJ"), "Development");
+        assert_eq!(
+            category_of(&p(r"c:\x"), "JetBrains IntelliJ"),
+            "Development"
+        );
         // "git" 是 "github" 的子串, 也命中
         assert_eq!(category_of(&p(r"c:\x"), "GitHub Desktop"), "Development");
         // "git" 单词本身
@@ -451,10 +549,7 @@ mod tests {
     /// 顺序敏感: Browser 在 Development 之前, "GitHub Chrome" 仍为 Browser.
     #[test]
     fn category_order_sensitive_browser_wins() {
-        assert_eq!(
-            category_of(&p(r"c:\x"), "GitHub Chrome Edition"),
-            "Browser"
-        );
+        assert_eq!(category_of(&p(r"c:\x"), "GitHub Chrome Edition"), "Browser");
     }
 
     /// 大小写不敏感: 名称大写也能命中 (内部 to_lowercase).
