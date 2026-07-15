@@ -71,11 +71,11 @@ pub mod icon {
 
 pub mod window {
     /// 主窗口默认宽度 (像素).
-    pub const DEFAULT_WIDTH: f64 = 640.0;
+    pub const DEFAULT_WIDTH: f64 = 720.0;
     /// 主窗口最小高度.
     pub const MIN_HEIGHT: u32 = 320;
     /// 主窗口最大高度.
-    pub const MAX_HEIGHT: u32 = 580;
+    pub const MAX_HEIGHT: u32 = 680;
 }
 
 pub mod search {
@@ -144,10 +144,7 @@ pub mod fs {
     /// 文件索引扫描时跳过的文件/目录名 (小写匹配).
     /// 注意: .git / .vscode **不在此列表**, 因为 should_skip_path 的隐藏文件规则
     /// 把它们作为例外保留, 用户经常想搜到这些目录下的文件.
-    pub const SKIP_NAMES: &[&str] = &[
-        "thumbs.db", "desktop.ini",
-        "pagefile.sys", "hiberfil.sys",
-    ];
+    pub const SKIP_NAMES: &[&str] = &["thumbs.db", "desktop.ini", "pagefile.sys", "hiberfil.sys"];
 
     /// 文件索引扫描时跳过的路径片段 (小写子串匹配).
     pub const SKIP_PATH_FRAGMENTS: &[&str] = &[
@@ -172,10 +169,8 @@ pub mod paths {
     pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
     /// 系统应用路径前缀 (用于 app_type_of 判定).
-    pub const SYSTEM_PATH_PREFIXES: &[&str] = &[
-        "c:\\windows\\",
-        "c:\\program files\\windowsapps\\",
-    ];
+    pub const SYSTEM_PATH_PREFIXES: &[&str] =
+        &["c:\\windows\\", "c:\\program files\\windowsapps\\"];
 }
 
 pub mod ipc_events {

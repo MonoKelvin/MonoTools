@@ -215,7 +215,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   >
     <div class="search-bar__left">
       <div class="search-bar__icon" aria-hidden="true">
-        <Search :size="18" :stroke-width="1.5" />
+        <Search :size="22" :stroke-width="1.5" />
       </div>
 
       <div class="search-bar__input-wrapper">
@@ -284,8 +284,8 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  height: 52px;
+  padding: 0 18px;
+  height: 60px;
   flex-shrink: 0;
   position: relative;
   user-select: none;
@@ -314,8 +314,8 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 
 .search-bar__icon {
   flex-shrink: 0;
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
   color: var(--text-tertiary);
   opacity: 0.65;
   transition: all var(--dur-fast) var(--ease-out);
@@ -335,7 +335,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   width: 100%;
   padding: 0;
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 17px;
   font-weight: 400;
   line-height: 1.4;
   color: var(--text-primary);
@@ -378,8 +378,8 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 
 .search-bar__logo {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;

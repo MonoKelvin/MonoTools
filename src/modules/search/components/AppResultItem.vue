@@ -219,7 +219,7 @@ const badgeInfo = computed(() => {
         ]"
         v-tooltip="{ value: badgeInfo.label, showDelay: 400, position: 'top' }"
       >
-        <component :is="badgeInfo.icon" :size="badgeSize === 'xs' ? 8 : 10" :stroke-width="2" />
+        <component :is="badgeInfo.icon" :size="badgeSize === 'xs' ? 12 : 10" :stroke-width="2" />
       </div>
     </div>
 
@@ -318,9 +318,9 @@ const badgeInfo = computed(() => {
   align-items: center;
   justify-content: center;
   background: var(--canvas-elevated);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   color: var(--text-tertiary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   z-index: 2;
   pointer-events: none;
   transition:
@@ -334,9 +334,9 @@ const badgeInfo = computed(() => {
 }
 
 .app-result-item__badge--uwp {
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 6px var(--accent-glow), 0 1px 3px rgba(0, 0, 0, 0.3);
+  color: var(--text-tertiary);
+  border-color: var(--border-subtle);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
 }
 
 .app-result-item__badge--sm {
@@ -346,36 +346,36 @@ const badgeInfo = computed(() => {
 }
 
 .app-result-item__badge--xs {
-  width: 14px;
-  height: 14px;
-  border-radius: 3px;
-  right: -3px;
-  bottom: -3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  right: -4px;
+  bottom: -4px;
 }
 
 .app-result-item:hover .app-result-item__badge {
   color: var(--text-secondary);
-  border-color: var(--border-hover);
+  border-color: var(--border-default);
 }
 
 .app-result-item:hover .app-result-item__badge--uwp {
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 8px var(--accent-glow), 0 1px 3px rgba(0, 0, 0, 0.3);
-  transform: scale(1.08);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  transform: scale(1.06);
 }
 
 .app-result-item--active .app-result-item__badge--system {
-  color: var(--accent-warm);
-  border-color: var(--accent-warm);
-  box-shadow: 0 0 6px var(--accent-glow);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
 }
 
 .app-result-item--active .app-result-item__badge--uwp {
-  color: var(--accent);
-  border-color: var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow);
-  transform: scale(1.1);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  transform: scale(1.06);
 }
 
 /* === Monogram 单字母占位符 (无真实图标时) === */
