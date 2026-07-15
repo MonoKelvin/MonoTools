@@ -13,8 +13,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent, h, nextTick } from 'vue'
-import type { SearchResult } from '@/types/search'
-import GroupSection from '@/components/search/GroupSection.vue'
+import type { SearchResult } from '@/modules/search'
+import GroupSection from '@/modules/search/components/GroupSection.vue'
 
 // === 子组件 stub: 隔离 AppResultItem / ResultItem / MtComboBox 的依赖 ===
 const StubAppItem = defineComponent({

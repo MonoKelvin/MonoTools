@@ -1,6 +1,6 @@
 [package]
 name = "monotools"
-version = "0.1.0"
+version = "1.1.0"
 description = "Lightweight launcher and startup manager"
 authors = ["MonoKelvin", "Claude Code"]
 edition = "2021"

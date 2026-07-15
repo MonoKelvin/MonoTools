@@ -1,4 +1,4 @@
-import type { SearchResult } from '@/types/search'
+import type { SearchResult } from '@/modules/search'
 
 /**
  * 按 score 降序比较. 入参 `a/b` 只需要含 `score?: number` 形状,

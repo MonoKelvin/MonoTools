@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useCommandsStore } from '@/commands/store'
+import { useCommandsStore } from '@/core/command/store'
 
 /**
  * 手动 mock `@/services/tauri`。

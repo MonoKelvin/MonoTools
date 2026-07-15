@@ -1,11 +1,11 @@
-//! 全局 App 状态 - 由 tauri::Builder.manage 注入
+﻿//! 全局 App 状态 - 由 tauri::Builder.manage 注入
 
-use crate::engines::app_search::AppSearchEngine;
-use crate::engines::command_search::CommandSearchEngine;
-use crate::engines::file_search::FileSearchEngine;
 use crate::repositories::*;
+use crate::search_engine::app_search::AppSearchEngine;
+use crate::search_engine::command_search::CommandSearchEngine;
+use crate::search_engine::file_search::FileSearchEngine;
+use crate::search_engine::SearchEngine;
 use crate::services::hotkey::HotkeyService;
-use crate::services::search::SearchEngine;
 use crate::services::window::WindowService;
 use std::sync::Arc;
 use std::sync::Mutex;

@@ -1,6 +1,6 @@
 import { call } from './tauri'
-import type { SearchResult, SearchOptions } from '@/types/search'
-import type { Settings, ThemeMode } from '@/types/settings'
+import type { SearchResult, SearchOptions } from '@/modules/search'
+import type { Settings, ThemeMode } from '@/core/types/settings'
 
 export const searchApi = {
     /**

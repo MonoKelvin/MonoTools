@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBuiltinCommandSpecs, builtinCommandSpecs } from '@/commands/specs'
+import { buildBuiltinCommandSpecs, builtinCommandSpecs } from '@/core/command/specs'
 
 describe('buildBuiltinCommandSpecs', () => {
   it('id 与后端命令对齐', () => {

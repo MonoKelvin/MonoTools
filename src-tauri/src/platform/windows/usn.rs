@@ -1,4 +1,4 @@
-//! NTFS USN Journal 和 MFT 枚举 - 实现类似 Everything 的快速文件索引
+﻿//! NTFS USN Journal 和 MFT 枚举 - 实现类似 Everything 的快速文件索引
 //!
 //! 核心架构：
 //! 1. 全量索引：使用 FSCTL_ENUM_USN_DATA 批量读取 MFT，这是最快的全盘枚举方式
@@ -7,7 +7,7 @@
 //!
 //! 参考：https://learn.microsoft.com/en-us/windows/win32/api/winioctl/
 
-use crate::error::{AppError, Result};
+use crate::core::error::{AppError, Result};
 use std::collections::HashMap;
 use std::ffi::{c_void, OsString};
 use std::os::windows::ffi::OsStringExt;

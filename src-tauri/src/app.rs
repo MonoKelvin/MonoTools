@@ -1,14 +1,14 @@
-//! Tauri 应用构建与命令入口
+﻿//! Tauri 应用构建与命令入口
 
 pub mod app {
-    use crate::engines::app_search::AppSearchEngine;
-    use crate::engines::command_search::CommandSearchEngine;
-    use crate::engines::file_search::FileSearchEngine;
     use crate::models::Settings;
     use crate::repositories::*;
+    use crate::search_engine::app_search::AppSearchEngine;
+    use crate::search_engine::command_search::CommandSearchEngine;
+    use crate::search_engine::file_search::FileSearchEngine;
+    use crate::search_engine::SearchEngine;
     use crate::services::app_state::AppState;
     use crate::services::hotkey::HotkeyService;
-    use crate::services::search::SearchEngine;
     use crate::services::window::WindowService;
     use std::path::PathBuf;
     use std::sync::{Arc, Mutex};
@@ -69,7 +69,7 @@ pub mod app {
                             ((os_version >> 8) & 0xFF, (os_version >> 16) & 0xFF)
                         };
 
-                        if major >= 10 && minor >= 0 && (major > 10 || minor >= 22000) {
+                        if major >= 10 && (major > 10 || minor >= 22000) {
                             match window_vibrancy::apply_mica(&window, None) {
                                 Ok(_) => {
                                     log::info!("[effects] window-vibrancy mica 效果已应用 (Win11+)");
@@ -378,7 +378,7 @@ pub mod app {
                         }
                     }
 
-                    use crate::engines::start_update_loop;
+                    use crate::search_engine::start_update_loop;
                     let fs_clone = file_search_clone.clone();
                     start_update_loop(
                         move || fs_clone.update_index(),

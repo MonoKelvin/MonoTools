@@ -28,7 +28,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import type { SearchResult } from '@/types/search'
+import type { SearchResult } from '@/modules/search'
 
 // 强制 isTauri=true 让 IPC 路径生效
 vi.mock('@/services/env', () => ({
@@ -83,7 +83,7 @@ describe('ResultItem - PNG 图标渲染 (修复 .url / .lnk 不显示问题)', (
   })
 
   it('file 类型 (other-file) 走 IPC 拿真实 PNG', async () => {
-    const ResultItem = (await import('@/components/common/ResultItem.vue')).default
+    const ResultItem = (await import('@/modules/search/components/ResultItem.vue')).default
     const wrapper = mount(ResultItem, {
       props: { result: mkFile({ id: 't1-' + Math.random() }), index: 0, active: false },
     })
@@ -107,7 +107,7 @@ describe('ResultItem - PNG 图标渲染 (修复 .url / .lnk 不显示问题)', (
   })
 
   it('happy-dom 中 @load 不触发 → 350ms 兜底 timer 强制 ready', async () => {
-    const ResultItem = (await import('@/components/common/ResultItem.vue')).default
+    const ResultItem = (await import('@/modules/search/components/ResultItem.vue')).default
     const wrapper = mount(ResultItem, {
       props: { result: mkFile({ id: 't2-' + Math.random() }), index: 0, active: false },
     })
@@ -131,7 +131,7 @@ describe('ResultItem - PNG 图标渲染 (修复 .url / .lnk 不显示问题)', (
   })
 
   it('不同 result.id 切换时, refreshIcon 重新触发', async () => {
-    const ResultItem = (await import('@/components/common/ResultItem.vue')).default
+    const ResultItem = (await import('@/modules/search/components/ResultItem.vue')).default
     const wrapper = mount(ResultItem, {
       props: { result: mkFile({ id: 'a-' + Math.random() }), index: 0, active: false },
     })
@@ -147,7 +147,7 @@ describe('ResultItem - PNG 图标渲染 (修复 .url / .lnk 不显示问题)', (
   })
 
   it('相同 result.id 重复时, 不重复 IPC (cache 命中)', async () => {
-    const ResultItem = (await import('@/components/common/ResultItem.vue')).default
+    const ResultItem = (await import('@/modules/search/components/ResultItem.vue')).default
     const id = 'same-' + Math.random()
     const wrapper = mount(ResultItem, {
       props: { result: mkFile({ id }), index: 0, active: false },
@@ -167,7 +167,7 @@ describe('ResultItem - PNG 图标渲染 (修复 .url / .lnk 不显示问题)', (
 
   it('.url 文件 (Internet Shortcut) 走 IPC 拿图标', async () => {
     // 关键回归测试: 之前 .url 文件的图标不显示, 现在 ResultItem 也读 useAppIcon
-    const ResultItem = (await import('@/components/common/ResultItem.vue')).default
+    const ResultItem = (await import('@/modules/search/components/ResultItem.vue')).default
     const urlPath = 'C:\\ProgramData\\Microsoft\\Windows\\Start Menu\\Programs\\Link to Nikon\\NIKON IMAGE SPACE.url'
     const wrapper = mount(ResultItem, {
       props: {
@@ -194,7 +194,7 @@ describe('ResultItem - PNG 图标渲染 (修复 .url / .lnk 不显示问题)', (
   })
 
   it('快速切换 id 时, 旧 token 被丢弃 (race condition 防护)', async () => {
-    const ResultItem = (await import('@/components/common/ResultItem.vue')).default
+    const ResultItem = (await import('@/modules/search/components/ResultItem.vue')).default
     const wrapper = mount(ResultItem, {
       props: { result: mkFile({ id: 'r1' }), index: 0, active: false },
     })

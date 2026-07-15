@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useSettingsStore } from '@/stores/settings'
+import { useSettingsStore } from '@/core/stores/settings'
 
 function switchApiMock(impl: Record<string, any>): void {
   // 直接重新 import 模块来替换 `settingsApi` —— 因为 Pinia store 在 mount 时

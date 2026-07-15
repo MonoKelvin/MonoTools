@@ -1,9 +1,9 @@
-//! 全局快捷键服务
+﻿//! 全局快捷键服务
 //!
 //! 注册策略:
 //! 1. 优先使用 tauri-plugin-global-shortcut (底层 RegisterHotKey)
 //! 2. 若失败 (如 Alt+Space 被 Windows 保留), 回退到低级键盘钩子 (WH_KEYBOARD_LL)
-use crate::error::Result;
+use crate::core::error::Result;
 use crate::platform::windows::hotkey::{hotkey_to_vk, LowLevelHotkeyHook};
 use parking_lot::Mutex;
 use tauri::{AppHandle, Runtime, WebviewWindow};

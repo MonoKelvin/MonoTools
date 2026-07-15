@@ -1,5 +1,5 @@
-//! Shell 工具 - 启动程序、打开路径、解析快捷方式、系统操作
-use crate::error::{AppError, Result};
+﻿//! Shell 工具 - 启动程序、打开路径、解析快捷方式、系统操作
+use crate::core::error::{AppError, Result};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -31,7 +31,7 @@ pub fn launch_as_admin(path: &str, args: &[String]) -> Result<()> {
 /// 不要先取 parent 再传进来, 否则会多往上跳一级导致定位错误.
 #[cfg(windows)]
 pub fn open_path(path: &PathBuf) -> Result<()> {
-    use crate::config::paths;
+    use crate::core::config::paths;
     use std::os::windows::process::CommandExt;
 
     let path_str = path.to_string_lossy().into_owned();
@@ -69,7 +69,7 @@ pub fn open_containing_folder(path: &PathBuf) -> Result<()> {
 /// 这是 Windows 上最可靠的"打开文件属性"方式之一。
 #[cfg(windows)]
 pub fn show_file_properties(path: &PathBuf) -> Result<()> {
-    use crate::config::paths;
+    use crate::core::config::paths;
     use std::os::windows::process::CommandExt;
 
     // 使用 PowerShell 调用 Shell.Application 的 InvokeVerb 方式打开属性页
@@ -98,7 +98,7 @@ pub fn show_file_properties(_path: &PathBuf) -> Result<()> {
 /// 如果回收站不可用或非 Windows 平台, 则永久删除 (调用方应自行确认).
 #[cfg(windows)]
 pub fn delete_to_recycle_bin(path: &PathBuf) -> Result<()> {
-    use crate::config::paths;
+    use crate::core::config::paths;
     use std::os::windows::process::CommandExt;
 
     let path_str = path.to_string_lossy().into_owned();

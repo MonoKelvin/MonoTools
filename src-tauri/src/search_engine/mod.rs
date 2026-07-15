@@ -1,0 +1,24 @@
+﻿//! 搜索引擎模块 —— 应用搜索、文件搜索、命令搜索
+//!
+//! 本模块包含完整的搜索相关功能：
+//! - `models/`: 搜索相关数据模型
+//! - `app_search/`: 应用搜索引擎
+//! - `command_search.rs`: 自定义命令搜索引擎
+//! - `file_search.rs`: 文件搜索引擎
+//! - `search_source.rs`: 搜索源 trait（可扩展）
+//! - `service.rs`: SearchEngine 协调服务（合并多源结果）
+//! - `commands.rs`: 搜索相关命令（search, index）
+
+pub mod app_search;
+pub mod command_search;
+pub mod file_search;
+pub mod models;
+pub mod search_source;
+
+pub mod service;
+pub mod commands;
+
+pub use file_search::FileSearchEngine;
+pub use file_search::start_update_loop;
+pub use search_source::SearchSource;
+pub use service::SearchEngine;

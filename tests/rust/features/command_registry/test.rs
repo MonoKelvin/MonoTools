@@ -2,7 +2,7 @@
 use crate::common::logger::TestLogger;
 use crate::common::paths::{output_path, ensure_dir, timestamped_output_path};
 use crate::common::reporter::TestReporter;
-use monotools_lib::command::{
+use monotools_lib::core::command::{
     build_default_registry, CommandOutput, CommandRegistry,
 };
 
@@ -119,7 +119,7 @@ pub async fn run_command_registry_tests() {
 
     logger.section("测试三: 空字符串派发");
     let headless_ctx =
-        monotools_lib::command::CommandContext::new_headless().await.unwrap();
+        monotools_lib::core::command::CommandContext::new_headless().await.unwrap();
     let reg = build_default_registry();
     let empty = reg.dispatch_str("", &headless_ctx).await.unwrap();
     assert!(!empty.success, "空命令应该报错");
@@ -129,7 +129,7 @@ pub async fn run_command_registry_tests() {
 
     logger.section("测试四: 未知 id / 命令");
     let reg = build_default_registry();
-    let ctx = monotools_lib::command::CommandContext::new_headless()
+    let ctx = monotools_lib::core::command::CommandContext::new_headless()
         .await
         .unwrap();
     let r = reg.dispatch_id("not-a-cmd", &[], &ctx).await.unwrap();

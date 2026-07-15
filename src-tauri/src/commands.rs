@@ -1,6 +1,6 @@
-//! Tauri IPC Commands - 前端 ↔ 后端
+﻿//! Tauri IPC Commands - 前端 ↔ 后端
 
-use crate::config::{ipc_events, window};
+use crate::core::config::{ipc_events, window};
 use crate::models::SearchAction;
 use crate::models::{CustomCommand, SearchResult, Settings};
 use crate::platform::windows::shell;
@@ -22,14 +22,14 @@ pub async fn search_cmd(
 ) -> Result<Vec<SearchResult>, String> {
     log::info!("[search] search_cmd called with query='{}'", query);
     let default_limit = if query.is_empty() {
-        crate::config::search::EMPTY_QUERY_LIMIT
+        crate::core::config::search::EMPTY_QUERY_LIMIT
     } else {
-        crate::config::search::DEFAULT_LIMIT
+        crate::core::config::search::DEFAULT_LIMIT
     };
     let limit = options
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
-        .map(|n| n.min(crate::config::search::MAX_LIMIT as u64) as u32)
+        .map(|n| n.min(crate::core::config::search::MAX_LIMIT as u64) as u32)
         .unwrap_or(default_limit);
     let results = state.search_engine.search(&query, limit);
     log::info!("[search] search_cmd returned {} results", results.len());
@@ -453,11 +453,11 @@ pub async fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
 
 /// 前端命令面板使用：列出全部已注册命令（不含别名）。
 ///
-/// 返回 `Vec<CommandSpec>` 序列化后的精简结构（与 Rust 端 [`crate::command::CommandSpec`] 字段对齐）。
+/// 返回 `Vec<CommandSpec>` 序列化后的精简结构（与 Rust 端 [`crate::core::command::CommandSpec`] 字段对齐）。
 /// 只返回主命令名（主键），别名在 dispatch 时自动解析。
 #[tauri::command]
 pub async fn list_command_specs() -> Result<serde_json::Value, String> {
-    use crate::command::build_default_registry;
+    use crate::core::command::build_default_registry;
     let reg = build_default_registry();
     // 只遍历主命令（cmds key set），跳过别名
     let names = reg.main_names();
@@ -485,8 +485,8 @@ pub async fn dispatch_command(
     state: State<'_, Arc<AppState>>,
     command_id: String,
     args: Option<Vec<String>>,
-) -> Result<crate::command::CommandOutput, String> {
-    use crate::command::{registry_dispatch, CommandContext};
+) -> Result<crate::core::command::CommandOutput, String> {
+    use crate::core::command::{registry_dispatch, CommandContext};
     let ctx = CommandContext::from_app_state(&state);
     let arg_list = args.unwrap_or_default();
     registry_dispatch(&command_id, &arg_list, &ctx)

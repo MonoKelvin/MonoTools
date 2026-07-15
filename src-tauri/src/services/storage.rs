@@ -1,5 +1,5 @@
-//! SQLite 存储服务 - 持久化设置、命令、统计、历史
-use crate::error::{AppError, Result};
+﻿//! SQLite 存储服务 - 持久化设置、命令、统计、历史
+use crate::core::error::{AppError, Result};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{de::DeserializeOwned, Serialize};
 use std::path::PathBuf;

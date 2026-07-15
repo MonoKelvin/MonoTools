@@ -1,5 +1,5 @@
-//! MonoTools CLI 入口 - 在终端直接调用，无需 UI
-//! 
+﻿//! MonoTools CLI 入口 - 在终端直接调用，无需 UI
+//!
 //! 用法示例：
 //!   monotools-cli search "chrome"
 //!   monotools-cli launch "notepad"
@@ -9,7 +9,7 @@
 //!   monotools-cli --help
 
 use clap::{Parser, Subcommand};
-use monotools_lib::command::{dispatch, CommandContext, CommandOutput};
+use monotools_lib::core::command::{dispatch, CommandContext, CommandOutput};
 
 #[derive(Parser, Debug)]
 #[command(name = "monotools-cli")]
@@ -58,13 +58,17 @@ enum Commands {
 #[derive(Subcommand, Debug)]
 enum CommandAction {
     List,
-    Run { id: String },
+    Run {
+        id: String,
+    },
     Add {
         name: String,
         keyword: String,
         command: String,
     },
-    Remove { id: String },
+    Remove {
+        id: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -131,7 +135,7 @@ fn cmd_name(s: &Commands) -> &'static str {
 fn build_input_string(cli: &Cli) -> String {
     let mut parts: Vec<String> = Vec::new();
     parts.push(cmd_name(&cli.command).to_string());
-    
+
     match &cli.command {
         Commands::Search { query, limit } => {
             parts.push(format!("--limit {}", limit));
@@ -149,7 +153,11 @@ fn build_input_string(cli: &Cli) -> String {
                 parts.push("run".into());
                 parts.push(id.clone());
             }
-            CommandAction::Add { name, keyword, command } => {
+            CommandAction::Add {
+                name,
+                keyword,
+                command,
+            } => {
                 parts.push("add".into());
                 parts.push(quote(name));
                 parts.push(quote(keyword));
@@ -189,7 +197,7 @@ fn build_input_string(cli: &Cli) -> String {
         Commands::Help => parts.push("help".into()),
         Commands::Version => parts.push("version".into()),
     }
-    
+
     parts.join(" ")
 }
 
@@ -201,7 +209,7 @@ fn print_output(out: &CommandOutput) {
     } else {
         eprintln!("✗ {}", out.message);
     }
-    
+
     if let Some(data) = &out.data {
         match data {
             serde_json::Value::Array(arr) => {
@@ -209,10 +217,13 @@ fn print_output(out: &CommandOutput) {
                     if let Some(s) = item.as_str() {
                         println!("  {}", s);
                     } else if let Some(map) = item.as_object() {
-                        let title = map.get("title").and_then(|v| v.as_str()).unwrap_or("(no name)");
+                        let title = map
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("(no name)");
                         let subtitle = map.get("subtitle").and_then(|v| v.as_str());
                         let score = map.get("score").and_then(|v| v.as_f64());
-                        
+
                         let mut line = format!("  {}", title);
                         if let Some(s) = subtitle {
                             line.push_str(&format!(" - {}", s));

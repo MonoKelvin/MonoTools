@@ -1,4 +1,4 @@
-use crate::utils::path::fast_hash;
+﻿use crate::utils::path::fast_hash;
 
 /// 使用 fast_hash 对字符串均匀分桶
 pub fn bucket(s: &str, n: usize) -> usize {

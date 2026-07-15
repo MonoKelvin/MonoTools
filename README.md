@@ -152,112 +152,66 @@ pnpm cli stats
 ```
 MTools/
 ├── docs/                         # 设计文档
-│   ├── DESIGN.md                 # 详细设计文档
-│   └── UI_DESIGN-raycast.md       # UI 设计规范
-├── src/                          # Vue 3 前端
+│   └── V1.1重构计划.md          # V1.1 模块化重构计划
+├── src/                          # Vue 3 前端 (V1.1 模块化架构)
 │   ├── main.ts                   # 入口
 │   ├── App.vue                   # 根组件
 │   ├── assets/                   # 字体、全局样式
-│   ├── components/               # 组件
-│   │   ├── common/               # 通用组件
-│   │   │   ├── MtButton.vue      # 按钮组件
-│   │   │   ├── MtCard.vue        # 卡片组件
-│   │   │   ├── MtDivider.vue     # 分割线组件
-│   │   │   ├── MtInput.vue       # 输入框组件
-│   │   │   ├── MtMenu.vue        # 菜单组件
-│   │   │   ├── MtPanel.vue       # 面板组件
-│   │   │   ├── ResultItem.vue    # 搜索结果项
-│   │   │   ├── SearchInput.vue   # 搜索输入框
-│   │   │   └── ThemeToggle.vue   # 主题切换
-│   │   ├── panels/               # 面板组件
-│   │   │   ├── CommandsPanel.vue # 命令面板
-│   │   │   └── SettingsPanel.vue # 设置面板
-│   │   └── search/               # 搜索相关
-│   │       ├── ActionBar.vue     # 底部操作栏
-│   │       ├── CategoryTabs.vue  # 分类标签
-│   │       └── SearchResults.vue # 搜索结果列表
+│   ├── core/                     # 核心基础设施 (无业务逻辑)
+│   │   ├── command/               # 命令系统框架
+│   │   ├── router/              # 路由配置
+│   │   ├── stores/              # 通用 store (theme, settings)
+│   │   ├── config/              # 全局配置
+│   │   └── types/               # 通用类型定义
+│   ├── ui/                       # UI 组件库 (纯展示，无业务逻辑)
+│   │   └── components/          # MtButton, MtCard, MtInput, MtMenu, MtModal 等
+│   ├── modules/                  # 业务模块 (内聚，删除模块时一起删)
+│   │   ├── search/              # 搜索模块
+│   │   │   ├── components/
+│   │   │   ├── composables/
+│   │   │   ├── store.ts
+│   │   │   └── types.ts
+│   │   ├── commands/            # 命令模块
+│   │   │   └── components/
+│   │   └── settings/            # 设置模块
+│   │       └── components/
+│   ├── common/                   # 通用业务组件 (跨模块有业务逻辑)
+│   │   ├── components/           # HotkeyModal, ThemeToggle
+│   │   └── composables/        # useAppIcon, useIconRenderer, iconSources/
 │   ├── pages/                    # 页面
-│   │   ├── SearchPage.vue        # 搜索页
-│   │   ├── CommandsPage.vue      # 命令页
-│   │   └── SettingsPage.vue      # 设置页
-│   ├── router/                   # 路由配置
-│   ├── services/                 # Tauri IPC 封装
-│   ├── stores/                   # Pinia Store
-│   ├── types/                    # TypeScript 类型定义
-│   └── utils/                    # 工具函数
+│   │   └── SearchPage.vue        # 搜索页 (单页应用，面板通过路由切换)
+│   ├── services/                 # Tauri IPC 封装 (api.ts 是唯一入口)
+│   ├── utils/                    # 工具函数
+│   └── ...
 ├── src-tauri/                    # Rust 后端
 │   ├── Cargo.toml                # Rust 依赖
 │   ├── tauri.conf.json           # Tauri 配置
-│   ├── tests/                    # 测试框架
-│   │   ├── SKILL.md              # 测试框架规范
-│   │   ├── run.rs                # 统一测试入口
-│   │   ├── all_tests.rs          # 测试入口代理
-│   │   └── rust/                 # Rust 测试
-│   │       ├── common/           # 公共工具
-│   │       │   ├── mod.rs
-│   │       │   ├── paths.rs      # 路径解析
-│   │       │   ├── report.rs     # 测试报告生成器
-│   │       │   └── table.rs      # 表格格式化工具
-│   │       └── features/         # 功能模块测试
-│   │           └── search_engine/ # 搜索引擎测试（含 USN Journal）
 │   └── src/
 │       ├── main.rs               # GUI 入口
-│       ├── cli_main.rs           # CLI 入口
+│       ├── cli_main.rs             # CLI 入口
 │       ├── lib.rs                # 库入口
 │       ├── app.rs                # Tauri App 构建
-│       ├── app_state.rs          # 应用状态容器
 │       ├── commands.rs           # Tauri IPC 命令
-│       ├── error.rs              # 错误处理
-│       ├── command/              # Command 模式（CLI + IPC 统一）
-│       │   ├── command_trait.rs
-│       │   ├── command_registry.rs
-│       │   ├── command_engine.rs
-│       │   ├── cmd_search.rs
-│       │   ├── cmd_launch.rs
-│       │   ├── cmd_open.rs
-│       │   ├── cmd_command.rs
-│       │   ├── cmd_config.rs
-│       │   ├── cmd_help.rs
-│       │   ├── cmd_version.rs
-│       │   ├── cmd_index.rs
-│       │   └── cmd_stats.rs
-│       ├── engines/              # 搜索引擎
-│       │   ├── mod.rs
-│       │   ├── app_search.rs     # 应用搜索
+│       ├── core/                  # 核心模块
+│       │   └── command/            # Command 模式（CLI + IPC 统一）
+│       ├── search_engine/        # 搜索引擎
+│       │   ├── app_search/       # 应用搜索
 │       │   ├── file_search.rs    # 文件搜索 (USN Journal + MFT)
-│       │   └── command_search.rs # 命令搜索
-│       ├── models/               # 数据模型
-│       │   ├── mod.rs
-│       │   ├── app_entry.rs
-│       │   ├── custom_command.rs
-│       │   ├── file_result.rs
-│       │   ├── search_result.rs
-│       │   └── settings.rs
+│       │   ├── command_search.rs # 命令搜索
+│       │   ├── models/           # 搜索数据模型
+│       │   └── service.rs         # 搜索服务（编排器）
 │       ├── repositories/         # 数据访问层
-│       │   ├── mod.rs
-│       │   ├── settings_repo.rs
-│       │   ├── command_repo.rs
-│       │   └── stats_repo.rs
 │       ├── services/             # 业务逻辑
-│       │   ├── mod.rs
-│       │   ├── app_state.rs      # 应用状态
-│       │   ├── hotkey.rs         # 全局热键
-│       │   ├── window.rs         # 窗口控制
-│       │   ├── search.rs         # 搜索服务
-│       │   └── storage.rs        # SQLite 存储
+│       ├── models/                 # 数据模型
 │       └── platform/windows/     # Windows 平台特定
-│           ├── mod.rs
-│           ├── hotkey.rs         # RegisterHotKey
-│           ├── registry.rs       # 注册表读写
-│           ├── shell.rs          # Shell 执行
-│           └── usn.rs            # USN Journal + MFT 索引
+├── tests/                        # 统一测试目录
+│   ├── ui/                        # 前端 Vitest 测试
+│   └── rust/                      # 后端 Rust 测试
 ├── public/                       # 静态资源
 │   └── logo/                     # 应用图标
 ├── scripts/                      # 构建辅助脚本
 ├── package.json
 ├── pnpm-workspace.yaml
-├── tauri.conf.json
-├── tailwind.config.ts
 ├── vite.config.ts
 └── tsconfig.json
 ```

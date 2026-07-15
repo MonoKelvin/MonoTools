@@ -125,7 +125,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { nextTick } from 'vue'
-import type { SearchResult } from '@/types/search'
+import type { SearchResult } from '@/modules/search'
 
 // #problems_and_diagnostics — mock 配置说明
 //
@@ -239,7 +239,7 @@ describe('AppResultItem - 图标渲染', () => {
   })
 
   it('挂载后调用 loadIcon, 当 IPC 返回 base64 时 iconState 变为 png', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     // 用唯一 id, 避免 module-level cache 命中
     const wrapper = mount(AppResultItem, {
       props: { result: mk({ id: 't1-' + Math.random() }), index: 0, active: false },
@@ -266,7 +266,7 @@ describe('AppResultItem - 图标渲染', () => {
   })
 
   it('img 元素正确接收 data URL 作为 src', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: { result: mk({ id: 't2-' + Math.random() }), index: 0, active: false },
     })
@@ -286,7 +286,7 @@ describe('AppResultItem - 图标渲染', () => {
   })
 
   it('action.type === "open" 时, 也走 IPC 拿图标', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({
@@ -314,7 +314,7 @@ describe('AppResultItem - 图标渲染', () => {
     // 这是关键测试: 验证即使 happy-dom 完全不实现 img 加载管线,
     // 我们新加的 350ms 兜底 timer 也会把 imgReady 置为 true,
     // 让用户至少能看到一个 broken-image 状态(而不是永久 opacity: 0).
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: { result: mk(), index: 0, active: false },
     })
@@ -340,7 +340,7 @@ describe('AppResultItem - 图标渲染', () => {
   })
 
   it('不同 result.id 切换时, refreshIcon 重新触发', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: { result: mk({ id: 'a' }), index: 0, active: false },
     })
@@ -358,7 +358,7 @@ describe('AppResultItem - 图标渲染', () => {
   })
 
   it('相同 result.id 重复时, 不重复 IPC (cache 命中 + skip same IconState)', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: { result: mk({ id: 'same' }), index: 0, active: false },
     })
@@ -413,7 +413,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
    * 避免"忘了 vi.advanceTimersByTime"导致的测试卡死.
    */
   it('hover 后 360ms 显示绝对路径 tooltip (action.data 优先)', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({
@@ -446,7 +446,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('hover 不够 360ms 就 mouseleave → tooltip 不显示', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({ id: 'tt2-' + Math.random() }),
@@ -476,7 +476,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('active=true 时 hover 不显示 tooltip (键盘导航时不打扰)', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({ id: 'tt3-' + Math.random() }),
@@ -498,7 +498,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('mouseleave 后立即关闭 tooltip', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({ id: 'tt4-' + Math.random() }),
@@ -521,7 +521,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('路径为空 (无 action.data 无 subtitle) → 不显示 tooltip', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({
@@ -546,7 +546,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('action.type === "open" 时, 显示 action.data 路径', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({
@@ -571,7 +571,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('action 不是 launch/open 时, 走 subtitle 兜底', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({
@@ -598,7 +598,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('result 变化时强制重置 tooltip (避免上一个 item 的 tooltip 残留)', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({ id: 'a', action: { type: 'launch', data: 'C:\\a.exe' } }),
@@ -631,7 +631,7 @@ describe('AppResultItem - 自定义 hover tooltip', () => {
   })
 
   it('active 从 false 变 true 时, 立即关闭 tooltip (键盘上下键导航)', async () => {
-    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
     const wrapper = mount(AppResultItem, {
       props: {
         result: mk({ id: 'tt9-' + Math.random() }),

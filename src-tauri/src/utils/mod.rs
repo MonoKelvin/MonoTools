@@ -1,4 +1,4 @@
-pub mod hash;
+﻿pub mod hash;
 pub mod path;
 
 pub use hash::*;

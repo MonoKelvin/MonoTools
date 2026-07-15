@@ -1,4 +1,4 @@
-use monotools_lib::engines::file_search::FileSearchEngine;
+use monotools_lib::search_engine::file_search::FileSearchEngine;
 use monotools_lib::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
 use rand::prelude::*;
 

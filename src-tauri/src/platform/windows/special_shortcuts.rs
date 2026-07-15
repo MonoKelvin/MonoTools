@@ -1,4 +1,4 @@
-//! Windows 特殊快捷方式处理
+﻿//! Windows 特殊快捷方式处理
 //!
 //! 处理那些不指向真实文件的特殊 .lnk 快捷方式，比如：
 //! - 运行 (Run) - `shell:::{2559a1f3-21d7-11d4-bdaf-00c04f60b9f0}`
@@ -245,8 +245,8 @@ pub fn get_special_shortcut(lnk_path: &Path, target_path: &Path) -> Option<&'sta
 
 /// 执行特殊快捷方式
 #[cfg(windows)]
-pub fn launch_special_shortcut(sc: &SpecialShortcut) -> crate::error::Result<()> {
-    use crate::config::paths;
+pub fn launch_special_shortcut(sc: &SpecialShortcut) -> crate::core::error::Result<()> {
+    use crate::core::config::paths;
     use std::os::windows::process::CommandExt;
     use std::process::Command;
 
@@ -258,11 +258,11 @@ pub fn launch_special_shortcut(sc: &SpecialShortcut) -> crate::error::Result<()>
 
     cmd.spawn()
         .map(|_| ())
-        .map_err(|e| crate::error::AppError::Other(format!("启动特殊快捷方式失败: {e}")))
+        .map_err(|e| crate::core::error::AppError::Other(format!("启动特殊快捷方式失败: {e}")))
 }
 
 #[cfg(not(windows))]
-pub fn launch_special_shortcut(_sc: &SpecialShortcut) -> crate::error::Result<()> {
+pub fn launch_special_shortcut(_sc: &SpecialShortcut) -> crate::core::error::Result<()> {
     Ok(())
 }
 

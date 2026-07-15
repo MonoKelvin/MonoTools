@@ -34,7 +34,7 @@ import {
   Newspaper, Bookmark, Map, MapPin, Activity, Boxes,
   FileType, FileQuestion, Hash, StickyNote, File, Files,
 } from '@lucide/vue'
-import type { IconState } from '@/composables/useAppIcon'
+import type { IconState } from '@/common/composables/useAppIcon'
 
 // ============================================================================
 // 关键词 → Lucide 组件 映射表
@@ -386,13 +386,4 @@ export function iconForFileKind(result: { title?: string; subtitle?: string; cat
   }
 }
 
-// ============================================================================
-// 兼容导出: 给 AppResultItem / ResultItem 使用的兜底 Lucide 组件
-// ============================================================================
 
-export {
-  Monitor, AppWindow, Package, Terminal, FileText, Folder,
-  MusicIcon, ImageIcon, Video, Settings, Mail, Globe,
-  File, FileCode, FileArchive, FileImage, FileVideo, FileMusic, FileSpreadsheet, FilePieChart, FileType,
-  FolderOpen,
-}

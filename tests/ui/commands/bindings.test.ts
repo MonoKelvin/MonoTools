@@ -4,7 +4,7 @@ import {
   serializeKey,
   parseKeyEvent,
   dispatchKeyEvent,
-} from '@/commands/bindings'
+} from '@/core/command/bindings'
 
 function evt(opts: {
   key: string

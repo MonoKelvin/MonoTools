@@ -33,9 +33,9 @@ vi.mock('@/utils/lobehubIcons', () => ({
   lobehubFuzzyMatch: vi.fn().mockResolvedValue(null),
 }))
 
-import { useAppIcon } from '@/composables/useAppIcon'
+import { useAppIcon } from '@/common/composables/useAppIcon'
 import { appIconApi } from '@/services/api'
-import type { SearchResult } from '@/types/search'
+import type { SearchResult } from '@/modules/search'
 
 function mk(over: Partial<SearchResult> = {}): SearchResult {
   return {
@@ -257,7 +257,7 @@ describe('useAppIcon', () => {
 describe('useAppIcon — 监控 trace', () => {
   // 每个测试前重置 trace 计数, 互不污染
   beforeEach(async () => {
-    const { resetIconTrace } = await import('@/stores/iconLog')
+    const { resetIconTrace } = await import('@/common/composables/iconLog')
     resetIconTrace()
   })
 
@@ -272,7 +272,7 @@ describe('useAppIcon — 监控 trace', () => {
     await loadIcon(result)
     // 第二次命中 cache
     await loadIcon(result)
-    const { useIconLog } = await import('@/stores/iconLog')
+    const { useIconLog } = await import('@/common/composables/iconLog')
     const log = useIconLog()
     expect(log.counts.value.cache).toBeGreaterThanOrEqual(1)
     // 最近一条 cache trace 应当引用同 id
@@ -293,7 +293,7 @@ describe('useAppIcon — 监控 trace', () => {
     const state = await loadIcon(result)
     // 不再用 monogram, 走 Lucide 通用 AppWindow
     expect(state.kind).toBe('component')
-    const { useIconLog } = await import('@/stores/iconLog')
+    const { useIconLog } = await import('@/common/composables/iconLog')
     const log = useIconLog()
     expect(log.counts.value.fallback).toBeGreaterThanOrEqual(1)
   })
@@ -309,7 +309,7 @@ describe('useAppIcon — 监控 trace', () => {
       action: { type: 'launch', data: 'C:\\ipc.exe' },
     })
     await loadIcon(result)
-    const { useIconLog } = await import('@/stores/iconLog')
+    const { useIconLog } = await import('@/common/composables/iconLog')
     const log = useIconLog()
     expect(log.counts.value.ipc).toBeGreaterThanOrEqual(1)
   })
@@ -326,7 +326,7 @@ describe('useAppIcon — 监控 trace', () => {
         action: { type: 'launch', data: 'C:\\x.exe' },
       }),
     )
-    const { useIconLog, resetIconTrace } = await import('@/stores/iconLog')
+    const { useIconLog, resetIconTrace } = await import('@/common/composables/iconLog')
     expect(useIconLog().counts.value.ipc).toBeGreaterThanOrEqual(1)
     // 两条路径都该清零
     resetTrace()

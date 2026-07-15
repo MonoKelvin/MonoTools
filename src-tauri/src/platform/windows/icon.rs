@@ -1,4 +1,4 @@
-//! Windows 应用图标提取
+﻿//! Windows 应用图标提取
 //!
 //! 提供从 `.exe` / `.lnk` 中提取 32x32 RGBA 图标并编码为 PNG 的能力.
 //!
@@ -29,7 +29,7 @@ use std::sync::OnceLock;
 
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 
-use crate::config::icon as icon_cfg;
+use crate::core::config::icon as icon_cfg;
 
 /// 平台无关的图标提取器接口.
 ///
@@ -130,7 +130,7 @@ pub fn cache_snapshot() -> std::collections::HashMap<String, Option<Vec<u8>>> {
 /// 失败诊断: 在 `mono_icon_debug` 环境变量被设置 (=1) 时, 任何
 /// `None` 返回都会写一条 `log::warn!` 含 path + 阶段, 方便前端/后端
 /// 联合排查"图标为什么是空白".
-pub fn get_or_extract_cached(path: &str) -> crate::error::Result<Option<Vec<u8>>> {
+pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Vec<u8>>> {
     // 提前过滤 URL 路径: http:// / https:// / ftp:// 等不是本地文件,
     // 直接返回 None, 避免 Path::exists() 误判 + 无意义的 warn 日志.
     if path.starts_with("http://")

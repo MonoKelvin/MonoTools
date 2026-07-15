@@ -1,8 +1,8 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { nextTick } from 'vue'
-import { useSearchStore } from '@/stores/search'
-import type { SearchResult } from '@/types/search'
+import { useSearchStore } from '@/modules/search'
+import type { SearchResult } from '@/modules/search'
 
 const DEBOUNCE_MS = 80
 

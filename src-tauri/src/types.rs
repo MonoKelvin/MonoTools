@@ -1,10 +1,6 @@
-// Re-export of common types for the lib root
-pub use crate::models::app_entry::AppEntry;
-pub use crate::models::custom_command::CustomCommand;
-pub use crate::models::file_result::FileResult;
-pub use crate::models::search_result::{SearchAction, SearchCategory, SearchOptions, SearchResult};
-pub use crate::models::settings::{Settings, ThemeMode};
-
-// 兼容外层 "types.rs" 的命名
-pub use crate::models::app_entry::AppEntry as _AppEntry;
-pub use crate::models::search_result::SearchResult as _SearchResult;
+﻿// 常用类型的统一导出（向后兼容层）
+pub use crate::models::CustomCommand;
+pub use crate::models::{Settings, ThemeMode};
+pub use crate::search_engine::models::{
+    AppEntry, FileResult, SearchAction, SearchCategory, SearchOptions, SearchResult,
+};

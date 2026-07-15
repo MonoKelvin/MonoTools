@@ -1,4 +1,4 @@
-//! Windows 11 Mica / Acrylic 效果模块
+﻿//! Windows 11 Mica / Acrylic 效果模块
 //!
 //! 使用 DWM (Desktop Window Manager) API 启用 Mica 背景效果。
 

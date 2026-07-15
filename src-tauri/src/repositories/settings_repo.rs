@@ -1,6 +1,6 @@
-//! 设置仓储（基于内存模式管理 Settings）
+﻿//! 设置仓储（基于内存模式管理 Settings）
 //! 我们使用仓储模式（trait 抽象）便于测试和未来的实现替换
-use crate::error::Result;
+use crate::core::error::Result;
 use crate::models::Settings;
 use parking_lot::RwLock;
 use std::sync::Arc;

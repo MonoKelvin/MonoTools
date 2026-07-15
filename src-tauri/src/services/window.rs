@@ -1,5 +1,5 @@
-//! 窗口管理 - 显示/隐藏/居中等
-use crate::error::Result;
+﻿//! 窗口管理 - 显示/隐藏/居中等
+use crate::core::error::Result;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tauri::Manager;
@@ -109,7 +109,7 @@ impl<R: Runtime> AppLike for RuntimeAppHandle<R> {
             let _ = w.show();
             Ok(())
         } else {
-            Err(crate::error::AppError::NotFound(label.into()))
+            Err(crate::core::error::AppError::NotFound(label.into()))
         }
     }
 
@@ -118,7 +118,7 @@ impl<R: Runtime> AppLike for RuntimeAppHandle<R> {
             let _ = w.hide();
             Ok(())
         } else {
-            Err(crate::error::AppError::NotFound(label.into()))
+            Err(crate::core::error::AppError::NotFound(label.into()))
         }
     }
 
@@ -134,7 +134,7 @@ impl<R: Runtime> AppLike for RuntimeAppHandle<R> {
             let _ = w.set_focus();
             Ok(())
         } else {
-            Err(crate::error::AppError::NotFound(label.into()))
+            Err(crate::core::error::AppError::NotFound(label.into()))
         }
     }
 
@@ -148,7 +148,7 @@ impl<R: Runtime> AppLike for RuntimeAppHandle<R> {
             }
             Ok(())
         } else {
-            Err(crate::error::AppError::NotFound(label.into()))
+            Err(crate::core::error::AppError::NotFound(label.into()))
         }
     }
 
@@ -157,7 +157,7 @@ impl<R: Runtime> AppLike for RuntimeAppHandle<R> {
             let _ = w.close();
             Ok(())
         } else {
-            Err(crate::error::AppError::NotFound(label.into()))
+            Err(crate::core::error::AppError::NotFound(label.into()))
         }
     }
 

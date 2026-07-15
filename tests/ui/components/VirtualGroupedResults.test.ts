@@ -14,8 +14,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { defineComponent, h, nextTick } from 'vue'
-import { useSearchStore, type DisplayGroup, GROUP_ID } from '@/stores/search'
-import type { SearchResult } from '@/types/search'
+import { useSearchStore, type DisplayGroup, GROUP_ID } from '@/modules/search'
+import type { SearchResult } from '@/modules/search'
 
 // Stub 子组件: AppResultItem / ResultItem / CheckButton 不需要在测试中真实渲染
 const StubItem = defineComponent({
@@ -69,7 +69,7 @@ const RecycleScrollerStub = defineComponent({
 })
 
 // 用动态 import 拿 VGR, 避免顶层 await 问题
-import VGR from '@/components/search/VirtualGroupedResults.vue'
+import VGR from '@/modules/search/components/VirtualGroupedResults.vue'
 
 function mkResult(over: Partial<SearchResult> = {}): SearchResult {
   return {

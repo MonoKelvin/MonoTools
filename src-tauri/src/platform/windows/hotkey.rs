@@ -1,10 +1,10 @@
-//! 全局快捷键平台实现 - Windows
+﻿//! 全局快捷键平台实现 - Windows
 //! 优先使用 tauri-plugin-global-shortcut；如失败则回退到低级键盘钩子 (WH_KEYBOARD_LL)
 //!
 //! Windows 保留了 Alt+Space 给系统窗口菜单, RegisterHotKey 无法注册.
 //! 低级键盘钩子在 Windows 处理之前拦截按键, 可以实现 Alt+Space.
 
-use crate::error::{AppError, Result};
+use crate::core::error::{AppError, Result};
 use parking_lot::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 

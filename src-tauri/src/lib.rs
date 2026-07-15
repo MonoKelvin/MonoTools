@@ -1,21 +1,19 @@
-//! MonoTools 库入口 - 由 main.rs 和 cli_main.rs 共用
+﻿//! MonoTools 库入口 - 由 main.rs 和 cli_main.rs 共用
 //! 主要暴露：App 构建、Command 命令系统
 
 pub mod app;
-pub mod command;
-pub mod config;
-pub mod engines;
-pub mod error;
+pub mod core;
 pub mod models;
 pub mod platform;
 pub mod repositories;
+pub mod search_engine;
 pub mod services;
 pub mod types;
 pub mod utils;
 
 pub mod commands;
 
-pub use error::{AppError, Result};
+pub use crate::core::error::{AppError, Result};
 pub use types::{AppEntry, FileResult, SearchResult};
 
 /// 启动 Tauri GUI 应用
