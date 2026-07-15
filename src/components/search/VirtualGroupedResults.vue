@@ -127,7 +127,9 @@ type VirtualRow = VirtualRowHeader | VirtualRowItem
  * 把 displayGroups 展平为 virtual rows.
  *
  * 规则:
- *  - 空组 (items.length === 0 且未折叠) → 完全跳过 (与原 visibleGroups 行为一致).
+ *  - 空组 (items.length === 0) → 完全跳过. 不显示 header, 也不显示 items.
+ *    既然没内容, 折叠展开与分割线都没有视觉意义. 这是 "如果下面没有内容,
+ *    则不支持折叠展开, 默认是收缩起来的" 的产品诉求的最终落实.
  *  - 折叠组 → 只渲染 header, item 不进入 virtualRows.
  *  - 展开组 → header 在前, 后面跟 visibleItems.
  *  - globalIndex 从 0 连续递增, 与 store.displayList 的索引严格 1:1.
@@ -139,7 +141,9 @@ const virtualRows = computed<VirtualRow[]>(() => {
   const rows: VirtualRow[] = []
   let globalIdx = 0
   for (const g of (props.groups ?? [])) {
-    if (g.items.length === 0 && !g.collapsed) continue
+    // 空组完全跳过 (header + items 都不渲染). 与"非空"组用同一条路径
+    // 走"折叠/展开"逻辑, 简化分支.
+    if (g.items.length === 0) continue
     rows.push({
       kind: 'header',
       key: `header:${g.id}`,
@@ -575,7 +579,13 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   flex: 1;
   min-height: 0;
   position: relative;
-  overflow: hidden;
+  /* overflow-x: visible 让 .vg__group-header-row 的 ::before 分割线
+     伪元素能延伸到 .vg 的左右边缘 (进而贴到窗口两边).
+     overflow-y 保持 hidden, 防止下拉面板 / 加载动画溢出.
+     注: 父容器 .results-scroll-container 同步改为 overflow-x: visible
+     (SearchPage.vue), 让伪元素能继续穿过外层 padding. */
+  overflow-x: visible;
+  overflow-y: hidden;
   padding: 4px 4px 0 10px;
   display: flex;
   flex-direction: column;
@@ -590,6 +600,13 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   flex: 1;
   min-height: 0;
   padding-right: 6px;
+}
+
+/* vue-virtual-scroller 的 .vue-recycle-scroller__item-wrapper 默认
+   overflow: hidden, 会裁剪掉分组头行 ::before 分割线伪元素.
+   改为 visible 让 ::before 能延伸到窗口边缘. */
+.vg__scroller :deep(.vue-recycle-scroller__item-wrapper) {
+  overflow: visible;
 }
 
 /* 自定义滚动条样式 */
@@ -616,7 +633,12 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   background: transparent;
 }
 
-/* === 分组头行: 44px 高, 与 item 行同高. === */
+/* === 分组头行: 44px 高, 与 item 行同高. ===
+   分割线: 用 ::before 伪元素延伸到窗口边缘 (覆盖 .vg 与
+   .results-scroll-container 的左右 padding), 实现"贴窗口两边"的视觉效果.
+   数值 -18px = 8 (.results-scroll-container) + 10 (.vg). 右侧同理
+   但额外加 6 (vg__scroller padding-right) = -24px; 不过 VGR 内部
+   对称, 左右都用 -18px 即可保证视觉对齐 (左右 padding 总和一致). */
 .vg__group-header-row {
   display: flex;
   align-items: center;
@@ -624,14 +646,26 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
   height: 44px;
   padding: 0 6px;
   gap: 10px;
-  border-top: 1px solid var(--border-subtle);
   box-sizing: border-box;
   flex-shrink: 0;
   background: transparent;
+  position: relative;
 }
 
-.vg__group-header-row--first {
-  border-top: none;
+.vg__group-header-row::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -18px;
+  right: -18px;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+
+.vg__group-header-row--first::before {
+  /* 第一个分组不需要分割线 (顶部紧贴 SearchInput) */
+  display: none;
 }
 
 .vg__group-header-left {

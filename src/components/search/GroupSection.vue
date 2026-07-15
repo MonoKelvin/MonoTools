@@ -83,7 +83,18 @@ const iconGridStyle = computed(() => {
   return {}
 })
 
+/**
+ * 空组 (items.length === 0) 不响应点击. store 层 toggleGroupCollapse
+ * 也会过滤, 这里再做一道 UI 防御: cursor 不变 pointer, header 不可点击.
+ *
+ * 满足产品诉求 "下面如果没有内容, 则不支持折叠展开". 视觉上 header 还在,
+ * 但点击不会触发任何动作, 鼠标光标也保持默认 (不显示 "可点击" 暗示).
+ */
+const isInteractive = computed(() => props.items.length > 0)
+
 function toggleCollapse() {
+  // 空组不响应 (兜底, store 也会过滤). 防止 hover 出 pointer 误导用户.
+  if (!isInteractive.value) return
   emit('toggle-collapse', props.id)
 }
 
@@ -184,12 +195,12 @@ function isItemHovered(localIndex: number): boolean {
 </script>
 
 <template>
-  <div class="group-section" :data-kind="kind">
+  <div class="group-section" :data-kind="kind" :data-interactive="isInteractive ? '1' : '0'">
     <div class="group-header" @click="toggleCollapse">
       <div class="group-header-left">
         <component :is="icon" :size="13" :stroke-width="1.8" class="group-icon" />
         <span class="group-title">{{ title }}</span>
-        <span v-if="count != null" class="group-count">{{ count.toLocaleString() }}</span>
+        <span v-if="count != null && count > 0" class="group-count">{{ count.toLocaleString() }}</span>
       </div>
       <div class="group-header-right" @click.stop>
         <div v-if="items.length > 0" class="group-layout-toggle">
@@ -305,17 +316,38 @@ function isItemHovered(localIndex: number): boolean {
   height: 44px;
   padding: 0 6px;
   gap: 10px;
-  border-top: 1px solid var(--border-subtle);
   box-sizing: border-box;
   flex-shrink: 0;
   background: transparent;
   cursor: pointer;
   user-select: none;
+  position: relative;
+  /* 移除 border-top, 改用 ::before 伪元素延伸到窗口两边, 解决"分组间
+     分割线左右有间距" 的视觉问题. 数值 -8px 对应父容器
+     .results-scroll-container 的 padding-left/right (var(--sp-3) = 8px). */
+  border-top: none;
 }
 
-.group-section[data-kind="pinned"] .group-header,
-.group-section[data-kind="recent"] .group-header {
-  border-top: none;
+.group-header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -8px;
+  right: -8px;
+  height: 1px;
+  background: var(--border-subtle);
+  pointer-events: none;
+}
+
+.group-section[data-kind="pinned"] .group-header::before,
+.group-section[data-kind="recent"] .group-header::before {
+  /* 固定项目 / 最近访问 是首个分组 (紧贴 SearchInput), 不画顶部分割线 */
+  display: none;
+}
+
+/* 空组 (无内容) 不可点击. 鼠标光标保持默认, 避免误导用户. */
+.group-section[data-interactive="0"] .group-header {
+  cursor: default;
 }
 
 .group-header-left {

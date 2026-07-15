@@ -487,11 +487,6 @@ impl FileSearchEngine {
                 return 0;
             }
             drop(conn);
-            log::debug!(
-                "[idx] flush_and_commit: 目录 {}, 文件 {}",
-                dir_count,
-                inserted
-            );
             inserted
         };
 
@@ -532,12 +527,6 @@ impl FileSearchEngine {
                         buffer.clear();
                         // 通知进度: 调用方可以通过 IPC 把"已索引 N 个文件"推给前端
                         on_volume(volume, n, total_inserted, total_volumes);
-                        log::debug!(
-                            "[idx] 增量提交 {} 条 (当前卷: {}, 累计: {})",
-                            inserted,
-                            volume,
-                            total_inserted
-                        );
                     }
                 });
 

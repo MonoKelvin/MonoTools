@@ -182,6 +182,14 @@ describe('VirtualGroupedResults', () => {
 
   it('clicking the header emits toggle-group and parent updates store', async () => {
     const search = useSearchStore()
+    // 让 store 的 displayGroups 中 group.system 是非空组,
+    // 否则 toggleGroupCollapse 在空组上 no-op (新行为, 见 store).
+    // 这里直接把 store.results 填上 system-app, 让 store 自己产出非空分组.
+    search.query = ''
+    search.results = [
+      mkResult({ id: 's1', resultType: 'system-app' }),
+      mkResult({ id: 's2', resultType: 'system-app' }),
+    ]
     expect(search.collapsedGroups.has(GROUP_ID.system)).toBe(false)
     const groups: DisplayGroup[] = [
       makeGroup({
@@ -306,6 +314,108 @@ describe('VirtualGroupedResults', () => {
     // 选中第 500 项应有 vg__row--active 类
     const active = wrapper.findAll('.vg__row--active')
     expect(active.length).toBe(1)
+  })
+
+  /**
+   * === Section 2 优化: 空组完全跳过渲染 ===
+   * 产品诉求: "下面如果没有内容, 则不支持折叠展开, 默认也是收缩起来的,
+   *          除非有列表项才默认展开".
+   *
+   * 实施位置: VGR.virtualRows computed.
+   * - 空组 (items.length === 0) → 整个组 continue, 不渲染 header, 也不渲染 items.
+   * - 有内容的组 → 正常走"折叠/展开"逻辑, 默认展开.
+   *
+   * 注意: store 层的 displayGroups 仍保留空组 (header / count / 折叠元数据),
+   *       渲染过滤由 VGR 完成. 这是有意的: 保留元数据便于做"占位 + 文件类型
+   *       筛选"等场景, 又能彻底避免空组占据 UI 空间.
+   */
+  it('空组 (items=[]) 完全不渲染: header + items 都不出现', async () => {
+    const groups: DisplayGroup[] = [
+      // 1) 空组: pinned 分组没有结果
+      makeGroup({
+        id: GROUP_ID.pinned,
+        title: '固定项目',
+        items: [],
+        visibleItems: [],
+        kind: 'pinned',
+      }),
+      // 2) 有内容的组
+      makeGroup({
+        id: GROUP_ID.system,
+        title: '系统应用',
+        items: [mkResult({ id: 's1' }), mkResult({ id: 's2' })],
+        visibleItems: [mkResult({ id: 's1' }), mkResult({ id: 's2' })],
+        kind: 'system',
+      }),
+    ]
+    const wrapper = mount(VGR, {
+      props: { groups, loading: false, selectedIndex: 0, height: 400, hasQuery: true, query: 'x' },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
+    })
+    await nextTick()
+    // 只应渲染 system 组的 1 个 header + 2 个 item = 3 行
+    expect(wrapper.findAll('.vg__row').length).toBe(2)
+    expect(wrapper.findAll('.vg__group-header-row').length).toBe(1)
+  })
+
+  it('多个空组 (如 pinned + recent + commands) 全部跳过, 不挤占 UI 空间', async () => {
+    const groups: DisplayGroup[] = [
+      makeGroup({ id: GROUP_ID.pinned, items: [], visibleItems: [], kind: 'pinned' }),
+      makeGroup({ id: GROUP_ID.recent, items: [], visibleItems: [], kind: 'recent' }),
+      makeGroup({ id: GROUP_ID.system, items: [mkResult({ id: 'a' })], visibleItems: [mkResult({ id: 'a' })], kind: 'system' }),
+      makeGroup({ id: GROUP_ID.commands, items: [], visibleItems: [], kind: 'commands' }),
+      makeGroup({ id: GROUP_ID.apps, items: [mkResult({ id: 'b' }), mkResult({ id: 'c' })], visibleItems: [mkResult({ id: 'b' }), mkResult({ id: 'c' })], kind: 'apps' }),
+    ]
+    const wrapper = mount(VGR, {
+      props: { groups, loading: false, selectedIndex: 0, height: 400, hasQuery: true, query: 'x' },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
+    })
+    await nextTick()
+    // 1 + 2 = 3 个 item, 2 个非空 header → 共 5 行 (不含 3 个空组)
+    expect(wrapper.findAll('.vg__row').length).toBe(3)
+    expect(wrapper.findAll('.vg__group-header-row').length).toBe(2)
+  })
+
+  it('全部为空时不渲染任何虚拟行 (空状态由 .vg__empty 等承载)', async () => {
+    const groups: DisplayGroup[] = [
+      makeGroup({ id: GROUP_ID.pinned, items: [], visibleItems: [], kind: 'pinned' }),
+      makeGroup({ id: GROUP_ID.recent, items: [], visibleItems: [], kind: 'recent' }),
+      makeGroup({ id: GROUP_ID.system, items: [], visibleItems: [], kind: 'system' }),
+    ]
+    const wrapper = mount(VGR, {
+      props: { groups, loading: false, selectedIndex: 0, height: 400, hasQuery: true, query: 'x' },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
+    })
+    await nextTick()
+    expect(wrapper.findAll('.vg__row').length).toBe(0)
+    expect(wrapper.findAll('.vg__group-header-row').length).toBe(0)
+  })
+
+  it('从非空切到空时, 虚拟行数从有到无, 不抛错', async () => {
+    const wrapper = mount(VGR, {
+      props: {
+        groups: [
+          makeGroup({ id: GROUP_ID.system, items: [mkResult({ id: 'a' })], visibleItems: [mkResult({ id: 'a' })], kind: 'system' }),
+        ],
+        loading: false,
+        selectedIndex: 0,
+        height: 400,
+        hasQuery: true,
+        query: 'x',
+      },
+      global: { stubs: globalStubs, mocks: { $t: (k: string) => k } },
+    })
+    await nextTick()
+    expect(wrapper.findAll('.vg__row').length).toBe(1)
+    // 切到全部为空
+    await wrapper.setProps({
+      groups: [
+        makeGroup({ id: GROUP_ID.system, items: [], visibleItems: [], kind: 'system' }),
+        makeGroup({ id: GROUP_ID.apps, items: [], visibleItems: [], kind: 'apps' }),
+      ],
+    })
+    await nextTick()
+    expect(wrapper.findAll('.vg__row').length).toBe(0)
   })
 })
 

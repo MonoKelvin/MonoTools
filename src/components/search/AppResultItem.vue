@@ -8,7 +8,9 @@
  * - **三态图标**: 静态 SVG (立即) / 后端 PNG (异步) / Lucide 通用兜底 / monogram 兜底.
  * - **更大标题字号 (14px / 600)**: 强化应用名识别度.
  * - **省略号截断**: 标题超出时自动 ... 显示.
- * - **内置玻璃风格工具提示**: 通过 v-tooltip 显示完整应用名.
+ * - **自定义 hover tooltip**: 显示应用绝对路径 (PrimeVue v-tooltip 在
+ *   我们的 happy-dom / WebView2 / 虚拟列表 组合下不稳定, 改用纯 CSS +
+ *   鼠标事件 + setTimeout 的自绘 tooltip, 视觉与项目玻璃风格一致).
  *
  * 与 ResultItem 共享选中态 / 悬停态 / 快捷键 ↵ 行为, 可直接在列表中替换.
  *
@@ -16,7 +18,7 @@
  * 4-tier 加载链 + 350ms 兜底 timer + loadToken race 防护. 详见
  * `src/composables/useIconRenderer.ts`.
  */
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { AppWindow, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/types/search'
 import { useIconRenderer } from '@/composables/useIconRenderer'
@@ -49,40 +51,92 @@ const { iconState, imgReady, refresh, onImgLoad, onImgError, dispose } = useIcon
 })
 
 // 挂载 + result 变化时触发图标加载
-import { onMounted, onBeforeUnmount, watch } from 'vue'
 onMounted(() => refresh(props.result))
 watch(() => props.result?.id, () => refresh(props.result))
 // 显式调用 dispose (composable 已挂 onBeforeUnmount, 此处为对称性)
 onBeforeUnmount(dispose)
 
 /**
- * 工具提示: 显示应用的绝对路径, 便于用户确认程序位置.
- * 选中态(active)下不显示, 避免键盘导航时 tooltip 跟随高亮
- * 持续闪现造成视觉干扰.
+ * 自定义 hover tooltip —— 显示应用绝对路径.
+ *
+ * 为什么不沿用 PrimeVue v-tooltip:
+ * - 在 happy-dom (测试) / WebView2 (生产) / 虚拟列表 (v-for 复用) 这三种
+ *   环境下, v-tooltip 的 @mouseenter 监听和定位偶尔丢失, 表现"hover
+ *   不出来". 改用纯 CSS + 鼠标事件 + setTimeout 后, 不依赖任何外部库.
+ * - 自绘的好处: 玻璃风格 (blur / 边框 / 圆角) 与项目 tooltip.scss 完全
+ *   一致, 不需要再为 PrimeVue 兜底样式写补丁.
+ *
+ * 显示规则:
+ * - 选中态 (active): 不显示, 避免键盘导航时 tooltip 跟随高亮持续闪现.
+ * - 路径为空: 不显示 (没必要给用户一个空 tooltip).
+ * - 显示延迟: ICON_CONFIG.appTooltipDelayMs (360ms), 避免鼠标划过闪烁.
+ *
+ * 路径来源优先级:
+ * 1) launch / open 动作: action.data (程序的绝对路径)
+ * 2) 否则: subtitle (兜底)
  */
-const tooltipOptions = computed(() => {
-  if (props.active) return undefined
-  const path = props.result?.action?.type === 'launch' || props.result?.action?.type === 'open'
-    ? props.result.action.data
-    : props.result?.subtitle || ''
-  if (!path) return undefined
-  return {
-    value: path,
-    class: 'app-tooltip',
-    showDelay: ICON_CONFIG.appTooltipDelayMs,
-    fitContent: true,
-    position: 'bottom' as const,
-    autoHide: true,
-    escape: true,
+const isHovered = ref(false)
+const tooltipVisible = ref(false)
+let showTimer: ReturnType<typeof setTimeout> | null = null
+
+const absolutePath = computed(() => {
+  const r = props.result
+  if (!r) return ''
+  if (r.action?.type === 'launch' || r.action?.type === 'open') {
+    return r.action.data ?? ''
   }
+  return r.subtitle || ''
+})
+
+function clearShowTimer() {
+  if (showTimer) {
+    clearTimeout(showTimer)
+    showTimer = null
+  }
+}
+
+function onItemEnter() {
+  isHovered.value = true
+  if (props.active) return
+  if (!absolutePath.value) return
+  clearShowTimer()
+  showTimer = setTimeout(() => {
+    tooltipVisible.value = true
+    showTimer = null
+  }, ICON_CONFIG.appTooltipDelayMs)
+}
+
+function onItemLeave() {
+  isHovered.value = false
+  tooltipVisible.value = false
+  clearShowTimer()
+}
+
+// result 变化时强制重置 (例如键盘切换选中项, result 引用换了)
+watch(() => props.result?.id, () => {
+  tooltipVisible.value = false
+  clearShowTimer()
+})
+
+// active 变化 (键盘上下方向键) 时, 立即关闭 tooltip, 避免干扰选中态
+watch(() => props.active, (isActive) => {
+  if (isActive) {
+    tooltipVisible.value = false
+    clearShowTimer()
+  }
+})
+
+onBeforeUnmount(() => {
+  clearShowTimer()
 })
 </script>
 
 <template>
   <div
     :class="['app-result-item', { 'app-result-item--active': active }]"
-    v-tooltip="tooltipOptions"
     :data-app-result-id="result?.id"
+    @mouseenter="onItemEnter"
+    @mouseleave="onItemLeave"
   >
     <div class="app-result-item__icon">
       <img
@@ -118,6 +172,20 @@ const tooltipOptions = computed(() => {
     <div class="app-result-item__meta">
       <CornerDownLeft :size="15" :stroke-width="1.8" class="app-result-item__enter" />
     </div>
+
+    <!-- 自定义 hover tooltip: 显示应用绝对路径.
+         .app-tooltip 与全局 tooltip.scss 中的 .app-tooltip 类名一致, 复用
+         玻璃风格 (blur / 边框 / 圆角). 不用 v-tooltip, 避免 PrimeVue
+         directive 在 happy-dom / WebView2 下不稳定. -->
+    <Transition name="app-tooltip-fade">
+      <div
+        v-if="tooltipVisible && absolutePath"
+        class="app-tooltip"
+        role="tooltip"
+      >
+        {{ absolutePath }}
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -131,7 +199,7 @@ const tooltipOptions = computed(() => {
   user-select: none;
   background: transparent;
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid transparent;
   border-radius: 9px;
   transition:
@@ -266,5 +334,68 @@ const tooltipOptions = computed(() => {
   color: var(--accent);
   opacity: 1;
   transform: scale(1.08);
+}
+
+/* === 自定义 hover tooltip: 显示应用绝对路径 ===
+   视觉与项目全局 .app-tooltip (.p-tooltip-text) 一致:
+   - 玻璃模糊 backdrop-filter
+   - 紧凑 11.5px / 5px 9px padding
+   - 圆角 --radius-sm
+   定位: absolute, 居于 item 下方居中, 沿 X 轴用 transform 居中避免
+   被左侧 / 右侧裁剪. */
+.app-tooltip {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  max-width: 360px;
+  width: max-content;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 2px 6px rgba(0, 0, 0, 0.3);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-all;
+  pointer-events: none;
+  user-select: none;
+  /* 路径过长时优先换行, 避免 hover 时撑出窗口 */
+  text-align: center;
+  font-family: var(--font-mono);
+  /* 不让 tooltip 参与 flex 布局计算, 避免影响父容器尺寸 */
+  display: inline-block;
+}
+
+/* Win10 不用 backdrop-filter, 改用纯色背景 */
+.os-win10 .app-tooltip {
+  background: rgba(28, 28, 32, 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* === tooltip 显隐动画 === */
+.app-tooltip-fade-enter-active,
+.app-tooltip-fade-leave-active {
+  transition:
+    opacity 160ms var(--ease-out),
+    transform 200ms var(--ease-out);
+}
+
+.app-tooltip-fade-enter-from,
+.app-tooltip-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-3px);
 }
 </style>

@@ -405,11 +405,22 @@ export const useSearchStore = defineStore('search', () => {
     /**
      * 6 个分组的完整数据 —— 单一真源, VGR 不再自己算分组.
      * 关键: query 模式下, pinned/recent 分组为空 (不显示).
+     *
+     * 折叠规则 (2026-07):
+     * - 空组 (items.length === 0): 不渲染. 由 VGR.virtualRows 直接 `continue`
+     *   跳过, 既不显示 header 也不显示 items. 既然没有内容, 折叠展开与分割线
+     *   都没有视觉意义. 默认 = "收起来的" (完全不显示), 达成产品诉求.
+     * - 有内容的组: 跟随 user-collapsed 集合, 默认 false (展开).
+     *   展开后 selectedIndex 落在该组首项, 上下方向键可导航.
+     *
+     * 注意: 即使用户之前手动折叠过一个组, 当该组清空时, 我们也无需清理
+     * `collapsedGroups` 集合. 下次该组重新有内容时, 用户仍能保持"折叠"
+     * 偏好, 不会突然跳出来. 这是 sticky 折叠偏好的小细节.
      */
     const displayGroups = computed<DisplayGroup[]>(() => {
         const out: DisplayGroup[] = []
         const q = query.value
-        const isCollapsed = (id: GroupId) => collapsedGroups.value.has(id)
+        const isUserCollapsed = (id: GroupId) => collapsedGroups.value.has(id)
 
         // 1) 固定项目 (未搜索才显示)
         const pinnedItems = q ? [] : pinned.value
@@ -417,8 +428,8 @@ export const useSearchStore = defineStore('search', () => {
             id: GROUP_ID.pinned,
             title: '固定项目',
             items: pinnedItems,
-            visibleItems: isCollapsed(GROUP_ID.pinned) ? [] : pinnedItems,
-            collapsed: isCollapsed(GROUP_ID.pinned),
+            visibleItems: isUserCollapsed(GROUP_ID.pinned) ? [] : pinnedItems,
+            collapsed: isUserCollapsed(GROUP_ID.pinned),
             kind: 'pinned',
         })
 
@@ -428,8 +439,8 @@ export const useSearchStore = defineStore('search', () => {
             id: GROUP_ID.recent,
             title: '最近访问',
             items: recentItems,
-            visibleItems: isCollapsed(GROUP_ID.recent) ? [] : recentItems,
-            collapsed: isCollapsed(GROUP_ID.recent),
+            visibleItems: isUserCollapsed(GROUP_ID.recent) ? [] : recentItems,
+            collapsed: isUserCollapsed(GROUP_ID.recent),
             kind: 'recent',
         })
 
@@ -439,8 +450,8 @@ export const useSearchStore = defineStore('search', () => {
             id: GROUP_ID.system,
             title: '系统应用',
             items: sysItems,
-            visibleItems: isCollapsed(GROUP_ID.system) ? [] : sysItems,
-            collapsed: isCollapsed(GROUP_ID.system),
+            visibleItems: isUserCollapsed(GROUP_ID.system) ? [] : sysItems,
+            collapsed: isUserCollapsed(GROUP_ID.system),
             kind: 'system',
         })
 
@@ -450,8 +461,8 @@ export const useSearchStore = defineStore('search', () => {
             id: GROUP_ID.commands,
             title: '命令',
             items: cmdItems,
-            visibleItems: isCollapsed(GROUP_ID.commands) ? [] : cmdItems,
-            collapsed: isCollapsed(GROUP_ID.commands),
+            visibleItems: isUserCollapsed(GROUP_ID.commands) ? [] : cmdItems,
+            collapsed: isUserCollapsed(GROUP_ID.commands),
             kind: 'commands',
         })
 
@@ -461,8 +472,8 @@ export const useSearchStore = defineStore('search', () => {
             id: GROUP_ID.apps,
             title: '所有应用',
             items: appsItems,
-            visibleItems: isCollapsed(GROUP_ID.apps) ? [] : appsItems,
-            collapsed: isCollapsed(GROUP_ID.apps),
+            visibleItems: isUserCollapsed(GROUP_ID.apps) ? [] : appsItems,
+            collapsed: isUserCollapsed(GROUP_ID.apps),
             kind: 'apps',
         })
 
@@ -473,8 +484,8 @@ export const useSearchStore = defineStore('search', () => {
             id: GROUP_ID.files,
             title: '所有文件',
             items: allFiles,
-            visibleItems: isCollapsed(GROUP_ID.files) ? [] : filesItems,
-            collapsed: isCollapsed(GROUP_ID.files),
+            visibleItems: isUserCollapsed(GROUP_ID.files) ? [] : filesItems,
+            collapsed: isUserCollapsed(GROUP_ID.files),
             kind: 'files',
         })
 
@@ -501,8 +512,15 @@ export const useSearchStore = defineStore('search', () => {
     /**
      * 切换一个分组的折叠状态. 当折叠时若 selectedIndex 指向被隐藏的项,
      * 主动 clamp 到 0 / 末尾, 避免高亮看不见.
+     *
+     * 空组 (items.length === 0) 不响应 toggle —— 既然没有内容, 折叠展开
+     * 也就没有意义. 由 displayGroups 强制 collapsed = true 维持该行为,
+     * store 这里再防一道, 防止 UI 误触穿透.
      */
     function toggleGroupCollapse(id: GroupId) {
+        // 找到对应 group, 空组不响应. 找不到 (id 不存在) 也直接返回.
+        const group = displayGroups.value.find((g) => g.id === id)
+        if (!group || group.items.length === 0) return
         const next = new Set(collapsedGroups.value)
         if (next.has(id)) next.delete(id)
         else next.add(id)

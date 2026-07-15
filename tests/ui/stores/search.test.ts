@@ -197,4 +197,70 @@ describe('useSearchStore', () => {
     expect(s.selectedIndex).toBeGreaterThanOrEqual(0)
     expect(s.selectedIndex).toBeLessThan(s.displayMax)
   })
+
+  /**
+   * === Section 2 回归测试: 空组不允许折叠展开 ===
+   * 产品诉求: "下面如果没有内容, 则不支持折叠展开, 默认也是收缩起来的,
+   *          除非有列表项才默认展开".
+   *
+   * 实施位置:
+   * - displayGroups 仍保留空组 (header / count / 折叠状态等元数据), 由
+   *   VGR.virtualRows 在渲染时 `if (g.items.length === 0) continue` 跳过.
+   * - toggleGroupCollapse 在 store 层防御: 空组直接 return, 不修改
+   *   collapsedGroups. 即使用户从外部强行 emit, 也不会真的折叠/展开.
+   */
+  it('toggleGroupCollapse 在空组上是 no-op (产品诉求: 无内容不支持折叠)', () => {
+    const s = useSearchStore()
+    s.query = '' // 非搜索模式
+    s.results = [] // 所有分组 items 都为空
+    // 全部 6 个分组应该都是空组
+    expect(s.displayGroups.every((g) => g.items.length === 0)).toBe(true)
+
+    // 对每个分组调 toggleGroupCollapse, collapsedGroups 应始终保持空集合
+    for (const g of s.displayGroups) {
+      s.toggleGroupCollapse(g.id)
+    }
+    expect(s.collapsedGroups.size).toBe(0)
+  })
+
+  it('toggleGroupCollapse: 找到的 group 存在但 items 为空 → 仍 no-op', () => {
+    const s = useSearchStore()
+    s.query = ''
+    s.results = [mk({ id: 'a' })] // 只有 1 个结果
+    // systemAppsItems 应只含 1 个 system-app
+    const sysGroup = s.displayGroups.find((g) => g.id === 'group.system')!
+    expect(sysGroup).toBeTruthy()
+    // 我们通过将 results 改空来制造一个 "id 存在但 items 长度变化" 的场景
+    s.results = []
+    const sysGroupEmpty = s.displayGroups.find((g) => g.id === 'group.system')!
+    expect(sysGroupEmpty.items.length).toBe(0)
+
+    s.toggleGroupCollapse('group.system')
+    // collapsedGroups 仍应为空, 不应折叠
+    expect(s.collapsedGroups.has('group.system')).toBe(false)
+  })
+
+  it('toggleGroupCollapse: 未知 id 直接 return, 不抛错', () => {
+    const s = useSearchStore()
+    s.query = ''
+    s.results = []
+    // 'group.nonexistent' 不在 displayGroups 里, 函数应安全返回
+    expect(() => s.toggleGroupCollapse('group.nonexistent' as any)).not.toThrow()
+    expect(s.collapsedGroups.size).toBe(0)
+  })
+
+  it('toggleGroupCollapse: 非空组正常切换', () => {
+    const s = useSearchStore()
+    s.query = ''
+    s.results = [mk({ id: 'sys1', resultType: 'system-app' })]
+    const sysGroup = s.displayGroups.find((g) => g.id === 'group.system')!
+    expect(sysGroup.items.length).toBeGreaterThan(0)
+
+    // 第一次 toggle: 折叠
+    s.toggleGroupCollapse('group.system')
+    expect(s.collapsedGroups.has('group.system')).toBe(true)
+    // 第二次 toggle: 展开
+    s.toggleGroupCollapse('group.system')
+    expect(s.collapsedGroups.has('group.system')).toBe(false)
+  })
 })

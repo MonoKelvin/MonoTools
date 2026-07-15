@@ -477,8 +477,12 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 
 .results-scroll-container {
   flex: 1;
+  /* overflow-x: visible 让分组头行的 ::before 分割线能穿过 padding 贴到
+     窗口两边. overflow-y 保持 auto, 纵向滚动不受影响.
+     注: overflow-x 与 overflow-y 一边 visible 时, CSS 规范会强制另一边
+     变为 auto. 但这里 overflow-y 本来就是 auto, 所以无副作用. */
+  overflow-x: visible;
   overflow-y: auto;
-  overflow-x: hidden;
   padding: var(--sp-2) var(--sp-3);
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;

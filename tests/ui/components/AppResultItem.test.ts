@@ -377,3 +377,280 @@ describe('AppResultItem - 图标渲染', () => {
     expect(calls2).toBeLessThanOrEqual(calls1 + 1)
   })
 })
+
+/**
+ * === AppResultItem 自定义 hover tooltip 测试 ===
+ *
+ * 产品诉求: "列表项目中表示应用程序的 item, tooltip 没有作用, 请 hover 的时候
+ *          显示绝对路径的自定义 tooltip".
+ *
+ * 为什么不沿用 PrimeVue v-tooltip:
+ * - 在 happy-dom / WebView2 / 虚拟列表 (v-for 复用) 这三种环境下, v-tooltip
+ *   的 @mouseenter 监听和定位偶尔丢失, 表现"hover 不出来". 改用纯 CSS +
+ *   鼠标事件 + setTimeout 的自绘 tooltip, 不依赖任何外部库.
+ *
+ * 测试覆盖矩阵:
+ *   - hover 360ms 后显示绝对路径 tooltip
+ *   - 立即 mouseleave 不显示
+ *   - active=true 时 hover 不显示 (避免键盘导航时 tooltip 跟随)
+ *   - 路径为空时不显示
+ *   - result 变化时强制重置 tooltip
+ *   - active 变 true 时立即关闭 tooltip
+ *   - action.type === 'open' 时, 也显示 action.data 路径
+ *   - action.type 不为 launch/open 时, 走 subtitle 兜底
+ */
+describe('AppResultItem - 自定义 hover tooltip', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  /**
+   * 关键 mock: tooltip 内部用 setTimeout 延迟显示, 必须在 mouseenter 之前
+   * 装配好. fake timers + shouldAdvanceTime 让 setTimeout 自动推进,
+   * 避免"忘了 vi.advanceTimersByTime"导致的测试卡死.
+   */
+  it('hover 后 360ms 显示绝对路径 tooltip (action.data 优先)', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({
+          id: 'tt1-' + Math.random(),
+          action: { type: 'launch', data: 'C:\\Windows\\System32\\notepad.exe' },
+        }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    // hover 之前: tooltip 不应存在
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+
+    // 触发 mouseenter, 启动 360ms 延迟 timer
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    // 立即检查: tooltip 仍不应出现 (延迟未到)
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+
+    // 推进 timer 到 360ms 后, tooltip 应出现
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    await flushPromises()
+
+    const tooltip = wrapper.find('.app-tooltip')
+    expect(tooltip.exists()).toBe(true)
+    expect(tooltip.text()).toBe('C:\\Windows\\System32\\notepad.exe')
+  })
+
+  it('hover 不够 360ms 就 mouseleave → tooltip 不显示', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({ id: 'tt2-' + Math.random() }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    // 推进 200ms, 不到 360ms
+    vi.advanceTimersByTime(200)
+    await nextTick()
+
+    // 此时仍不应显示
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+
+    // 立即 mouseleave
+    await wrapper.find('.app-result-item').trigger('mouseleave')
+    // 即使推进到 400ms, tooltip 也不应出现 (timer 已被清)
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    await flushPromises()
+
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+  })
+
+  it('active=true 时 hover 不显示 tooltip (键盘导航时不打扰)', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({ id: 'tt3-' + Math.random() }),
+        index: 0,
+        active: true, // 选中态
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    // 推进到远超 360ms
+    vi.advanceTimersByTime(800)
+    await nextTick()
+    await flushPromises()
+
+    // active 态下 tooltip 不应出现
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+  })
+
+  it('mouseleave 后立即关闭 tooltip', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({ id: 'tt4-' + Math.random() }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    expect(wrapper.find('.app-tooltip').exists()).toBe(true)
+
+    // mouseleave → 立即关闭
+    await wrapper.find('.app-result-item').trigger('mouseleave')
+    await nextTick()
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+  })
+
+  it('路径为空 (无 action.data 无 subtitle) → 不显示 tooltip', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({
+          id: 'tt5-' + Math.random(),
+          subtitle: '',
+          // action 是 placeholder 类型, 没有 data 字段
+          action: { type: 'launch', data: '' },
+        }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    await flushPromises()
+
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+  })
+
+  it('action.type === "open" 时, 显示 action.data 路径', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({
+          id: 'tt6-' + Math.random(),
+          action: { type: 'open', data: 'C:\\Users\\me\\app.exe' },
+        }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    await flushPromises()
+
+    const tooltip = wrapper.find('.app-tooltip')
+    expect(tooltip.exists()).toBe(true)
+    expect(tooltip.text()).toBe('C:\\Users\\me\\app.exe')
+  })
+
+  it('action 不是 launch/open 时, 走 subtitle 兜底', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({
+          id: 'tt7-' + Math.random(),
+          subtitle: 'D:\\fallback\\path.exe',
+          // action 是 unknown / custom, data 为 undefined
+          action: { type: 'custom' as any, data: undefined } as any,
+        }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    await flushPromises()
+
+    const tooltip = wrapper.find('.app-tooltip')
+    expect(tooltip.exists()).toBe(true)
+    expect(tooltip.text()).toBe('D:\\fallback\\path.exe')
+  })
+
+  it('result 变化时强制重置 tooltip (避免上一个 item 的 tooltip 残留)', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({ id: 'a', action: { type: 'launch', data: 'C:\\a.exe' } }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    // hover 显示 a 的 tooltip
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    expect(wrapper.find('.app-tooltip').text()).toBe('C:\\a.exe')
+
+    // 切换 result → tooltip 强制重置 (即使 timer 还在)
+    await wrapper.setProps({
+      result: mk({ id: 'b', action: { type: 'launch', data: 'C:\\b.exe' } }),
+    })
+    await nextTick()
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+
+    // 重新 hover → 显示新路径
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    await flushPromises()
+    expect(wrapper.find('.app-tooltip').text()).toBe('C:\\b.exe')
+  })
+
+  it('active 从 false 变 true 时, 立即关闭 tooltip (键盘上下键导航)', async () => {
+    const AppResultItem = (await import('@/components/search/AppResultItem.vue')).default
+    const wrapper = mount(AppResultItem, {
+      props: {
+        result: mk({ id: 'tt9-' + Math.random() }),
+        index: 0,
+        active: false,
+      },
+    })
+    await flushPromises()
+    await nextTick()
+
+    // hover 显示 tooltip
+    await wrapper.find('.app-result-item').trigger('mouseenter')
+    vi.advanceTimersByTime(400)
+    await nextTick()
+    expect(wrapper.find('.app-tooltip').exists()).toBe(true)
+
+    // 模拟键盘上下键: 当前项被选中 (active=true) → 立即关闭
+    await wrapper.setProps({ active: true })
+    await nextTick()
+    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+  })
+})
