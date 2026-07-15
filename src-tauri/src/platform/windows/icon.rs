@@ -83,8 +83,18 @@ static ICON_CACHE: OnceLock<Mutex<IconCache>> = OnceLock::new();
 
 static ICON_EXTRACTOR: OnceLock<Box<dyn IconExtractor>> = OnceLock::new();
 
+/// 正在提取中的图标: key = 缓存 key, value = ().
+/// 用于 single-flight 去重: 当 N 个线程同时请求同一个未缓存的图标时,
+/// 只有第一个真正去提取, 其余的等第一个完成后直接从 cache 读.
+/// 避免 "dog pile effect" (缓存失效瞬间大量重复提取).
+static IN_FLIGHT: OnceLock<Mutex<std::collections::HashSet<String>>> = OnceLock::new();
+
 fn cache() -> &'static Mutex<IconCache> {
     ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn in_flight() -> &'static Mutex<std::collections::HashSet<String>> {
+    IN_FLIGHT.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
 }
 
 /// 全局默认 IconExtractor. 第一次访问时构造 `WindowsIconExtractor`,
@@ -99,6 +109,15 @@ pub fn get_extractor() -> &'static dyn IconExtractor {
 fn cache_key(p: &Path) -> String {
     let canon = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
     canon.to_string_lossy().to_lowercase()
+}
+
+/// 获取缓存的克隆 snapshot. 用于 commands.rs 在进入 spawn_blocking 前
+/// 先快速过一遍 cache, 已命中的直接编码, 未命中的才进入后台线程池提取.
+///
+/// 为什么不直接暴露 cache()? 因为 cache 是 Mutex<HashMap>, 外部持锁太久
+/// 会阻塞其他线程的写入. snapshot 一次性克隆后立即释放锁, 读写互不阻塞.
+pub fn cache_snapshot() -> std::collections::HashMap<String, Option<Vec<u8>>> {
+    cache().lock().clone()
 }
 
 /// 公共入口: 带缓存的图标提取. 永远不抛错.
@@ -139,10 +158,43 @@ pub fn get_or_extract_cached(path: &str) -> crate::error::Result<Option<Vec<u8>>
     }
 
     let key = cache_key(p);
+    // 第一次检查: cache 命中直接返回
     {
         let cache = cache().lock();
         if let Some(cached) = cache.get(&key) {
             return Ok(cached.clone());
+        }
+    }
+
+    // Single-flight: 如果另一个线程正在提取同一个图标, 就等它完成后直接读 cache,
+    // 而不是自己再提取一遍. 避免 "缓存失效瞬间 N 个请求同时穿透" 的 dog pile effect.
+    let is_first = {
+        let mut in_flight = in_flight().lock();
+        if in_flight.contains(&key) {
+            false
+        } else {
+            in_flight.insert(key.clone());
+            true
+        }
+    };
+
+    if !is_first {
+        // 另一个线程在提取, 我们自旋等待它写入 cache (最多等 3s)
+        // 每 10ms 检查一次 cache, 命中就返回
+        let mut waited = 0u64;
+        loop {
+            {
+                let cache = cache().lock();
+                if let Some(cached) = cache.get(&key) {
+                    return Ok(cached.clone());
+                }
+            }
+            if waited >= 3000 {
+                // 超时兜底: 3s 还没好 (可能另一个线程挂了), 自己提取
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            waited += 10;
         }
     }
 
@@ -196,8 +248,15 @@ pub fn get_or_extract_cached(path: &str) -> crate::error::Result<Option<Vec<u8>>
             path
         );
     }
-    let mut cache = cache().lock();
-    cache.insert(key, extracted.clone());
+    // 写入 cache + 清除 in-flight 标记
+    {
+        let mut cache = cache().lock();
+        cache.insert(key.clone(), extracted.clone());
+    }
+    {
+        let mut in_flight = in_flight().lock();
+        in_flight.remove(&key);
+    }
     Ok(extracted)
 }
 
@@ -232,11 +291,20 @@ fn log_icon_debug(stage: &str, path: &str, detail: &str) {
 /// - **Tier 4**: `SHGetFileInfoW(SHGFI_LARGEICON)` + DrawIconEx + HALFTONE
 ///   高质量拉伸, 兜底路径.
 ///
+/// 所有 Tier 成功提取后, 都会经过 `autocrop_and_center` 后处理:
+/// - 检测有效像素的边界框 (去掉周围透明区域)
+/// - 如果有效内容占比太小 (比如只有左上角一小块), 就裁剪并放大居中
+/// - 解决 "图标只有左上角一点点" 的视觉问题
+///
 /// `size`: 边长像素. 统一用 `icon_cfg::SIZE` (256), 签名抽象以便未来
 /// macOS NSWorkspace 等 impl 走不同尺寸.
 #[cfg(windows)]
 fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
     use windows::Win32::UI::WindowsAndMessaging::DestroyIcon;
+
+    let try_autocrop = |rgba: Vec<u8>| -> Vec<u8> {
+        autocrop_and_center(&rgba, size as u32, size as u32).unwrap_or(rgba)
+    };
 
     // Tier 1: SHIL_JUMBO 系统图像列表 (256x256 原生优先)
     if let Some(hicon) = extract_hicon_via_shil_jumbo(path) {
@@ -245,7 +313,8 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
                 let _ = DestroyIcon(hicon);
             }
             if !is_blank_icon(&rgba) {
-                return encode_png(&rgba, size as u32, size as u32);
+                let processed = try_autocrop(rgba);
+                return encode_png(&processed, size as u32, size as u32);
             }
         }
         unsafe {
@@ -261,7 +330,8 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
     // Tier 2: IShellItemImageFactory (无 BIGGERSIZEOK, 仅接受原生命尺寸)
     if let Some(rgba) = extract_rgba_via_shell_item_factory(path, size) {
         if !is_blank_icon(&rgba) {
-            return encode_png(&rgba, size as u32, size as u32);
+            let processed = try_autocrop(rgba);
+            return encode_png(&processed, size as u32, size as u32);
         }
         log_icon_debug(
             "tier2-blank",
@@ -277,7 +347,8 @@ fn extract_icon_windows(path: &Path, size: i32) -> Option<Vec<u8>> {
                 let _ = DestroyIcon(hicon);
             }
             if !is_blank_icon(&rgba) {
-                return encode_png(&rgba, size as u32, size as u32);
+                let processed = try_autocrop(rgba);
+                return encode_png(&processed, size as u32, size as u32);
             }
         }
         unsafe {
@@ -653,16 +724,13 @@ fn get_hicon(path: &Path) -> Option<HICON> {
 /// 通用空白 32x32 图标. 视觉上是一格纯色或近似纯色方块, 用户无法分辨
 /// "正在加载"和"真的没有图标".
 ///
-/// 判定标准 (2026-07 调整, 旧版太严):
-/// - 旧: 抽样 1/4 像素, 不同 RGBA 数 > 16 才算"有内容"
-/// - 新: 全采样, 同时检查"亮度方差" (mean abs deviation) 和"色数".
-///   - 全黑 / 全白 / 单色 → 立刻判为 blank (color_count ≤ 1)
-///   - 2-4 种颜色且亮度方差 < 4 → 可能是 Windows 空白方块, 判 blank
-///   - 5+ 种颜色 或 亮度方差 ≥ 4 → 真实图标, 通过
-///
-/// 为什么放宽: 旧版把 16 色阈值定得过严, 导致很多有效图标
-/// (尤其 .lnk 指向简单 target 的情况) 被判为 blank, 整个 list 都
-/// 走不到后端 IPC 成功路径, 用户看到的就是一片"空白".
+/// 判定标准 (2026-07 二次调整):
+/// - **只统计非透明像素** (alpha > alpha_threshold): 透明像素不参与
+///   颜色数和亮度统计, 避免小图标放在大画布上因大量透明像素被误判为空白.
+/// - 有效像素数 < MIN_VALID_PIXELS → 判 blank (几乎没有内容)
+/// - 全黑 / 全白 / 单色 → 立刻判为 blank (color_count ≤ 1)
+/// - 2-4 种颜色且亮度方差 < 4 → 可能是 Windows 空白方块, 判 blank
+/// - 5+ 种颜色 或 亮度方差 ≥ 4 → 真实图标, 通过
 pub fn is_blank_icon(rgba: &[u8]) -> bool {
     if rgba.len() < 4 {
         return true;
@@ -672,9 +740,14 @@ pub fn is_blank_icon(rgba: &[u8]) -> bool {
     let mut lum_sum: u64 = 0;
     let mut lum_sum_sq: u64 = 0;
     let mut pixel_count: u64 = 0;
+    let alpha_threshold = 8u8;
 
-    // 全采样 (32x32 = 1024 像素, 性能可接受)
+    // 只统计非透明像素
     for px in rgba.chunks_exact(4) {
+        let a = px[3];
+        if a <= alpha_threshold {
+            continue;
+        }
         let r = px[0] as u32;
         let g = px[1] as u32;
         let b = px[2] as u32;
@@ -689,7 +762,10 @@ pub fn is_blank_icon(rgba: &[u8]) -> bool {
         seen.insert(key);
     }
 
-    if pixel_count == 0 {
+    use icon_cfg::blank_detection as bd;
+
+    // 0) 有效像素太少 → 几乎是空白
+    if pixel_count < bd::MIN_VALID_PIXELS {
         return true;
     }
 
@@ -708,9 +784,6 @@ pub fn is_blank_icon(rgba: &[u8]) -> bool {
     //    - 亮度标准差 ≥ LUMA_STD_RICH  → 高对比度 (黑白剪影 / 渐变)
     //    - 色数 ≥ COLOR_COUNT_MID 且 亮度标准差 ≥ LUMA_STD_MID  → 多色 + 有亮度变化
     //    - 其余 → 大概率 Windows 空白方块
-    //
-    // 阈值集中在 `config::icon::blank_detection::*`, 改一处全工程生效.
-    use icon_cfg::blank_detection as bd;
     if seen.len() >= bd::COLOR_COUNT_RICH {
         return false;
     }
@@ -750,6 +823,178 @@ fn encode_png(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
         );
         return None;
     }
+    Some(out)
+}
+
+/// 计算 RGBA 图像中有效像素的边界框 (非完全透明的像素).
+///
+/// 返回 (left, top, right, bottom) —— 都是 inclusive.
+/// 如果所有像素都是完全透明的, 返回 None.
+fn find_content_bounds(rgba: &[u8], width: u32, height: u32) -> Option<(u32, u32, u32, u32)> {
+    let w = width as usize;
+    let h = height as usize;
+    let mut min_x = w as i32;
+    let mut min_y = h as i32;
+    let mut max_x = -1i32;
+    let mut max_y = -1i32;
+    let alpha_threshold = 8u8; // 透明度低于此值视为"空"
+
+    for y in 0..h {
+        for x in 0..w {
+            let idx = (y * w + x) * 4;
+            let a = rgba[idx + 3];
+            if a > alpha_threshold {
+                if x < min_x as usize {
+                    min_x = x as i32;
+                }
+                if y < min_y as usize {
+                    min_y = y as i32;
+                }
+                if x > max_x as usize {
+                    max_x = x as i32;
+                }
+                if y > max_y as usize {
+                    max_y = y as i32;
+                }
+            }
+        }
+    }
+
+    if max_x < 0 || max_y < 0 {
+        return None;
+    }
+    Some((min_x as u32, min_y as u32, max_x as u32, max_y as u32))
+}
+
+/// 从源图像中裁剪指定区域.
+fn crop_rgba(rgba: &[u8], src_w: u32, src_h: u32, x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+    let mut out = Vec::with_capacity((w * h * 4) as usize);
+    for row in 0..h {
+        let src_row = y + row;
+        if src_row >= src_h {
+            // 超出范围, 填充透明
+            out.extend(std::iter::repeat(0).take((w * 4) as usize));
+            continue;
+        }
+        let src_start = (src_row * src_w + x) as usize * 4;
+        let src_end = src_start + (w as usize) * 4;
+        if src_end > rgba.len() {
+            out.extend(std::iter::repeat(0).take((w * 4) as usize));
+            continue;
+        }
+        out.extend_from_slice(&rgba[src_start..src_end]);
+    }
+    out
+}
+
+/// 双线性插值缩放 RGBA 图像.
+fn resize_rgba_bilinear(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u32) -> Vec<u8> {
+    let mut dst = vec![0u8; (dst_w * dst_h * 4) as usize];
+
+    let x_ratio = src_w as f32 / dst_w as f32;
+    let y_ratio = src_h as f32 / dst_h as f32;
+
+    for y in 0..dst_h {
+        for x in 0..dst_w {
+            let src_x = (x as f32 + 0.5) * x_ratio - 0.5;
+            let src_y = (y as f32 + 0.5) * y_ratio - 0.5;
+
+            let x0 = src_x.floor() as i32;
+            let y0 = src_y.floor() as i32;
+            let x1 = x0 + 1;
+            let y1 = y0 + 1;
+
+            let fx = src_x - x0 as f32;
+            let fy = src_y - y0 as f32;
+
+            let x0_clamped = x0.clamp(0, src_w as i32 - 1) as u32;
+            let y0_clamped = y0.clamp(0, src_h as i32 - 1) as u32;
+            let x1_clamped = x1.clamp(0, src_w as i32 - 1) as u32;
+            let y1_clamped = y1.clamp(0, src_h as i32 - 1) as u32;
+
+            let idx00 = ((y0_clamped * src_w + x0_clamped) * 4) as usize;
+            let idx10 = ((y0_clamped * src_w + x1_clamped) * 4) as usize;
+            let idx01 = ((y1_clamped * src_w + x0_clamped) * 4) as usize;
+            let idx11 = ((y1_clamped * src_w + x1_clamped) * 4) as usize;
+
+            let dst_idx = ((y * dst_w + x) * 4) as usize;
+
+            for c in 0..4 {
+                let v00 = src[idx00 + c] as f32;
+                let v10 = src[idx10 + c] as f32;
+                let v01 = src[idx01 + c] as f32;
+                let v11 = src[idx11 + c] as f32;
+
+                let top = v00 * (1.0 - fx) + v10 * fx;
+                let bottom = v01 * (1.0 - fx) + v11 * fx;
+                let val = top * (1.0 - fy) + bottom * fy;
+
+                dst[dst_idx + c] = val.clamp(0.0, 255.0) as u8;
+            }
+        }
+    }
+
+    dst
+}
+
+/// 自动裁剪透明边界并居中放大.
+///
+/// 解决"图标只有左上角一点点"的问题:
+/// - 检测有效像素的边界框
+/// - 如果有效内容占比 < 60%, 说明图标被大量透明区域包围
+/// - 裁剪后按比例放大到目标尺寸的 85%, 然后居中放置
+/// - 保持宽高比, 使用双线性插值保证质量
+///
+/// 阈值集中在 `config::icon::autocrop::*`, 改一处全工程生效.
+fn autocrop_and_center(rgba: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
+    use icon_cfg::autocrop as ac;
+
+    let bounds = find_content_bounds(rgba, width, height)?;
+    let (left, top, right, bottom) = bounds;
+
+    let content_w = right - left + 1;
+    let content_h = bottom - top + 1;
+
+    // 计算有效内容占比
+    let area_ratio = (content_w as f32 * content_h as f32) / (width as f32 * height as f32);
+
+    // 如果内容占比已经足够大, 不需要裁剪
+    if area_ratio >= ac::MIN_AREA_RATIO {
+        return None;
+    }
+
+    // 计算目标尺寸 (保持宽高比, 最大占目标的 MAX_SCALE_RATIO)
+    let max_w = (width as f32 * ac::MAX_SCALE_RATIO) as u32;
+    let max_h = (height as f32 * ac::MAX_SCALE_RATIO) as u32;
+
+    let scale = (max_w as f32 / content_w as f32).min(max_h as f32 / content_h as f32);
+
+    let new_w = (content_w as f32 * scale).round() as u32;
+    let new_h = (content_h as f32 * scale).round() as u32;
+
+    if new_w == 0 || new_h == 0 {
+        return None;
+    }
+
+    // 裁剪有效内容
+    let cropped = crop_rgba(rgba, width, height, left, top, content_w, content_h);
+
+    // 缩放到新尺寸
+    let resized = resize_rgba_bilinear(&cropped, content_w, content_h, new_w, new_h);
+
+    // 居中放置到透明画布上
+    let mut out = vec![0u8; (width * height * 4) as usize];
+    let offset_x = (width - new_w) / 2;
+    let offset_y = (height - new_h) / 2;
+
+    for y in 0..new_h {
+        let src_start = (y * new_w) as usize * 4;
+        let src_end = src_start + (new_w as usize) * 4;
+        let dst_start = ((y + offset_y) * width + offset_x) as usize * 4;
+        let dst_end = dst_start + (new_w as usize) * 4;
+        out[dst_start..dst_end].copy_from_slice(&resized[src_start..src_end]);
+    }
+
     Some(out)
 }
 

@@ -501,20 +501,35 @@ pub async fn dispatch_command(
 /// - 返回 `Ok(None)` 表示提取失败 (文件不存在 / 非 PE / 访问被拒 / 空白图标), 前端降级到 Lucide 通用图标.
 /// - 内部已经过 `parking_lot::Mutex<HashMap>` 缓存, 同路径重复调用 < 1ms.
 /// - 自动解析 .lnk 快捷方式到目标 .exe 路径.
+/// - 性能优化 (2026-07): cache 未命中时走 spawn_blocking, 不在 async runtime 上阻塞, 不卡 UI.
 #[tauri::command]
 pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
+    // 先快速查 cache, 命中直接返回
     let resolved_path =
         crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(&path))
             .unwrap_or(std::path::PathBuf::from(&path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
-    let bytes = crate::platform::windows::icon::get_or_extract_cached(&resolved_path_str)
-        .map_err(|e| e.to_string())?;
+
+    // 快速路径: cache 命中直接返回
+    {
+        let cache = crate::platform::windows::icon::cache_snapshot();
+        if let Some(cached) = cache.get(&resolved_path_str.to_lowercase()) {
+            return Ok(cached.as_ref().map(|v| BASE64.encode(v)));
+        }
+    }
+
+    // 未命中: spawn_blocking 在后台线程提取, 不阻塞 UI
+    let path_clone = resolved_path_str.clone();
+    let bytes = tokio::task::spawn_blocking(move || {
+        crate::platform::windows::icon::get_or_extract_cached(&path_clone).unwrap_or(None)
+    })
+    .await
+    .map_err(|e| format!("icon join error: {}", e))?;
 
     if let Some(ref b) = bytes {
-        let base64_str = BASE64.encode(b);
-        Ok(Some(base64_str))
+        Ok(Some(BASE64.encode(b)))
     } else {
         log::debug!(
             "[icon-ipc] extraction returned None for path={}",
@@ -526,31 +541,114 @@ pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
 
 /// 批量获取图标 (base64 编码 PNG 数组). 一次 IPC 拉 N 个图标, 减少 RTT 开销.
 ///
-/// 关键优化: 旧版每个 AppResultItem 单独 invoke get_app_icon, 200 个结果 =
-/// 200 次 IPC, 弱机上首屏 10+ 秒. 新版: 一次调用拉满 (通常 30-60 个),
-/// 后续按需再追加.
-///
-/// 失败语义: 单个 path 失败 → 对应位置返回 None, 整体不报错.
-/// 重复 path 自动通过内部 cache 复用, 不会重复抽取.
-/// 自动解析 .lnk 快捷方式到目标 .exe 路径.
+/// 性能优化 (2026-07):
+/// - **多线程并发提取**: 用 tokio::task::spawn_blocking 分批并发,
+///   并发上限 = min(CPU 核数, 8), 避免把系统拖垮.
+/// - **spawn_blocking 隔离**: CPU 密集的 GDI 调用和 PNG 编码全部移到
+///   Tokio blocking thread pool, 不占用 async runtime 线程, **窗口拖动/动画不再卡顿**.
+/// - **缓存优先短路**: 先过一遍 cache, 已命中的直接返回 base64,
+///   未命中的才进入 blocking 池实际提取; 二次搜索几乎 0 开销.
+/// - **失败语义**: 单个 path 失败 → 对应位置返回 None, 整体不报错.
 #[tauri::command]
 pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String>>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
-    let mut out: Vec<Option<String>> = Vec::with_capacity(paths.len());
-    for p in &paths {
-        let resolved_path =
-            crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(p))
-                .unwrap_or(std::path::PathBuf::from(p));
-        let resolved_path_str = resolved_path.to_string_lossy().to_string();
-        let bytes = crate::platform::windows::icon::get_or_extract_cached(&resolved_path_str)
-            .map_err(|e| e.to_string())?;
-        out.push(bytes.map(|v| BASE64.encode(&v)));
+
+    let total = paths.len();
+    if total == 0 {
+        return Ok(Vec::new());
     }
-    log::info!(
-        "[icon] batch fetched {} paths, hits={}",
-        paths.len(),
-        out.iter().filter(|x| x.is_some()).count()
+
+    // 先解析所有 .lnk, 得到最终目标路径
+    let resolved: Vec<String> = paths
+        .iter()
+        .map(|p| {
+            crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(p))
+                .unwrap_or_else(|_| std::path::PathBuf::from(p))
+                .to_string_lossy()
+                .to_string()
+        })
+        .collect();
+
+    // 快速路径: 先查一遍 cache, 已命中的直接编码, 未命中的收集起来交给 blocking 池
+    let mut out: Vec<Option<String>> = vec![None; total];
+    let mut pending: Vec<(usize, String)> = Vec::new(); // (index, resolved_path)
+    {
+        let cache = crate::platform::windows::icon::cache_snapshot();
+        for (i, p) in resolved.iter().enumerate() {
+            if let Some(cached) = cache.get(&p.to_lowercase()) {
+                out[i] = cached.as_ref().map(|v| BASE64.encode(v));
+            } else {
+                pending.push((i, p.clone()));
+            }
+        }
+    }
+
+    let cache_hits = out.iter().filter(|x| x.is_some()).count();
+    if pending.is_empty() {
+        log::info!(
+            "[icon] batch fetched {} paths (all cache hit)",
+            total
+        );
+        return Ok(out);
+    }
+
+    // 并发度: min(CPU 核数, 8). 限制上限避免系统卡顿.
+    let concurrency = std::cmp::min(
+        std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4),
+        8,
     );
+    let concurrency = concurrency.max(2); // 至少 2 个并发
+
+    // 把 pending 均分到 concurrency 个 chunk
+    let chunk_size = (pending.len() + concurrency - 1) / concurrency;
+    let mut chunks: Vec<Vec<(usize, String)>> = Vec::with_capacity(concurrency);
+    for chunk in pending.chunks(chunk_size) {
+        chunks.push(chunk.to_vec());
+    }
+
+    // 每个 chunk 一个 spawn_blocking 任务, 并发执行
+    let mut handles = Vec::with_capacity(chunks.len());
+    for chunk in chunks {
+        let handle = tokio::task::spawn_blocking(move || {
+            let mut results = Vec::with_capacity(chunk.len());
+            for (idx, p) in chunk {
+                let bytes = crate::platform::windows::icon::get_or_extract_cached(&p)
+                    .unwrap_or(None);
+                results.push((idx, bytes));
+            }
+            results
+        });
+        handles.push(handle);
+    }
+
+    // 等待所有 chunk 完成
+    let all_results = futures::future::join_all(handles).await;
+
+    // 把结果写回 out 数组
+    for result in all_results {
+        match result {
+            Ok(chunk_results) => {
+                for (idx, bytes) in chunk_results {
+                    out[idx] = bytes.as_ref().map(|v| BASE64.encode(v));
+                }
+            }
+            Err(e) => {
+                log::error!("[icon] batch chunk join error: {}", e);
+            }
+        }
+    }
+
+    log::info!(
+        "[icon] batch fetched {} paths, cache_hits={}, extracted={}, success={}, concurrency={}",
+        total,
+        cache_hits,
+        pending.len(),
+        out.iter().filter(|x| x.is_some()).count(),
+        concurrency
+    );
+
     Ok(out)
 }
 
