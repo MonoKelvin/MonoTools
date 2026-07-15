@@ -30,7 +30,8 @@
 
 import { ref, nextTick, onBeforeUnmount, type Ref, type Component } from 'vue'
 import type { SearchResult } from '@/modules/search'
-import { useAppIcon, type IconState } from './useAppIcon'
+import { useAppIcon } from './useAppIcon'
+import type { IconState } from './iconSources'
 import { ICON_CONFIG } from '@/core/config/icon'
 
 export interface UseIconRendererOptions {

@@ -25,7 +25,7 @@
  *   4. 3 次都不命中 -> 返回 null
  */
 
-import type { IconState } from '@/common/composables/useAppIcon'
+import type { IconState } from '@/common/composables/iconSources'
 
 const LOBEHUB_TIMEOUT_MS = 5000
 
@@ -37,11 +37,11 @@ const LOBEHUB_TIMEOUT_MS = 5000
  * - 限制长度 1-32
  */
 export function toLobehubSlug(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 32)
+    return input
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 32)
 }
 
 /**
@@ -49,53 +49,53 @@ export function toLobehubSlug(input: string): string {
  * 第一个成功 fetch 的 slug 会被采用.
  */
 function candidateSlugs(name: string, path?: string): string[] {
-  const out: string[] = []
-  const seen = new Set<string>()
+    const out: string[] = []
+    const seen = new Set<string>()
 
-  function push(s: string) {
-    const slug = toLobehubSlug(s)
-    if (slug && !seen.has(slug)) {
-      seen.add(slug)
-      out.push(slug)
+    function push(s: string) {
+        const slug = toLobehubSlug(s)
+        if (slug && !seen.has(slug)) {
+            seen.add(slug)
+            out.push(slug)
+        }
     }
-  }
 
-  // 1) 完整 name
-  push(name)
-  // 2) 拆词: 拿每个非空 token 单独试 (e.g., "Microsoft Word" -> "microsoft", "word")
-  for (const tok of name.split(/[\s·•]+/)) push(tok)
-  // 3) 文件名 (无扩展名)
-  if (path) {
-    const m = path.match(/([^\\/]+?)(?:\.[a-z0-9]+)?$/i)
-    if (m) push(m[1])
-  }
-  return out
+    // 1) 完整 name
+    push(name)
+    // 2) 拆词: 拿每个非空 token 单独试 (e.g., "Microsoft Word" -> "microsoft", "word")
+    for (const tok of name.split(/[\s·•]+/)) push(tok)
+    // 3) 文件名 (无扩展名)
+    if (path) {
+        const m = path.match(/([^\\/]+?)(?:\.[a-z0-9]+)?$/i)
+        if (m) push(m[1])
+    }
+    return out
 }
 
 /** 单次 fetch + 解析 (带超时, 永不抛错). */
 async function tryFetch(slug: string): Promise<string | null> {
-  const url = `https://lobehub.com/icon-colorful/${slug}`
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), LOBEHUB_TIMEOUT_MS)
-  try {
-    const r = await fetch(url, { signal: ctrl.signal, mode: 'cors' })
-    if (!r.ok) return null
-    const ct = r.headers.get('content-type') || ''
-    // 命中但返回了 HTML/JSON (lobehub 404 页) -> 视为失败
-    if (!ct.includes('svg') && !ct.includes('xml') && !ct.includes('octet-stream')) {
-      return null
+    const url = `https://lobehub.com/icon-colorful/${slug}`
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), LOBEHUB_TIMEOUT_MS)
+    try {
+        const r = await fetch(url, { signal: ctrl.signal, mode: 'cors' })
+        if (!r.ok) return null
+        const ct = r.headers.get('content-type') || ''
+        // 命中但返回了 HTML/JSON (lobehub 404 页) -> 视为失败
+        if (!ct.includes('svg') && !ct.includes('xml') && !ct.includes('octet-stream')) {
+            return null
+        }
+        const text = await r.text()
+        if (!text.includes('<svg') || text.length < 50) return null
+        // 防止 lobehub 返回了它的 HTML 错误页 (有时 CT 缺失)
+        if (text.includes('<!DOCTYPE html>') || text.includes('<html')) return null
+        // 转 data URL, 浏览器可直接 <img src> 渲染
+        return `data:image/svg+xml;utf8,${encodeURIComponent(text)}`
+    } catch {
+        return null
+    } finally {
+        clearTimeout(timer)
     }
-    const text = await r.text()
-    if (!text.includes('<svg') || text.length < 50) return null
-    // 防止 lobehub 返回了它的 HTML 错误页 (有时 CT 缺失)
-    if (text.includes('<!DOCTYPE html>') || text.includes('<html')) return null
-    // 转 data URL, 浏览器可直接 <img src> 渲染
-    return `data:image/svg+xml;utf8,${encodeURIComponent(text)}`
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timer)
-  }
 }
 
 /**
@@ -105,16 +105,16 @@ async function tryFetch(slug: string): Promise<string | null> {
  * 调用方应仅在 Tauri 环境调用 (浏览器 mock 模式下, 我们故意不发起请求).
  */
 export async function lobehubFuzzyMatch(
-  name: string,
-  path?: string,
+    name: string,
+    path?: string,
 ): Promise<IconState | null> {
-  if (!name && !path) return null
-  const slugs = candidateSlugs(name || '', path)
-  for (const s of slugs) {
-    const dataUrl = await tryFetch(s)
-    if (dataUrl) {
-      return { kind: 'svg', value: dataUrl }
+    if (!name && !path) return null
+    const slugs = candidateSlugs(name || '', path)
+    for (const s of slugs) {
+        const dataUrl = await tryFetch(s)
+        if (dataUrl) {
+            return { kind: 'svg', value: dataUrl }
+        }
     }
-  }
-  return null
+    return null
 }
