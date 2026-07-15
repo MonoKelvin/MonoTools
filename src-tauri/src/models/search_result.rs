@@ -10,7 +10,7 @@ pub enum SearchCategory {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum ResultType {
     SystemApp,
     UserApp,

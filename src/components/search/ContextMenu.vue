@@ -113,6 +113,9 @@ const itemPath = computed(() => {
   if (action?.type === 'open' || action?.type === 'launch') {
     return typeof action.data === 'string' ? action.data : ''
   }
+  if (action?.type === 'run') {
+    return props.item.subtitle || ''
+  }
   return props.item.subtitle || ''
 })
 

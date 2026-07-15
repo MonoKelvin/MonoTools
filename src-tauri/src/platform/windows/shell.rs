@@ -25,18 +25,14 @@ pub fn launch_as_admin(path: &str, args: &[String]) -> Result<()> {
     launch(path, args).map(|_| ())
 }
 
-/// 在文件管理器中打开 (explorer /select,<path> 选中具体文件).
+/// 打开文件所在目录并选中文件 (explorer /select,<完整路径>).
 ///
-/// ⚠️ 历史实现里有两段 spawn 代码, 一段是死代码, 但保留了"let _ = cmd"
-/// 这种"抑制警告"的痕迹, 实际只 spawn 了一次 explorer. 当前实现:
-///   - 单进程 spawn, 避免任何潜在的"两个窗口"误判.
-///   - 显式 "/select,<path>" 作为单一参数, Windows 会忽略多余空格.
+/// 注意: 直接传入文件完整路径即可, `/select,` 会自动打开父目录并选中该文件.
+/// 不要先取 parent 再传进来, 否则会多往上跳一级导致定位错误.
 #[cfg(windows)]
 pub fn open_path(path: &PathBuf) -> Result<()> {
     use crate::config::paths;
     use std::os::windows::process::CommandExt;
-    // CREATE_NO_WINDOW 防止在 GUI 之外再开一个 console window.
-    // 取自 config::paths::CREATE_NO_WINDOW (单一真源).
 
     let path_str = path.to_string_lossy().into_owned();
     let select_arg = format!("/select,{}", path_str);
@@ -58,13 +54,13 @@ pub fn open_path(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// 打开文件所在目录（不选中文件，只打开文件夹）
+/// 打开文件所在目录并选中该文件 (与 open_path 等价, 语义更明确).
+///
+/// 这是前端 "打开文件所在路径" 菜单项的后端实现.
+/// 使用 `explorer /select,<完整路径>` 直接打开父目录并选中文件,
+/// 不需要先手动取 parent (那样会多跳一级导致路径错误).
 pub fn open_containing_folder(path: &PathBuf) -> Result<()> {
-    let dir = path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| path.clone());
-    open_path(&dir)
+    open_path(path)
 }
 
 /// 显示文件属性对话框 (explorer /select,<path> 不够, 需要用 ShellExecuteW 调用 properties 谓词).

@@ -3,6 +3,7 @@ use crate::config::search as search_cfg;
 use crate::error::Result;
 use crate::models::{AppEntry, ResultType, SearchAction, SearchResult};
 use crate::platform::windows::shell::resolve_shortcut;
+use crate::platform::windows::special_shortcuts::get_special_shortcut;
 use crate::repositories::SettingsRepo;
 use crate::utils::path::is_executable;
 use parking_lot::RwLock;
@@ -91,6 +92,10 @@ impl AppSearchEngine {
             }
         }
 
+        // 额外添加常用系统应用（白名单）
+        let count = Self::add_system_apps(&self.cache);
+        on_progress(count, "system_apps");
+
         let total = self.total();
         log::info!("App index: {} applications", total);
         Ok(())
@@ -131,6 +136,35 @@ impl AppSearchEngine {
             } else {
                 p.to_path_buf()
             };
+
+            // 检查是否是特殊快捷方式（不指向真实文件的 .lnk，如"运行"）
+            let special_sc = if is_lnk {
+                get_special_shortcut(p, &target)
+            } else {
+                None
+            };
+
+            if special_sc.is_some() {
+                // 特殊快捷方式：直接加入，不需要检查目标是否存在
+                let sc = special_sc.unwrap();
+                let name = sc.display_name.to_string();
+                let category = "System Tools".to_string();
+                let entry = AppEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name,
+                    path: p.to_path_buf(), // 存 LNK 本身的路径，用于图标提取
+                    icon_path: None,
+                    category,
+                    last_launched: None,
+                    launch_count: 0,
+                    alias: None,
+                    is_special_shortcut: true,
+                    special_command: Some(sc.launch_command.to_string()),
+                    special_args: Some(sc.launch_args.iter().map(|s| s.to_string()).collect()),
+                };
+                batch.push(entry);
+                continue;
+            }
 
             // 有效性校验: 目标路径必须存在, 避免列出已卸载的程序残留 LNK.
             // 同时排除系统目录中的可执行文件, 这些不是用户应用.
@@ -174,6 +208,9 @@ impl AppSearchEngine {
                 last_launched: None,
                 launch_count: 0,
                 alias: None,
+                is_special_shortcut: false,
+                special_command: None,
+                special_args: None,
             };
             batch.push(entry);
         }
@@ -205,19 +242,33 @@ impl AppSearchEngine {
             });
             return v
                 .into_iter()
-                .map(|a| SearchResult {
-                    id: a.id.clone(),
-                    title: a.name.clone(),
-                    // 应用结果明确不暴露文件路径; 前端 AppResultItem 不显示副标题.
-                    subtitle: String::new(),
-                    // 应用没有次级元信息 (不使用文件大小等).
-                    meta: None,
-                    // icon 由前端走三级兜底: 后端 IPC / 静态资源 / Lucide 通用图标.
-                    icon: None,
-                    category: crate::models::SearchCategory::Apps,
-                    result_type: app_type_of(&a.path),
-                    action: SearchAction::Launch(a.path.to_string_lossy().to_string()),
-                    score: search_cfg::APP_EMPTY_QUERY_SCORE,
+                .map(|a| {
+                    let action = if a.is_special_shortcut {
+                        SearchAction::Run {
+                            command: a.special_command.clone().unwrap_or_default(),
+                            args: a.special_args.clone().unwrap_or_default(),
+                        }
+                    } else {
+                        SearchAction::Launch(a.path.to_string_lossy().to_string())
+                    };
+                    // 普通应用 subtitle 为空 (AppResultItem 不显示路径),
+                    // 特殊快捷方式 subtitle 存 .lnk 文件路径 (用于 tooltip / 右键菜单).
+                    let subtitle = if a.is_special_shortcut {
+                        a.path.to_string_lossy().to_string()
+                    } else {
+                        String::new()
+                    };
+                    SearchResult {
+                        id: a.id.clone(),
+                        title: a.name.clone(),
+                        subtitle,
+                        meta: None,
+                        icon: None,
+                        category: crate::models::SearchCategory::Apps,
+                        result_type: app_type_of(&a),
+                        action,
+                        score: search_cfg::APP_EMPTY_QUERY_SCORE,
+                    }
                 })
                 .collect();
         }
@@ -233,17 +284,31 @@ impl AppSearchEngine {
         scored.truncate(limit as usize);
         scored
             .into_iter()
-            .map(|(s, a)| SearchResult {
-                id: a.id.clone(),
-                title: a.name.clone(),
-                // 应用结果明确不暴露文件路径; 前端 AppResultItem 不显示副标题.
-                subtitle: String::new(),
-                meta: None,
-                icon: None,
-                category: crate::models::SearchCategory::Apps,
-                result_type: app_type_of(&a.path),
-                action: SearchAction::Launch(a.path.to_string_lossy().to_string()),
-                score: s,
+            .map(|(s, a)| {
+                let action = if a.is_special_shortcut {
+                    SearchAction::Run {
+                        command: a.special_command.clone().unwrap_or_default(),
+                        args: a.special_args.clone().unwrap_or_default(),
+                    }
+                } else {
+                    SearchAction::Launch(a.path.to_string_lossy().to_string())
+                };
+                let subtitle = if a.is_special_shortcut {
+                    a.path.to_string_lossy().to_string()
+                } else {
+                    String::new()
+                };
+                SearchResult {
+                    id: a.id.clone(),
+                    title: a.name.clone(),
+                    subtitle,
+                    meta: None,
+                    icon: None,
+                    category: crate::models::SearchCategory::Apps,
+                    result_type: app_type_of(&a),
+                    action,
+                    score: s,
+                }
             })
             .collect()
     }
@@ -357,9 +422,7 @@ const SYSTEM_PATH_KEYWORDS: &[&str] = &["microsoft"];
 /// 未匹配任何规则的默认分类.
 const DEFAULT_APP_CATEGORY: &str = "Applications";
 
-/// 系统目录列表. 这些目录中的可执行文件不是用户应用,
-/// 应从应用索引中排除, 避免将 dfrgui.exe (磁盘碎片整理) 这类系统工具
-/// 误识别为"酷狗音乐"等无关应用.
+/// 系统目录列表. 这些目录中的可执行文件不是用户应用, 应从应用索引中排除
 const SYSTEM_DIR_KEYWORDS: &[&str] = &[
     "\\windows\\system32\\",
     "\\windows\\syswow64\\",
@@ -375,15 +438,20 @@ fn is_system_executable(path: &std::path::Path) -> bool {
     SYSTEM_DIR_KEYWORDS.iter().any(|kw| path_str.contains(kw))
 }
 
-fn app_type_of(path: &PathBuf) -> ResultType {
-    let p = path.to_string_lossy().to_lowercase();
-
-    if p.starts_with("c:\\windows\\") || p.starts_with("c:\\program files\\windowsapps\\") {
+fn app_type_of(app: &AppEntry) -> ResultType {
+    // 特殊快捷方式（运行、控制面板等）统一标记为系统应用
+    if app.is_special_shortcut {
         return ResultType::SystemApp;
     }
 
+    let p = app.path.to_string_lossy().to_lowercase();
+
     if p.contains("windowsapps\\") {
         return ResultType::UwpApp;
+    }
+
+    if p.starts_with("c:\\windows\\") {
+        return ResultType::SystemApp;
     }
 
     if p.starts_with("c:\\program files\\") || p.starts_with("c:\\program files (x86)\\") {
@@ -398,6 +466,111 @@ fn app_type_of(path: &PathBuf) -> ResultType {
     }
 
     ResultType::UserApp
+}
+
+/// 常用系统应用白名单 —— 这些应用虽然在系统目录中，但用户经常使用，
+/// 应该被索引并标记为 system-app。直接从 system32 目录中添加，
+/// 避免 WalkDir 扫描整个 system32 导致索引大量无用的系统工具。
+const SYSTEM_APP_WHITELIST: &[(&str, &str)] = &[
+    ("notepad.exe", "记事本"),
+    ("calc.exe", "计算器"),
+    ("mspaint.exe", "画图"),
+    ("explorer.exe", "文件资源管理器"),
+    ("taskmgr.exe", "任务管理器"),
+    ("cmd.exe", "命令提示符"),
+    ("powershell.exe", "Windows PowerShell"),
+    ("control.exe", "控制面板"),
+    ("ms-settings:", "设置"),
+    ("notepad++.exe", "Notepad++"),
+    ("write.exe", "写字板"),
+    ("mstsc.exe", "远程桌面连接"),
+    ("mmc.exe", "管理控制台"),
+    ("devmgmt.msc", "设备管理器"),
+    ("diskmgmt.msc", "磁盘管理"),
+    ("services.msc", "服务"),
+    ("taskschd.msc", "任务计划程序"),
+    ("eventvwr.msc", "事件查看器"),
+    ("perfmon.msc", "性能监视器"),
+    ("resmon.exe", "资源监视器"),
+    ("msinfo32.exe", "系统信息"),
+    ("dxdiag.exe", "DirectX 诊断工具"),
+    ("cleanmgr.exe", "磁盘清理"),
+    ("dfrgui.exe", "磁盘碎片整理"),
+    ("charmap.exe", "字符映射表"),
+    ("snippingtool.exe", "截图工具"),
+    ("magnify.exe", "放大镜"),
+    ("osk.exe", "屏幕键盘"),
+    ("narrator.exe", "讲述人"),
+];
+
+impl AppSearchEngine {
+    /// 添加常用系统应用到缓存中。返回添加后的总应用数。
+    ///
+    /// 为什么不用 WalkDir 扫描系统目录:
+    /// - system32 中有上千个 exe, 绝大多数是用户永远不会手动启动的系统工具
+    /// - 扫描全部会导致应用列表杂乱无章, 搜索质量下降
+    /// - 白名单方式更可控, 只添加用户真正可能用到的系统应用
+    fn add_system_apps(cache: &RwLock<HashMap<String, AppEntry>>) -> usize {
+        let system_root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".to_string());
+        let system32 = PathBuf::from(&system_root).join("System32");
+        let syswow64 = PathBuf::from(&system_root).join("SysWOW64");
+
+        let mut batch: Vec<AppEntry> = Vec::new();
+
+        for (exe_name, display_name) in SYSTEM_APP_WHITELIST {
+            // 先在 system32 中查找
+            let path = system32.join(exe_name);
+            if path.exists() {
+                batch.push(AppEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: display_name.to_string(),
+                    path: path.clone(),
+                    icon_path: None,
+                    category: "System".to_string(),
+                    last_launched: None,
+                    launch_count: 0,
+                    alias: None,
+                    is_special_shortcut: false,
+                    special_command: None,
+                    special_args: None,
+                });
+                continue;
+            }
+            // 再在 syswow64 中查找
+            let path = syswow64.join(exe_name);
+            if path.exists() {
+                batch.push(AppEntry {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: display_name.to_string(),
+                    path: path.clone(),
+                    icon_path: None,
+                    category: "System".to_string(),
+                    last_launched: None,
+                    launch_count: 0,
+                    alias: None,
+                    is_special_shortcut: false,
+                    special_command: None,
+                    special_args: None,
+                });
+            }
+        }
+
+        // 尝试添加 UWP 应用（从开始菜单中获取，因为 UWP 应用通常在开始菜单中有快捷方式）
+        // 注意: UWP 应用的真实 exe 在 WindowsApps 目录下, 需要通过快捷方式访问
+
+        if !batch.is_empty() {
+            let mut cache_write = cache.write();
+            for entry in batch {
+                let key = entry.path.to_string_lossy().to_string();
+                // 避免覆盖已有的同名应用（用户可能自己安装了其他版本）
+                if !cache_write.contains_key(&key) {
+                    cache_write.insert(key, entry);
+                }
+            }
+        }
+
+        cache.read().len()
+    }
 }
 
 #[cfg(test)]

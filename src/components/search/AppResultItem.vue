@@ -18,8 +18,8 @@
  * 4-tier 加载链 + 350ms 兜底 timer + loadToken race 防护. 详见
  * `src/composables/useIconRenderer.ts`.
  */
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { AppWindow, CornerDownLeft } from '@lucide/vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
+import { AppWindow, Monitor, Package, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/types/search'
 import { useIconRenderer } from '@/composables/useIconRenderer'
 import { FONT_SIZES, ICON_CONFIG } from '@/config'
@@ -28,6 +28,8 @@ const props = defineProps<{
   result: SearchResult
   active?: boolean
   index: number
+  /** 徽章尺寸: sm 用于列表/网格, xs 用于图标模式 */
+  badgeSize?: 'sm' | 'xs'
 }>()
 
 // 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
@@ -77,6 +79,8 @@ onBeforeUnmount(dispose)
  */
 const isHovered = ref(false)
 const tooltipVisible = ref(false)
+const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
+const itemRef = ref<HTMLElement | null>(null)
 let showTimer: ReturnType<typeof setTimeout> | null = null
 
 const absolutePath = computed(() => {
@@ -85,8 +89,34 @@ const absolutePath = computed(() => {
   if (r.action?.type === 'launch' || r.action?.type === 'open') {
     return r.action.data ?? ''
   }
+  if (r.action?.type === 'run') {
+    return r.subtitle || ''
+  }
   return r.subtitle || ''
 })
+
+function updateTooltipPosition() {
+  if (!itemRef.value) return
+  const rect = itemRef.value.getBoundingClientRect()
+  const vw = window.innerWidth
+  const tooltipMaxWidth = 360
+  const gap = 6
+
+  let left = rect.left + rect.width / 2
+  let top = rect.bottom + gap
+
+  if (left - tooltipMaxWidth / 2 < 8) {
+    left = 8 + tooltipMaxWidth / 2
+  }
+  if (left + tooltipMaxWidth / 2 > vw - 8) {
+    left = vw - 8 - tooltipMaxWidth / 2
+  }
+
+  tooltipStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`,
+  }
+}
 
 function clearShowTimer() {
   if (showTimer) {
@@ -101,6 +131,7 @@ function onItemEnter() {
   if (!absolutePath.value) return
   clearShowTimer()
   showTimer = setTimeout(() => {
+    updateTooltipPosition()
     tooltipVisible.value = true
     showTimer = null
   }, ICON_CONFIG.appTooltipDelayMs)
@@ -129,10 +160,24 @@ watch(() => props.active, (isActive) => {
 onBeforeUnmount(() => {
   clearShowTimer()
 })
+
+const isSystemApp = computed(() => props.result?.resultType === 'system-app')
+const isUwpApp = computed(() => props.result?.resultType === 'uwp-app')
+
+const badgeInfo = computed(() => {
+  if (isUwpApp.value) {
+    return { icon: Package, label: 'UWP 应用', type: 'uwp' }
+  }
+  if (isSystemApp.value) {
+    return { icon: Monitor, label: '系统应用', type: 'system' }
+  }
+  return null
+})
 </script>
 
 <template>
   <div
+    ref="itemRef"
     :class="['app-result-item', { 'app-result-item--active': active }]"
     :data-app-result-id="result?.id"
     @mouseenter="onItemEnter"
@@ -165,6 +210,17 @@ onBeforeUnmount(() => {
         :stroke-width="1.7"
         class="app-result-item__lucide"
       />
+      <div
+        v-if="badgeInfo"
+        class="app-result-item__badge"
+        :class="[
+          `app-result-item__badge--${badgeInfo.type}`,
+          `app-result-item__badge--${badgeSize ?? 'sm'}`
+        ]"
+        v-tooltip="{ value: badgeInfo.label, showDelay: 400, position: 'top' }"
+      >
+        <component :is="badgeInfo.icon" :size="badgeSize === 'xs' ? 8 : 10" :stroke-width="2" />
+      </div>
     </div>
 
     <div class="app-result-item__title">{{ result.title }}</div>
@@ -174,18 +230,20 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- 自定义 hover tooltip: 显示应用绝对路径.
-         .app-tooltip 与全局 tooltip.scss 中的 .app-tooltip 类名一致, 复用
-         玻璃风格 (blur / 边框 / 圆角). 不用 v-tooltip, 避免 PrimeVue
-         directive 在 happy-dom / WebView2 下不稳定. -->
-    <Transition name="app-tooltip-fade">
-      <div
-        v-if="tooltipVisible && absolutePath"
-        class="app-tooltip"
-        role="tooltip"
-      >
-        {{ absolutePath }}
-      </div>
-    </Transition>
+         通过 Teleport 挂载到 body, 用 position: fixed 定位,
+         避免被虚拟滚动容器的 overflow: auto 裁剪. -->
+    <Teleport to="body">
+      <Transition name="app-tooltip-fade">
+        <div
+          v-if="tooltipVisible && absolutePath"
+          class="app-tooltip"
+          :style="tooltipStyle"
+          role="tooltip"
+        >
+          {{ absolutePath }}
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -216,7 +274,7 @@ onBeforeUnmount(() => {
   border-radius: 7px;
   background: transparent;
   color: var(--text-tertiary);
-  overflow: hidden;
+  overflow: visible;
   position: relative;
   transition:
     color var(--dur-fast) var(--ease-out),
@@ -250,6 +308,74 @@ onBeforeUnmount(() => {
 
 .app-result-item__lucide {
   pointer-events: none;
+}
+
+.app-result-item__badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--canvas-elevated);
+  border: 1px solid var(--border-default);
+  color: var(--text-tertiary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 2;
+  pointer-events: none;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.app-result-item__badge--system {
+  color: var(--text-tertiary);
+}
+
+.app-result-item__badge--uwp {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow), 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.app-result-item__badge--sm {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+}
+
+.app-result-item__badge--xs {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  right: -3px;
+  bottom: -3px;
+}
+
+.app-result-item:hover .app-result-item__badge {
+  color: var(--text-secondary);
+  border-color: var(--border-hover);
+}
+
+.app-result-item:hover .app-result-item__badge--uwp {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow), 0 1px 3px rgba(0, 0, 0, 0.3);
+  transform: scale(1.08);
+}
+
+.app-result-item--active .app-result-item__badge--system {
+  color: var(--accent-warm);
+  border-color: var(--accent-warm);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.app-result-item--active .app-result-item__badge--uwp {
+  color: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 0 10px var(--accent-glow);
+  transform: scale(1.1);
 }
 
 /* === Monogram 单字母占位符 (无真实图标时) === */
@@ -337,18 +463,18 @@ onBeforeUnmount(() => {
 }
 
 /* === 自定义 hover tooltip: 显示应用绝对路径 ===
-   视觉与项目全局 .app-tooltip (.p-tooltip-text) 一致:
+   通过 Teleport 挂载到 body, 使用 position: fixed 定位,
+   避免被虚拟滚动容器的 overflow: auto 裁剪.
+   视觉与项目全局 .app-tooltip 风格一致:
    - 玻璃模糊 backdrop-filter
    - 紧凑 11.5px / 5px 9px padding
-   - 圆角 --radius-sm
-   定位: absolute, 居于 item 下方居中, 沿 X 轴用 transform 居中避免
-   被左侧 / 右侧裁剪. */
+   - 圆角 --radius-sm */
 .app-tooltip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
+  position: fixed;
+  left: 0;
+  top: 0;
   transform: translateX(-50%);
-  z-index: 100;
+  z-index: 9999;
   max-width: 360px;
   width: max-content;
   padding: 5px 9px;
@@ -371,11 +497,8 @@ onBeforeUnmount(() => {
   word-break: break-all;
   pointer-events: none;
   user-select: none;
-  /* 路径过长时优先换行, 避免 hover 时撑出窗口 */
   text-align: center;
   font-family: var(--font-mono);
-  /* 不让 tooltip 参与 flex 布局计算, 避免影响父容器尺寸 */
-  display: inline-block;
 }
 
 /* Win10 不用 backdrop-filter, 改用纯色背景 */

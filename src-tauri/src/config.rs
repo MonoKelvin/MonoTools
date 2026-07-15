@@ -35,6 +35,11 @@ pub mod icon {
     /// 空白/单色图标检测阈值 —— icon.rs::is_blank_icon 用.
     /// 用于过滤"图标被提取了但实际上是全黑/全白/纯灰, 不应展示"的场景.
     pub mod blank_detection {
+        /// 最少有效像素数 (非透明像素).
+        /// 低于此值说明图标几乎没有内容, 判为空白.
+        /// 256x256 = 65536 像素, 16x16 = 256 像素, 设为 50 比较安全.
+        pub const MIN_VALID_PIXELS: u64 = 50;
+
         /// "富色彩" 图标的最低独立颜色数.
         pub const COLOR_COUNT_RICH: usize = 16;
         /// "富色彩" 图标的最低 luma 标准差 (反映色彩丰富度).
@@ -43,6 +48,24 @@ pub mod icon {
         pub const LUMA_STD_MID: f64 = 4.0;
         /// "中等" 图标的最低独立颜色数.
         pub const COLOR_COUNT_MID: usize = 5;
+    }
+
+    /// 自动裁剪并居中配置 —— icon.rs::autocrop_and_center 用.
+    ///
+    /// 解决 "图标只有左上角一点点" 的问题:
+    /// - 当有效内容占比低于 MIN_AREA_RATIO 时触发自动裁剪
+    /// - 裁剪后放大到 MAX_SCALE_RATIO (相对于整张图的比例), 居中放置
+    /// - 保持宽高比, 双线性插值
+    pub mod autocrop {
+        /// 触发自动裁剪的最小内容占比 (0.0 ~ 1.0).
+        /// 内容占比低于此值 → 裁剪并放大.
+        /// 0.6 意味着: 如果图标内容只占了不到 60% 的面积, 就需要放大.
+        pub const MIN_AREA_RATIO: f32 = 0.6;
+
+        /// 裁剪后内容相对于整张图的最大比例 (0.0 ~ 1.0).
+        /// 0.88 意味着: 内容最大放大到 88% 的尺寸, 周围留一点 padding,
+        /// 避免贴边显得太挤.
+        pub const MAX_SCALE_RATIO: f32 = 0.88;
     }
 }
 
