@@ -220,7 +220,7 @@ fn with_default_action(mut r: SearchResult) -> SearchResult {
 mod tests {
     use super::*;
     use crate::search_engine::search_source::SearchSource;
-    use crate::models::{SearchAction, SearchCategory, SearchResult};
+    use crate::search_engine::models::{SearchAction, SearchCategory, SearchResult};
     use std::collections::HashMap;
 
     // 测试用 mock engine
@@ -256,7 +256,7 @@ mod tests {
                 meta: None,
                 icon: None,
                 category: SearchCategory::Apps,
-                result_type: crate::models::ResultType::UserApp,
+                result_type: crate::search_engine::models::ResultType::UserApp,
                 action: SearchAction::Launch("C:\\test.exe".into()),
                 score: 1.0,
             },

@@ -42,7 +42,7 @@ import type { DisplayGroup, GroupId } from '@/modules/search'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
 import AppResultItem from '@/modules/search/components/AppResultItem.vue'
 import CheckButton from '@/ui/components/CheckButton.vue'
-import { classify, classifyByResultType, FILE_KIND_META, FILE_KIND_DISPLAY_ORDER, type FileKind } from '@/utils/fileKinds'
+import { classify, classifyByResultType, FILE_KIND_META, FILE_KIND_DISPLAY_ORDER, type FileKind } from '../utils/fileKinds'
 import { useSearchStore } from '@/modules/search'
 
 interface Props {

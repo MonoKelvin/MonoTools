@@ -264,7 +264,7 @@ impl AppSearchEngine {
                         subtitle,
                         meta: None,
                         icon: None,
-                        category: crate::models::SearchCategory::Apps,
+                        category: crate::search_engine::models::SearchCategory::Apps,
                         result_type: app_type_of(&a),
                         action,
                         score: search_cfg::APP_EMPTY_QUERY_SCORE,
@@ -304,7 +304,7 @@ impl AppSearchEngine {
                     subtitle,
                     meta: None,
                     icon: None,
-                    category: crate::models::SearchCategory::Apps,
+                    category: crate::search_engine::models::SearchCategory::Apps,
                     result_type: app_type_of(&a),
                     action,
                     score: s,
@@ -330,10 +330,10 @@ impl crate::search_engine::search_source::SearchSource for AppSearchEngine {
     fn name(&self) -> &'static str {
         "app"
     }
-    fn category(&self) -> crate::models::SearchCategory {
-        crate::models::SearchCategory::Apps
+    fn category(&self) -> crate::search_engine::models::SearchCategory {
+        crate::search_engine::models::SearchCategory::Apps
     }
-    fn search(&self, query: &str, limit: u32) -> Vec<crate::models::SearchResult> {
+    fn search(&self, query: &str, limit: u32) -> Vec<crate::search_engine::models::SearchResult> {
         self.search(query, limit)
     }
     fn total(&self) -> usize {

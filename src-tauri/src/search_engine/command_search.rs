@@ -104,10 +104,10 @@ impl crate::search_engine::search_source::SearchSource for CommandSearchEngine {
     fn name(&self) -> &'static str {
         "command"
     }
-    fn category(&self) -> crate::models::SearchCategory {
-        crate::models::SearchCategory::Commands
+    fn category(&self) -> crate::search_engine::models::SearchCategory {
+        crate::search_engine::models::SearchCategory::Commands
     }
-    fn search(&self, query: &str, limit: u32) -> Vec<crate::models::SearchResult> {
+    fn search(&self, query: &str, limit: u32) -> Vec<crate::search_engine::models::SearchResult> {
         self.search(query, limit)
     }
     fn total(&self) -> usize {

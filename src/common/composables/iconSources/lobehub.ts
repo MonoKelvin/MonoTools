@@ -7,7 +7,7 @@
  * 避免外网延迟阻塞首屏. 这一策略与 useAppIcon 旧版一致.
  */
 
-import { lobehubFuzzyMatch } from '@/utils/lobehubIcons'
+import { lobehubFuzzyMatch } from './lobehubIcons'
 import { isTauri } from '@/services/env'
 import { extractPath } from './known'
 import type { IconSource, IconState } from './types'

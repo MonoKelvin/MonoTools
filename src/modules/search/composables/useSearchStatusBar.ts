@@ -18,7 +18,7 @@
 
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { ACTION_BAR_TIMEOUTS } from '@/core/config'
-import { resultTypeMeta } from '@/utils/resultTypeMeta'
+import { resultTypeMeta } from '../utils/resultTypeMeta'
 import { useStatusMessages, type StatusMessage } from '@/modules/search/composables/useStatusMessages'
 import { useSearchStore } from '@/modules/search'
 import type {

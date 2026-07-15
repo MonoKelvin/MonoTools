@@ -1,4 +1,4 @@
-﻿//! Shell 工具 - 启动程序、打开路径、解析快捷方式、系统操作
+//! Shell 工具 - 启动程序、打开路径、解析快捷方式、系统操作
 use crate::core::error::{AppError, Result};
 use std::path::PathBuf;
 use std::process::Command;
@@ -169,8 +169,8 @@ pub fn resolve_shortcut(path: &PathBuf) -> Result<PathBuf> {
 }
 
 /// 从 SearchResult 派发
-pub fn launch_str(item: &crate::models::SearchResult) -> Result<()> {
-    use crate::models::SearchAction;
+pub fn launch_str(item: &crate::search_engine::models::SearchResult) -> Result<()> {
+    use crate::search_engine::models::SearchAction;
     match &item.action {
         SearchAction::Launch(path) => {
             launch(path, &[])?;

@@ -23,7 +23,7 @@ import { ICON_CONFIG } from '@/core/config/icon'
 import { extractPath } from '@/common/composables/iconSources/known'
 import { isTauri } from '@/services/env'
 import { appIconApi } from '@/services/api'
-import { iconForFileKind } from '@/utils/knownAppIcons'
+import { iconForFileKind } from './iconSources/knownAppIcons'
 import { AppWindow } from '@lucide/vue'
 import {
   logIconFailure,

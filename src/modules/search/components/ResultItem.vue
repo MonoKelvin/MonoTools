@@ -25,7 +25,7 @@ import {
   FileArchive, File, CornerDownLeft
 } from "@lucide/vue"
 import { useIconRenderer } from '@/common/composables/useIconRenderer'
-import { resultTypeMeta } from '@/utils/resultTypeMeta'
+import { resultTypeMeta } from '../utils/resultTypeMeta'
 import { ICON_CONFIG } from '@/core/config'
 
 // --- Component ---

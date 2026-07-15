@@ -1,9 +1,9 @@
-﻿//! 仓库相关命令
+//! 仓库相关命令
 //!
 //! 设置、统计、自定义命令管理等与仓库层相关的命令。
 
 use crate::core::command::{Command, CommandContext, CommandOutput, CommandSpec};
-use crate::models::CustomCommand;
+use crate::core::command::command_custom::CustomCommand;
 use crate::platform::windows;
 use serde_json::json;
 

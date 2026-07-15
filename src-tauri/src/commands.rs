@@ -1,9 +1,10 @@
 ﻿//! Tauri IPC Commands - 前端 ↔ 后端
 
+use crate::core::command::command_custom::CustomCommand;
 use crate::core::config::{ipc_events, window};
-use crate::models::SearchAction;
-use crate::models::{CustomCommand, SearchResult, Settings};
+use crate::models::Settings;
 use crate::platform::windows::shell;
+use crate::search_engine::models::{SearchAction, SearchResult};
 use crate::services::app_state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, LogicalSize, Manager, State};
@@ -585,10 +586,7 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
 
     let cache_hits = out.iter().filter(|x| x.is_some()).count();
     if pending.is_empty() {
-        log::info!(
-            "[icon] batch fetched {} paths (all cache hit)",
-            total
-        );
+        log::info!("[icon] batch fetched {} paths (all cache hit)", total);
         return Ok(out);
     }
 
@@ -614,8 +612,8 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
         let handle = tokio::task::spawn_blocking(move || {
             let mut results = Vec::with_capacity(chunk.len());
             for (idx, p) in chunk {
-                let bytes = crate::platform::windows::icon::get_or_extract_cached(&p)
-                    .unwrap_or(None);
+                let bytes =
+                    crate::platform::windows::icon::get_or_extract_cached(&p).unwrap_or(None);
                 results.push((idx, bytes));
             }
             results

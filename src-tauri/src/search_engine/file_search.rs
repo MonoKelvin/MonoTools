@@ -1026,10 +1026,10 @@ impl crate::search_engine::search_source::SearchSource for FileSearchEngine {
     fn name(&self) -> &'static str {
         "file"
     }
-    fn category(&self) -> crate::models::SearchCategory {
-        crate::models::SearchCategory::Files
+    fn category(&self) -> crate::search_engine::models::SearchCategory {
+        crate::search_engine::models::SearchCategory::Files
     }
-    fn search(&self, query: &str, limit: u32) -> Vec<crate::models::SearchResult> {
+    fn search(&self, query: &str, limit: u32) -> Vec<crate::search_engine::models::SearchResult> {
         self.search(query, limit)
     }
     fn search_after(
@@ -1037,7 +1037,7 @@ impl crate::search_engine::search_source::SearchSource for FileSearchEngine {
         query: &str,
         after_id: i64,
         limit: u32,
-    ) -> Vec<crate::models::SearchResult> {
+    ) -> Vec<crate::search_engine::models::SearchResult> {
         self.search_after(query, after_id, limit)
     }
     fn total(&self) -> usize {

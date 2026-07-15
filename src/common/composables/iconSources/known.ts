@@ -7,7 +7,7 @@
  * 不需要二次包装.
  */
 
-import { lookupKnownIcon } from '@/utils/knownAppIcons'
+import { lookupKnownIcon } from './knownAppIcons'
 import type { IconSource, IconState } from './types'
 import type { SearchResult } from '@/modules/search'
 

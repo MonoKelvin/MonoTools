@@ -8,7 +8,7 @@
  * 永远返回非 null.
  */
 
-import { iconForFileKind } from '@/utils/knownAppIcons'
+import { iconForFileKind } from './knownAppIcons'
 import type { IconSource, IconState } from './types'
 import type { SearchResult } from '@/modules/search'
 

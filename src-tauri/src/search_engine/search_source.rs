@@ -43,7 +43,7 @@ pub trait SearchSource: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{SearchAction, SearchCategory, SearchResult};
+    use crate::search_engine::models::{SearchAction, SearchCategory, SearchResult};
 
     /// 最小可用的 mock source, 用于验证 trait 可扩展性.
     struct MockSource {
@@ -85,7 +85,7 @@ mod tests {
             meta: None,
             icon: None,
             category: SearchCategory::Apps,
-            result_type: crate::models::ResultType::UserApp,
+            result_type: crate::search_engine::models::ResultType::UserApp,
             action: SearchAction::Launch("C:\\test.exe".into()),
             score: 1.0,
         }

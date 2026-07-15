@@ -4,7 +4,7 @@ import type { SearchResult, SearchOptions } from '@/modules/search'
 import { searchApi } from '@/services/api'
 import { pinApi, pinTopApi } from '@/services/api'
 import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE, SEARCH_LIMITS } from '@/core/config'
-import { getFileKind } from '@/utils/fileKinds'
+import { getFileKind } from './utils/fileKinds'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
