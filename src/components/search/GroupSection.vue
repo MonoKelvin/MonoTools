@@ -37,7 +37,6 @@ const emit = defineEmits<{
 const DEFAULT_LAYOUT_BY_KIND: Record<string, LayoutMode> = {
   pinned: 'grid-fixed',
   recent: 'grid-fixed',
-  system: 'icon',
   apps: 'icon',
   commands: 'list',
   files: 'list',
@@ -240,7 +239,7 @@ function isItemHovered(localIndex: number): boolean {
                   @mouseleave="onItemLeave"
                   @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                 >
-                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" />
+                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" />
                   <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
                 </div>
               </template>
@@ -262,7 +261,7 @@ function isItemHovered(localIndex: number): boolean {
                     @mouseleave="onItemLeave"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
-                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" />
+                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" />
                     <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
                   </div>
                 </div>
@@ -286,7 +285,7 @@ function isItemHovered(localIndex: number): boolean {
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
                     <div class="gs-icon-mode-icon">
-                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" />
+                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="xs" />
                       <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
                     </div>
                     <div class="gs-icon-mode-title">{{ item.title }}</div>
@@ -506,7 +505,8 @@ function isItemHovered(localIndex: number): boolean {
   border: none;
   outline: none;
   transition: background var(--dur-fast) var(--ease-out);
-  overflow: hidden;
+  overflow: visible;
+  position: relative;
 }
 
 .gs-item--grid:hover,

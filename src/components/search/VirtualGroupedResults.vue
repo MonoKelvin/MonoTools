@@ -561,6 +561,7 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
             :result="item.result"
             :index="item.globalIndex"
             :active="item.globalIndex === selectedIndex"
+            badge-size="sm"
           />
           <ResultItem
             v-else
@@ -604,34 +605,16 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
 
 /* vue-virtual-scroller 的 .vue-recycle-scroller__item-wrapper 默认
    overflow: hidden, 会裁剪掉分组头行 ::before 分割线伪元素.
-   改为 visible 让 ::before 能延伸到窗口边缘. */
+   改为 visible 让 ::before 能延伸到窗口边缘.
+   同时让 item-view 也 overflow: visible, 避免 AppResultItem 的 tooltip 被裁剪. */
 .vg__scroller :deep(.vue-recycle-scroller__item-wrapper) {
   overflow: visible;
 }
-
-/* 自定义滚动条样式 */
-.vg__scroller::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+.vg__scroller :deep(.vue-recycle-scroller__item-view) {
+  overflow: visible;
 }
 
-.vg__scroller::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: var(--radius-full);
-  transition: background var(--dur-fast) var(--ease-out);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.vg__scroller::-webkit-scrollbar-thumb:hover {
-  background: var(--border-hover);
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-
-.vg__scroller::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* 滚动条统一样式见 theme.scss, 这里只保留 vg 特有的 gutter 配置 */
 
 /* === 分组头行: 44px 高, 与 item 行同高. ===
    分割线: 用 ::before 伪元素延伸到窗口边缘 (覆盖 .vg 与
@@ -1002,6 +985,8 @@ function isAppKind(k: DisplayGroup['kind']): boolean {
     filter var(--dur-fast) var(--ease-out);
   box-sizing: border-box;
   height: calc(100% - 1px);
+  overflow: visible;
+  position: relative;
 }
 
 .vg__row:hover,

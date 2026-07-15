@@ -372,7 +372,7 @@ export const useSearchStore = defineStore('search', () => {
 
     const allAppsSorted = computed<SearchResult[]>(() => {
         return filteredResults.value
-            .filter((r) => r.category === 'apps' && r.resultType !== 'system-app')
+            .filter((r) => r.category === 'apps')
             .sort((a, b) => a.title.localeCompare(b.title))
     })
 
@@ -444,18 +444,7 @@ export const useSearchStore = defineStore('search', () => {
             kind: 'recent',
         })
 
-        // 3) 系统应用
-        const sysItems = systemAppsItems.value
-        out.push({
-            id: GROUP_ID.system,
-            title: '系统应用',
-            items: sysItems,
-            visibleItems: isUserCollapsed(GROUP_ID.system) ? [] : sysItems,
-            collapsed: isUserCollapsed(GROUP_ID.system),
-            kind: 'system',
-        })
-
-        // 4) 命令
+        // 3) 命令
         const cmdItems = commandsItems.value
         out.push({
             id: GROUP_ID.commands,
@@ -466,18 +455,18 @@ export const useSearchStore = defineStore('search', () => {
             kind: 'commands',
         })
 
-        // 5) 所有应用
+        // 4) 应用程序
         const appsItems = allAppsItems.value
         out.push({
             id: GROUP_ID.apps,
-            title: '所有应用',
+            title: '应用程序',
             items: appsItems,
             visibleItems: isUserCollapsed(GROUP_ID.apps) ? [] : appsItems,
             collapsed: isUserCollapsed(GROUP_ID.apps),
             kind: 'apps',
         })
 
-        // 6) 所有文件 - 折叠影响 + 文件类型过滤 (无截断, vue-virtual-scroller 渲染)
+        // 5) 所有文件 - 折叠影响 + 文件类型过滤 (无截断, vue-virtual-scroller 渲染)
         const allFiles = filesAllUnfiltered.value
         const filesItems = applyFileKindFilter(allFiles, fileKindFilter.value)
         out.push({

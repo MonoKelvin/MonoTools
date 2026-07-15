@@ -1,153 +1,136 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ChevronUp, ChevronDown, CornerDownLeft, Keyboard, Loader2, CheckCircle, AlertCircle, Info } from "@lucide/vue"
-import type { SearchResult } from '@/types/search'
-import { ACTION_BAR_TIMEOUTS, FONT_SIZES, ICON_CONFIG } from '@/config'
-import { resultTypeMeta } from '@/utils/resultTypeMeta'
-import { useStatusMessages } from '@/composables/useStatusMessages'
+/**
+ * 通用状态栏 (ActionBar).
+ *
+ * 这是一个**纯展示组件**: 只负责把外部传入的 {@link StatusBarMessage}
+ * 渲染成图标 + 结构化文本 + (loading 态) 动态省略号, 并在消息切换时
+ * 播放模糊渐变过渡. 组件本身不感知任何业务 (索引 / 选中 / 盘符 / 搜索),
+ * 业务侧用 `useSearchStatusBar` 等编排器构建好消息后传入.
+ *
+ * 通用能力:
+ * - 6 种语义类型图标: info / success / warning / error / loading / debug
+ * - 文本片段按 kind 染色 (muted / label / primary / number / accent)
+ * - loading 态自动追加 ".", "..", "..." 循环省略号
+ * - 消息切换: A 横向拉伸模糊淡出 + B 自下方滑入 (50% → 100% 透明度)
+ *
+ * 右侧操作区通过 `#actions` 插槽暴露, 默认渲染导航/打开/快捷键提示,
+ * 外部可覆盖以自定义.
+ */
+
+import { computed, onUnmounted, ref, watch, type Component } from 'vue'
+import {
+  ChevronUp, ChevronDown, CornerDownLeft, Keyboard,
+  Loader2, CheckCircle, AlertCircle, Info, AlertTriangle, Bug,
+} from '@lucide/vue'
+import { FONT_SIZES, ICON_CONFIG } from '@/config'
+import type { StatusBarMessage, StatusBarType } from '@/types/statusBar'
 
 const props = defineProps<{
-  results: SearchResult[]
-  selectedIndex: number
-  indexBuilding: boolean
-  indexStatus: string
-  indexMessage: string
-  /** 索引扩展字段,用于 UI 展示"哪一个盘符" + 总卷/当前卷index, 默认值兜底 */
-  indexVolumesTotal?: number
-  indexVolumeIndex?: number
-  indexCurrentVolume?: string
+  /** 外部构建好的通用消息. null 时不渲染状态区. */
+  message: StatusBarMessage | null
 }>()
 
 const emit = defineEmits<{
   (e: 'showHotkeys'): void
 }>()
 
-const { currentMessage: statusMessage, hasMessages: hasStatusMessages } = useStatusMessages()
+// === 类型 → 默认图标映射 =====================================================
+// 通用语义图标, 不含任何业务. message.icon 可覆盖.
+const DEFAULT_ICONS: Record<StatusBarType, Component> = {
+  info: Info,
+  success: CheckCircle,
+  warning: AlertTriangle,
+  error: AlertCircle,
+  loading: Loader2,
+  debug: Bug,
+}
 
-const showIndexStatus = ref(false)
-const autoHideTimer = ref<number | null>(null)
+const isLoading = computed(() => props.message?.type === 'loading')
 
-// 默认: building 状态保持常驻显示, 让用户始终看到后台索引在做;
-//       completed 5s 后隐藏, 错误 8s 后隐藏.
-watch(() => props.indexStatus, (newStatus) => {
-  if (newStatus === 'building' || newStatus === 'idle') {
-    showIndexStatus.value = true
-    if (autoHideTimer.value) {
-      clearTimeout(autoHideTimer.value)
-      autoHideTimer.value = null
+const statusIcon = computed<Component | null>(() => {
+  if (!props.message) return null
+  return props.message.icon ?? DEFAULT_ICONS[props.message.type]
+})
+
+// === 加载省略号: ".", "..", "..." 循环 =======================================
+// 独立 ref, 不进入过渡 key, 避免每次跳动触发整体过渡.
+const dotsText = ref('')
+let dotsTimer: number | null = null
+
+watch(
+  isLoading,
+  (loading) => {
+    if (dotsTimer) {
+      clearInterval(dotsTimer)
+      dotsTimer = null
     }
-  } else if (newStatus === 'completed') {
-    showIndexStatus.value = true
-    if (autoHideTimer.value) {
-      clearTimeout(autoHideTimer.value)
+    if (loading) {
+      const cycle = ['.', '..', '...']
+      let i = 0
+      dotsText.value = cycle[0]
+      dotsTimer = window.setInterval(() => {
+        i = (i + 1) % cycle.length
+        dotsText.value = cycle[i]
+      }, 420)
+    } else {
+      dotsText.value = ''
     }
-    autoHideTimer.value = window.setTimeout(() => {
-      showIndexStatus.value = false
-    }, ACTION_BAR_TIMEOUTS.completedMs)
-  } else if (newStatus === 'error') {
-    showIndexStatus.value = true
-    if (autoHideTimer.value) {
-      clearTimeout(autoHideTimer.value)
-    }
-    autoHideTimer.value = window.setTimeout(() => {
-      showIndexStatus.value = false
-    }, ACTION_BAR_TIMEOUTS.errorMs)
-  }
-})
+  },
+  { immediate: true },
+)
 
-const statusText = computed(() => {
-  if (props.results.length === 0) {
-    return '未找到结果'
-  }
-
-  const selected = props.results[props.selectedIndex]
-
-  if (selected) {
-    // 单一真源: 标签从 RESULT_TYPE_META 查, 避免与 ResultItem / ResultItemTypeMeta drift.
-    const typeLabel = resultTypeMeta(selected.resultType)?.labelFull ?? selected.resultType
-    return `已选择: ${selected.title} · ${typeLabel}`
-  }
-
-  return `共 ${props.results.length} 项结果`
-})
-
-// 多盘符索引进度文本: "索引中 1/3 · C: (123456)"
-const volumeProgress = computed(() => {
-  const total = props.indexVolumesTotal ?? 0
-  const idx = props.indexVolumeIndex ?? 0
-  const cur = props.indexCurrentVolume ?? ''
-  if (total > 0) {
-    if (cur) return `索引中 ${idx}/${total} · ${cur}`
-    return `索引中 ${idx}/${total}`
-  }
-  return ''
-})
-
-// 展示文本: 优先显示状态栏消息管理器中的消息, 其次显示索引状态, 最后显示选中项信息
-const displayText = computed(() => {
-  // 优先级1: 状态栏消息管理器中的消息（统一入口）
-  if (statusMessage.value) {
-    return statusMessage.value.text
-  }
-  // 优先级2: 索引状态
-  if (showIndexStatus.value) {
-    if (props.indexStatus === 'building' && volumeProgress.value) {
-      return volumeProgress.value
-    }
-    return props.indexMessage
-  }
-  // 优先级3: 选中项 / 结果统计
-  return statusText.value
-})
-
-// 当前状态图标: 根据消息管理器中的消息类型决定
-const currentStatusType = computed(() => {
-  if (statusMessage.value) {
-    return statusMessage.value.type
-  }
-  if (showIndexStatus.value) {
-    return props.indexStatus as 'building' | 'completed' | 'error' | 'idle'
-  }
-  return null
-})
-
-// 是否显示状态样式背景
-const showStatusActive = computed(() => {
-  return !!statusMessage.value || (showIndexStatus.value && props.indexStatus !== 'idle')
+onUnmounted(() => {
+  if (dotsTimer) clearInterval(dotsTimer)
 })
 </script>
 
 <template>
   <div class="action-bar">
     <div class="action-bar__left">
-      <span class="action-bar__status" :class="{ 'action-bar__status--active': showStatusActive }">
-        <Loader2 v-if="currentStatusType === 'building' || currentStatusType === 'loading'" :size="12" class="action-bar__status-spinner" />
-        <CheckCircle v-else-if="currentStatusType === 'completed' || currentStatusType === 'success'" :size="12" class="action-bar__status-icon action-bar__status-icon--success" />
-        <AlertCircle v-else-if="currentStatusType === 'error'" :size="12" class="action-bar__status-icon action-bar__status-icon--error" />
-        <Info v-else-if="currentStatusType === 'info'" :size="12" class="action-bar__status-icon action-bar__status-icon--info" />
-        <span>{{ displayText }}</span>
-      </span>
+      <div class="action-bar__status">
+        <Transition name="status-swap">
+          <span :key="message?.id ?? 'empty'" class="action-bar__status-text">
+            <template v-if="message">
+              <component
+                :is="statusIcon"
+                v-if="statusIcon"
+                :size="12"
+                :class="[
+                  isLoading ? 'action-bar__status-spinner' : 'action-bar__status-icon',
+                  `action-bar__status-icon--${message.type}`,
+                ]"
+              />
+              <template v-for="(seg, i) in message.segments" :key="i">
+                <span class="seg" :class="`seg--${seg.kind ?? 'label'}`">{{ seg.text }}</span>
+              </template>
+              <span v-if="isLoading" class="loading-dots">{{ dotsText }}</span>
+            </template>
+          </span>
+        </Transition>
+      </div>
     </div>
 
     <div class="action-bar__right">
-      <span class="action-bar__hint">
-        <span class="action-bar__keys">
-          <span class="kbd"><ChevronUp :size="12" :stroke-width="2.5" /></span>
-          <span class="kbd"><ChevronDown :size="12" :stroke-width="2.5" /></span>
+      <slot name="actions">
+        <span class="action-bar__hint">
+          <span class="action-bar__keys">
+            <span class="kbd"><ChevronUp :size="12" :stroke-width="2.5" /></span>
+            <span class="kbd"><ChevronDown :size="12" :stroke-width="2.5" /></span>
+          </span>
+          <span class="action-bar__label">导航</span>
         </span>
-        <span class="action-bar__label">导航</span>
-      </span>
-      <span class="action-bar__hint">
-        <span class="kbd"><CornerDownLeft :size="12" :stroke-width="2.5" /></span>
-        <span class="action-bar__label">打开</span>
-      </span>
-      <button
-        class="action-bar__hotkey-btn"
-        @click="emit('showHotkeys')"
-        v-tooltip="{ value: '查看快捷键', showDelay: ICON_CONFIG.tooltipDelayMs, position: 'top' }"
-      >
-        <Keyboard :size="14" :stroke-width="2" />
-      </button>
+        <span class="action-bar__hint">
+          <span class="kbd"><CornerDownLeft :size="12" :stroke-width="2.5" /></span>
+          <span class="action-bar__label">打开</span>
+        </span>
+        <button
+          class="action-bar__hotkey-btn"
+          @click="emit('showHotkeys')"
+          v-tooltip="{ value: '查看快捷键', showDelay: ICON_CONFIG.tooltipDelayMs, position: 'top' }"
+        >
+          <Keyboard :size="14" :stroke-width="2" />
+        </button>
+      </slot>
     </div>
   </div>
 </template>
@@ -198,7 +181,17 @@ const showStatusActive = computed(() => {
   letter-spacing: 0.02em;
 }
 
+/* === 状态文本: 纯文本, 无胶囊背景 === */
 .action-bar__status {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  max-width: 360px;
+}
+
+.action-bar__status-text {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -206,69 +199,116 @@ const showStatusActive = computed(() => {
   font-size: v-bind('FONT_SIZES.sm + "px"');
   font-weight: 400;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 360px;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    color var(--dur-normal) var(--ease-out),
-    background var(--dur-normal) var(--ease-out),
-    opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
+  will-change: transform, opacity, filter;
 }
 
-.action-bar__status--active {
-  padding: 2px 8px;
-  border-radius: 10px;
-  animation: fadeInUp 320ms var(--ease-out);
+/* === 片段染色: 简约灰阶 + 金色高亮数字 === */
+.seg {
+  display: inline;
 }
 
-.action-bar__status--active:has(.action-bar__status-spinner) {
-  background: var(--accent-soft);
-  color: var(--accent);
+.seg--muted {
+  color: var(--text-quaternary);
 }
 
-.action-bar__status--active:has(.action-bar__status-icon--success) {
-  background: rgba(255, 255, 255, 0.04);
+.seg--label {
+  color: var(--text-tertiary);
+}
+
+.seg--primary {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.seg--accent {
   color: var(--text-secondary);
 }
 
-.action-bar__status--active:has(.action-bar__status-icon--error) {
-  background: var(--color-danger-bg);
-  color: var(--color-danger);
+.seg--number {
+  color: var(--accent-warm);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
 }
 
+/* === 加载省略号: 跟随数字色 === */
+.loading-dots {
+  color: var(--accent-warm);
+  font-weight: 600;
+  letter-spacing: 1px;
+  margin-left: 1px;
+  display: inline-block;
+  width: 1.4em;
+  text-align: left;
+}
+
+/* === 图标: 按 type 染色 === */
 .action-bar__status-spinner {
   animation: spin 1s linear infinite;
-  color: var(--accent);
+  color: var(--accent-warm);
+  flex-shrink: 0;
+}
+
+.action-bar__status-icon {
+  flex-shrink: 0;
+}
+
+.action-bar__status-icon--info,
+.action-bar__status-icon--debug {
+  color: var(--text-tertiary);
 }
 
 .action-bar__status-icon--success {
   color: var(--text-primary);
 }
 
+.action-bar__status-icon--warning {
+  color: var(--accent-warm);
+}
+
 .action-bar__status-icon--error {
   color: var(--color-danger);
 }
 
-.action-bar__status-icon--info {
-  color: var(--text-secondary);
+.action-bar__status-icon--loading {
+  color: var(--accent-warm);
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* === 文本切换过渡 ============================================================
+ * A → B: A 横向拉伸 + 模糊 + 淡出 (绝对定位脱离文档流), B 从下方滑入并从
+ * 50% 透明度渐变到正常. 交叉过渡无空档, 快速 (≈160ms) 以适配方向键连按.
+ */
+.status-swap-leave-active {
+  position: absolute;
+  left: 0;
+  transition:
+    opacity 100ms var(--ease-in-out),
+    transform 100ms var(--ease-in-out),
+    filter 100ms var(--ease-in-out);
+}
+
+.status-swap-leave-to {
+  opacity: 0;
+  transform: translateX(5px) scaleX(1.05);
+  filter: blur(2.5px);
+}
+
+.status-swap-enter-active {
+  position: relative;
+  transition:
+    opacity 130ms var(--ease-out),
+    transform 130ms var(--ease-out),
+    filter 130ms var(--ease-out);
+}
+
+.status-swap-enter-from {
+  opacity: 0.4;
+  transform: translateY(3px);
+  filter: blur(0.4px);
 }
 
 .kbd {

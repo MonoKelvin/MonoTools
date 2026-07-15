@@ -195,21 +195,71 @@ input, textarea {
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
   border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
   transition: background var(--dur-fast) var(--ease-out);
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
 ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-track-piece {
+  background: transparent;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 10px;
+  height: 10px;
+  background: var(--border-default);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}
+
+::-webkit-scrollbar-button:hover {
+  background: var(--border-hover);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-button:vertical:decrement {
+  border-radius: 999px 999px 0 0 / 10px 10px 0 0;
+  mask-image: radial-gradient(circle at 50% 55%, #000 1.5px, transparent 1.8px);
+  -webkit-mask-image: radial-gradient(circle at 50% 55%, #000 1.5px, transparent 1.8px);
+}
+
+::-webkit-scrollbar-button:vertical:increment {
+  border-radius: 0 0 999px 999px / 0 0 10px 10px;
+  mask-image: radial-gradient(circle at 50% 45%, #000 1.5px, transparent 1.8px);
+  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 1.5px, transparent 1.8px);
+}
+
+::-webkit-scrollbar-button:horizontal:decrement {
+  border-radius: 999px 0 0 999px / 10px 0 0 10px;
+  mask-image: radial-gradient(circle at 55% 50%, #000 1.5px, transparent 1.8px);
+  -webkit-mask-image: radial-gradient(circle at 55% 50%, #000 1.5px, transparent 1.8px);
+}
+
+::-webkit-scrollbar-button:horizontal:increment {
+  border-radius: 0 999px 999px 0 / 0 10px 10px 0;
+  mask-image: radial-gradient(circle at 45% 50%, #000 1.5px, transparent 1.8px);
+  -webkit-mask-image: radial-gradient(circle at 45% 50%, #000 1.5px, transparent 1.8px);
+}
+
+::-webkit-scrollbar-corner {
   background: transparent;
 }
 

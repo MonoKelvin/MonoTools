@@ -108,14 +108,8 @@
   }
 }
 
-// Scrollbar
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb {
-  background: var(--border-default);
-  border-radius: var(--radius-full);
-}
-::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
-::-webkit-scrollbar-track { background: transparent; }
+// Scrollbar — 全局统一样式见 theme.scss. 这里保留 Firefox scrollbar-width 兜底.
+html { scrollbar-width: thin; scrollbar-color: var(--border-default) transparent; }
 
 // Selection
 ::selection { background: rgba(255, 255, 255, 0.15); }

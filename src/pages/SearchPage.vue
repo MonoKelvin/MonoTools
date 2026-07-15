@@ -18,6 +18,7 @@ import ContextMenu from '@/components/search/ContextMenu.vue'
 import HotkeyModal from '@/components/common/HotkeyModal.vue'
 import { useCommandsStore, dispatchKeyEvent } from '@/commands'
 import { useAppIcon } from '@/composables/useAppIcon'
+import { useSearchStatusBar } from '@/composables/useSearchStatusBar'
 
 const showContextMenu = ref(false)
 const contextMenuX = ref(0)
@@ -29,6 +30,9 @@ const search = useSearchStore()
 const settings = useSettingsStore()
 const router = useRouter()
 const commandsStore = useCommandsStore()
+
+// 状态栏编排: 业务状态 → 通用 StatusBarMessage, 交给 ActionBar 渲染.
+const { message: statusBarMessage } = useSearchStatusBar(search)
 
 const inputRef = ref<InstanceType<typeof SearchInput> | null>(null)
 const containerRef = ref<HTMLElement | null>(null)
@@ -403,14 +407,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
       </div>
 
       <ActionBar
-        :results="search.displayList"
-        :selected-index="search.selectedIndex"
-        :index-building="search.indexStatus === 'building'"
-        :index-status="search.indexStatus"
-        :index-message="search.indexMessage"
-        :index-volumes-total="search.indexVolumesTotal"
-        :index-volume-index="search.indexVolumeIndex"
-        :index-current-volume="search.indexCurrentVolume"
+        :message="statusBarMessage"
         @show-hotkeys="onShowHotkeys"
       />
     </div>
@@ -484,25 +481,6 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
   overflow-x: visible;
   overflow-y: auto;
   padding: var(--sp-2) var(--sp-3);
-  scrollbar-width: thin;
-  scrollbar-color: var(--border-strong) transparent;
-}
-
-.results-scroll-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.results-scroll-container::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.results-scroll-container::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
-}
-
-.results-scroll-container::-webkit-scrollbar-thumb:hover {
-  background: var(--text-quaternary);
 }
 
 .empty-state {

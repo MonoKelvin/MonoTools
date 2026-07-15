@@ -179,20 +179,7 @@ const bodyMaxHeight = computed(() => {
   overflow-x: hidden;
 }
 
-/* 玻璃感滚动条: 仅 webkit 系可见, 不影响 Windows 默认外观整体性 */
-.mt-modal__body::-webkit-scrollbar {
-  width: 8px;
-}
-.mt-modal__body::-webkit-scrollbar-thumb {
-  background: var(--ww-list-selected-ring, rgba(255, 255, 255, 0.12));
-  border-radius: 999px;
-}
-.mt-modal__body::-webkit-scrollbar-thumb:hover {
-  background: var(--ww-list-selected-accent, rgba(255, 255, 255, 0.2));
-}
-.mt-modal__body::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* 滚动条统一样式见 theme.scss, 模态框沿用全局样式 */
 
 .mt-modal-enter-active,
 .mt-modal-leave-active {
