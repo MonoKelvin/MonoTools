@@ -5,6 +5,13 @@ import { searchApi } from '@/services/api'
 import { pinApi, pinTopApi } from '@/services/api'
 import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE, SEARCH_LIMITS } from '@/core/config'
 import { getFileKind } from './utils/fileKinds'
+import type { SortMode } from '@/core/config/sorting'
+import {
+  SMART_WEIGHTS,
+  APP_CATEGORIES,
+  RECOMMENDATION_MAP,
+  DEFAULT_SORT_BY_GROUP,
+} from '@/core/config/sorting'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
@@ -114,6 +121,134 @@ export const useSearchStore = defineStore('search', () => {
      */
     const collapsedGroups = ref<Set<GroupId>>(new Set())
 
+    /**
+     * 每个分组的排序模式. 默认值来自 DEFAULT_SORT_BY_GROUP.
+     * 用户可通过 GroupSection 右侧的排序 combobox 修改.
+     * key 使用 GROUP_ID 的短名 (不含 "group." 前缀).
+     */
+    const groupSortModes = ref<Record<GroupId, SortMode>>({
+        [GROUP_ID.pinned]: DEFAULT_SORT_BY_GROUP.pinned,
+        [GROUP_ID.recent]: DEFAULT_SORT_BY_GROUP.recent,
+        [GROUP_ID.system]: DEFAULT_SORT_BY_GROUP.system,
+        [GROUP_ID.commands]: DEFAULT_SORT_BY_GROUP.commands,
+        [GROUP_ID.apps]: DEFAULT_SORT_BY_GROUP.apps,
+        [GROUP_ID.files]: DEFAULT_SORT_BY_GROUP.files,
+    })
+
+    /**
+     * 计算当前已打开应用的类别分布, 用于智能推荐.
+     * 基于 recent (按 launch_count 排序的前 N 项) 推断用户偏好.
+     */
+    const activeAppCategories = computed<Record<string, number>>(() => {
+        const cats: Record<string, number> = {}
+        // recent 已按 launch_count 排序, 用位置加权 (越靠前权重越高)
+        const recentApps = recent.value.filter((r) => r.category === 'apps')
+        recentApps.forEach((app, idx) => {
+            const titleLower = app.title.toLowerCase()
+            const weight = Math.max(1, recentApps.length - idx) // 位置加权
+            for (const [cat, keywords] of Object.entries(APP_CATEGORIES)) {
+                if (keywords.some((kw) => titleLower.includes(kw.toLowerCase()))) {
+                    cats[cat] = (cats[cat] || 0) + weight
+                }
+            }
+        })
+        return cats
+    })
+
+    /**
+     * 根据用户已打开应用的类别, 计算推荐类别集合.
+     * 返回: Map<resultId, bonusScore>
+     */
+    const recommendationScores = computed<Map<string, number>>(() => {
+        const scores = new Map<string, number>()
+        const activeCats = activeAppCategories.value
+        if (Object.keys(activeCats).length === 0) return scores
+
+        // 找出用户活跃的主要类别 (计数 > 0)
+        const userCats = Object.keys(activeCats).filter((c) => activeCats[c] > 0)
+
+        // 收集需要推荐的类别 (去重)
+        const targetCats = new Set<string>()
+        for (const cat of userCats) {
+            const recs = RECOMMENDATION_MAP[cat] || []
+            for (const r of recs) targetCats.add(r)
+        }
+        // 移除用户已经在大量使用的类别 (不推荐用户已经在用的)
+        for (const cat of userCats) {
+            if (activeCats[cat] >= 3) targetCats.delete(cat)
+        }
+
+        if (targetCats.size === 0) return scores
+
+        // 为属于推荐类别的应用加分
+        const recBonus = SMART_WEIGHTS.recommendation
+        for (const app of results.value) {
+            if (app.category !== 'apps') continue
+            const titleLower = app.title.toLowerCase()
+            for (const cat of targetCats) {
+                const keywords = APP_CATEGORIES[cat] || []
+                if (keywords.some((kw) => titleLower.includes(kw.toLowerCase()))) {
+                    scores.set(app.id, (scores.get(app.id) || 0) + recBonus)
+                    break
+                }
+            }
+        }
+
+        return scores
+    })
+
+    /**
+     * 智能排序打分.
+     * 综合: 访问次数 + 名称匹配 + 目录访问 + 推荐权重.
+     */
+    function smartSortScore(item: SearchResult, queryStr: string): number {
+        let score = 0
+        const w = SMART_WEIGHTS
+
+        // 1) 访问次数 (用 score 字段近似, 后端已按 launch_count 排序)
+        score += (item.score || 0) * w.launchCount / 100
+
+        // 2) 名称匹配 (查询词命中)
+        if (queryStr) {
+            const q = queryStr.toLowerCase()
+            const title = item.title.toLowerCase()
+            if (title.includes(q)) {
+                score += w.nameMatch * (q.length / Math.max(title.length, 1))
+            }
+        }
+
+        // 3) 推荐加分
+        const recScore = recommendationScores.value.get(item.id)
+        if (recScore) score += recScore
+
+        return score
+    }
+
+    /** 按指定模式排序 items */
+    function sortItems(items: SearchResult[], mode: SortMode, groupId: string): SearchResult[] {
+        switch (mode) {
+            case 'name':
+                return [...items].sort((a, b) => a.title.localeCompare(b.title))
+            case 'recent':
+                // 按 score (launch_count) 降序
+                return [...items].sort((a, b) => (b.score || 0) - (a.score || 0))
+            case 'path':
+                return [...items].sort((a, b) =>
+                    (a.subtitle || '').localeCompare(b.subtitle || ''),
+                )
+            case 'smart':
+            default:
+                return [...items].sort((a, b) =>
+                    smartSortScore(b, query.value) - smartSortScore(a, query.value),
+                )
+        }
+    }
+
+    /** 设置分组排序模式 */
+    function setGroupSortMode(groupId: GroupId, mode: SortMode) {
+        groupSortModes.value[groupId] = mode
+    }
+
     let debounceHandle: ReturnType<typeof setTimeout> | null = null
     /** 增量搜索防抖: 防止索引过程中频繁重搜导致 UI 卡顿 */
     let incrementalRefreshTimer: ReturnType<typeof setTimeout> | null = null
@@ -134,10 +269,11 @@ export const useSearchStore = defineStore('search', () => {
     const pinned = computed<SearchResult[]>(() => {
         if (pinnedIds.value.length === 0) return []
         const map = new Map(results.value.map((r) => [r.id, r]))
-        return pinnedIds.value
+        const items = pinnedIds.value
             .map((id) => map.get(id))
             .filter((r): r is SearchResult => !!r)
             .slice(0, PINNED_MAX)
+        return sortItems(items, groupSortModes.value[GROUP_ID.pinned], GROUP_ID.pinned)
     })
 
     /**
@@ -147,8 +283,8 @@ export const useSearchStore = defineStore('search', () => {
      */
     const recent = computed<SearchResult[]>(() => {
         if (activeCategory.value === 'commands') return []
-        return results.value
-            .slice(0, RECENT_MAX)
+        const items = results.value.slice(0, RECENT_MAX)
+        return sortItems(items, groupSortModes.value[GROUP_ID.recent], GROUP_ID.recent)
     })
 
     /** 某个 id 是否被 pin. */
@@ -371,15 +507,14 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     const allAppsSorted = computed<SearchResult[]>(() => {
-        return filteredResults.value
-            .filter((r) => r.category === 'apps')
-            .sort((a, b) => a.title.localeCompare(b.title))
+        const items = filteredResults.value.filter((r) => r.category === 'apps')
+        return sortItems(items, groupSortModes.value[GROUP_ID.apps], GROUP_ID.apps)
     })
 
     const systemAppsSorted = computed<SearchResult[]>(() => {
-        return filteredResults.value
+        const items = filteredResults.value
             .filter((r) => r.category === 'apps' && r.resultType === 'system-app')
-            .sort((a, b) => a.title.localeCompare(b.title))
+        return sortItems(items, groupSortModes.value[GROUP_ID.system], GROUP_ID.system)
     })
 
     const commandsItems = computed<SearchResult[]>(() => {
@@ -809,6 +944,8 @@ export const useSearchStore = defineStore('search', () => {
         displayMax,
         toggleGroupCollapse,
         setFileKindFilter,
+        setGroupSortMode,
+        groupSortModes,
         // 多选相关 API
         selectedIds,
         selectedItems,

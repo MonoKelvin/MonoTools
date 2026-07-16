@@ -21,12 +21,14 @@ const props = withDefaults(
     minWidth?: number
     align?: 'left' | 'right'
     dropdownAnchor?: string
+    compact?: boolean
   }>(),
   {
     placeholder: '请选择',
     minWidth: 140,
     align: 'right',
     dropdownAnchor: '',
+    compact: false,
   },
 )
 
@@ -40,6 +42,11 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const activeIndex = ref(-1)
 const open = ref(false)
 const dropdownStyle = ref<Record<string, string>>({})
+const isHovered = ref(false)
+
+const isCompactExpanded = computed(() => props.compact && (open.value || isHovered.value))
+
+const displayArrow = computed(() => true)
 
 const selectedOption = computed(() => {
   return props.options.find((o) => o.key === props.modelValue && !o.divider)
@@ -202,7 +209,12 @@ onBeforeUnmount(() => {
   <div
     ref="rootRef"
     class="mt-combobox"
-    :class="{ 'mt-combobox--open': open, 'mt-combobox--disabled': disabled }"
+    :class="{
+      'mt-combobox--open': open,
+      'mt-combobox--disabled': disabled,
+      'mt-combobox--compact': compact,
+      'mt-combobox--compact-expanded': isCompactExpanded,
+    }"
   >
     <button
       type="button"
@@ -210,12 +222,14 @@ onBeforeUnmount(() => {
       :disabled="disabled"
       @click="toggleDropdown"
       @keydown="onKeyDown"
+      @mouseenter="!disabled && compact && (isHovered = true)"
+      @mouseleave="isHovered = false"
     >
       <component :is="displayIcon" v-if="displayIcon" :size="14" class="mt-combobox__trigger-icon" />
       <span class="mt-combobox__trigger-label" :class="{ 'mt-combobox__trigger-label--placeholder': !selectedOption }">
         {{ displayLabel }}
       </span>
-      <ChevronDown :size="12" class="mt-combobox__trigger-arrow" />
+      <ChevronDown v-if="displayArrow" :size="12" class="mt-combobox__trigger-arrow" />
     </button>
 
     <template v-if="dropdownAnchor">
@@ -372,6 +386,44 @@ onBeforeUnmount(() => {
 
 .mt-combobox--open .mt-combobox__trigger-arrow {
   transform: rotate(180deg);
+}
+
+/* ========== Compact 模式 ========== */
+
+.mt-combobox--compact .mt-combobox__trigger {
+  padding-left: 8px;
+  padding-right: 8px;
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.04));
+}
+
+.mt-combobox--compact .mt-combobox__trigger-label {
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition:
+    max-width 260ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 140ms ease-out 90ms,
+    transform 260ms cubic-bezier(0.4, 0, 0.2, 1) 70ms,
+    margin 260ms cubic-bezier(0.4, 0, 0.2, 1) 70ms;
+  margin-left: 0;
+}
+
+.mt-combobox--compact.mt-combobox--compact-expanded .mt-combobox__trigger-label {
+  max-width: 160px;
+  opacity: 1;
+  transform: translateX(0);
+  margin-left: 2px;
+  transition:
+    max-width 260ms cubic-bezier(0.4, 0, 0.2, 1) 100ms,
+    opacity 140ms ease-out 100ms,
+    transform 260ms cubic-bezier(0.4, 0, 0.2, 1) 100ms,
+    margin 260ms cubic-bezier(0.4, 0, 0.2, 1) 100ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mt-combobox--compact .mt-combobox__trigger-label {
+    transition: none;
+  }
 }
 
 .mt-combobox__dropdown {

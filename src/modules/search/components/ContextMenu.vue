@@ -334,11 +334,11 @@ function showToast(text: string, type: 'info' | 'success' | 'error' = 'success')
   background: transparent;
   min-height: 34px;
   position: relative;
-  /* 错落进入: 每项 22ms 间隔, 通过 :nth-child 自动算出来 */
-  --enter-delay: calc(var(--idx, 0) * 22ms);
+  /* 错落进入: 每项 12ms 间隔, 通过 :nth-child 自动算出来 */
+  --enter-delay: calc(var(--idx, 0) * 12ms);
   transform: translateY(-2px);
   opacity: 0;
-  animation: ctx-item-in 220ms var(--ease-out) var(--enter-delay) forwards;
+  animation: ctx-item-in 120ms var(--ease-out) var(--enter-delay) forwards;
   transition:
     background var(--dur-fast) var(--ease-out),
     color var(--dur-fast) var(--ease-out),
@@ -403,12 +403,12 @@ function showToast(text: string, type: 'info' | 'success' | 'error' = 'success')
 .ctx-menu-enter-active .ctx-menu__content,
 .ctx-menu-leave-active .ctx-menu__content {
   transition:
-    transform 180ms var(--ease-out),
-    opacity 160ms var(--ease-out);
+    transform 100ms var(--ease-out),
+    opacity 100ms var(--ease-out);
 }
 .ctx-menu-enter-from .ctx-menu__content,
 .ctx-menu-leave-to .ctx-menu__content {
-  transform: scale(0.94) translateY(-4px);
+  transform: scale(0.96) translateY(-2px);
   opacity: 0;
 }
 

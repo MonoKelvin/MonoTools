@@ -250,6 +250,14 @@ async function handleGlobalKeydown(event: KeyboardEvent) {
  */
 const displayGroups = computed(() => search.displayGroups)
 
+/**
+ * 过滤掉 items.length === 0 的分组, 避免渲染空 GroupSection.
+ * 固定项目为空时, 不显示"固定项目"分组.
+ */
+const visibleGroups = computed(() =>
+  displayGroups.value.filter((g) => g.items.length > 0),
+)
+
 /** 分组图标映射 */
 const GROUP_ICONS: Record<DisplayGroup['kind'], any> = {
   pinned: Pin,
@@ -370,17 +378,19 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 
       <!-- 分组列表: 每个分组使用 GroupSection 组件, 支持独立的显示模式切换 -->
       <div class="results-scroll-container" ref="resultsScrollRef">
-        <template v-if="search.displayList.length > 0">
+        <template v-if="visibleGroups.length > 0">
           <GroupSection
-            v-for="group in displayGroups"
+            v-for="group in visibleGroups"
             :key="group.id"
             :id="group.id"
             :title="group.title"
             :icon="GROUP_ICONS[group.kind]"
             :items="group.visibleItems"
+            :collapsed-items="group.items"
             :collapsed="group.collapsed"
             :kind="group.kind"
             :count="group.items.length"
+            :sort-mode="search.groupSortModes[group.id]"
             :selected-global-index="search.selectedIndex"
             :hovered-global-index="search.selectedIndex"
             :start-index="groupStartIndices.get(group.id) ?? 0"
@@ -389,6 +399,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
             @open="onOpen"
             @hover="onHover"
             @contextmenu="handleContextMenu"
+            @sort-change="(mode) => search.setGroupSortMode(group.id, mode)"
           />
         </template>
         <template v-else>
@@ -423,6 +434,15 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 <style scoped>
 /* 浮窗容器样式由 ui/pages/OverlayPage.vue 提供, 此处只写 SearchPage 专属的 */
 
+/* 主容器: flex column, 让 SearchInput / results / ActionBar 正确伸缩 */
+.search-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* 关键: 让嵌套 flex 子项的 overflow-y: auto 生效 */
+}
+
 /* 搜索结果区域 - 高度由外层动态控制 */
 .results-scroll-container {
   flex: 1;
@@ -433,6 +453,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
   overflow-x: visible;
   overflow-y: auto;
   padding: var(--sp-2) var(--sp-3);
+  min-height: 0; /* 关键: 让 flex 子项能正确收缩并出现滚动条 */
 }
 
 .slide-down-enter-active,

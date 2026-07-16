@@ -54,6 +54,17 @@
   --color-success-soft:rgba(89, 212, 153, 0.15);
 
   /* ==========================================================================
+   * STATUS BAR ICON COLORS (按消息类型区分, 提升信息可读性)
+   * 命名遵循常见设计系统: 错误=橙红, 警告=柠檬黄, 信息=天空蓝, 调试=草绿
+   * ========================================================================== */
+  --status-error:   #fb4934;  /* 橙红: 错误/失败 */
+  --status-warning: #f1fa8c;  /* 柠檬黄: 警告/注意 */
+  --status-info:    #89b4fa;  /* 天空蓝: 信息/提示 */
+  --status-debug:   #a6e3a1;  /* 草绿色: 调试/诊断 */
+  --status-loading: #fbbf24;  /* 金色: 加载中 (沿用 warm) */
+  --status-success: #59d499;  /* 绿色: 成功 (沿用 success) */
+
+  /* ==========================================================================
    * LIST STATES (细微, 统一 hover/selected 视觉)
    * ========================================================================== */
   --list-hover-bg:     rgba(255, 255, 255, 0.04);
@@ -210,6 +221,14 @@
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
+
+  /* Status bar icon colors (light theme — slightly darker for contrast) */
+  --status-error:   #d62828;
+  --status-warning: #c4a400;
+  --status-info:    #0077b6;
+  --status-debug:   #52b788;
+  --status-loading: #f77f00;
+  --status-success: #40916c;
 }
 
 /* ===========================================================================

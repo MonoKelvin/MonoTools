@@ -245,7 +245,7 @@ onUnmounted(() => {
 /* === 图标: 按 type 染色 === */
 .action-bar__status-spinner {
   animation: spin 1s linear infinite;
-  color: var(--accent-warm);
+  color: var(--status-loading);
   flex-shrink: 0;
 }
 
@@ -253,25 +253,28 @@ onUnmounted(() => {
   flex-shrink: 0;
 }
 
-.action-bar__status-icon--info,
+.action-bar__status-icon--info {
+  color: var(--status-info);
+}
+
 .action-bar__status-icon--debug {
-  color: var(--text-tertiary);
+  color: var(--status-debug);
 }
 
 .action-bar__status-icon--success {
-  color: var(--text-primary);
+  color: var(--status-success);
 }
 
 .action-bar__status-icon--warning {
-  color: var(--accent-warm);
+  color: var(--status-warning);
 }
 
 .action-bar__status-icon--error {
-  color: var(--color-danger);
+  color: var(--status-error);
 }
 
 .action-bar__status-icon--loading {
-  color: var(--accent-warm);
+  color: var(--status-loading);
 }
 
 @keyframes spin {

@@ -90,6 +90,9 @@ impl AppSearchEngine {
                 let count = Self::scan_dir_and_count(&dir, &self.cache);
                 on_progress(count, phase);
             }
+            // 阶段间 yield: 让 async runtime 处理其他任务 (前端事件、UI 渲染等).
+            // 避免连续扫描阻塞 runtime 线程, 导致窗口拖动/滚动卡顿.
+            tokio::task::yield_now().await;
         }
 
         // 额外添加常用系统应用（白名单）

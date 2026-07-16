@@ -85,11 +85,47 @@ fn extract_drive_letter(volume: &str) -> char {
     }
 }
 
-/// 仅用于 UI 显示：从 volume 路径里提取盘符字母（带 ":"），如 `C:`、`D:`.
+/// 从 volume 路径获取盘符字母和卷标名，格式化为 "卷标 (C:)" 形式。
+/// 若无法获取卷标名，则回退到 "本地磁盘 (C:)"。
 /// 当 volume 字符串无法解析时回退到 `"?"`。
+///
+/// 使用 `GetVolumeInformationW` 获取卷标，这是 Windows 标准 API，
+/// 开销极小（微秒级），适合在索引进度回调中频繁调用。
 pub fn drive_label(volume: &str) -> String {
-    let c = extract_drive_letter(volume);
-    format!("{}:", c.to_ascii_uppercase())
+    let c = extract_drive_letter(volume).to_ascii_uppercase();
+    let drive_path = format!("{}:\\", c);
+
+    // 尝试获取卷标名
+    let wide_path: Vec<u16> = drive_path.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut volume_name: [u16; 256] = [0; 256];
+    let success = unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetVolumeInformationW(
+            wide_path.as_ptr(),
+            volume_name.as_mut_ptr(),
+            volume_name.len() as u32,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+
+    if success != 0 {
+        let name_len = volume_name
+            .iter()
+            .position(|&c| c == 0)
+            .unwrap_or(volume_name.len());
+        let name = String::from_utf16_lossy(&volume_name[..name_len])
+            .trim()
+            .to_string();
+        if !name.is_empty() {
+            return format!("{} ({})", name, c);
+        }
+    }
+
+    // 回退: 本地磁盘 + 盘符
+    format!("本地磁盘 ({})", c)
 }
 
 pub struct NtfsIndexer {

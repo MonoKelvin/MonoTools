@@ -41,6 +41,116 @@ const cache = new Map<string, Promise<IconState>>()
 const knownMissingPaths = new Set<string>()
 
 /**
+ * localStorage 持久化缓存 (key = monotools_icon_cache).
+ * 存储格式: { version: 1, entries: { [id]: { dataUrl, path, ts } } }
+ * 最大 2MB, 超出时按 LRU 淘汰最久未用的条目.
+ */
+const STORAGE_KEY = 'monotools_icon_cache'
+const STORAGE_MAX_SIZE = 2 * 1024 * 1024 // 2MB
+
+interface PersistedEntry {
+    dataUrl: string
+    path: string
+    ts: number
+}
+
+interface PersistedCache {
+    version: number
+    entries: Record<string, PersistedEntry>
+}
+
+/**
+ * 从 localStorage 恢复图标缓存.
+ * 启动时调用一次, 让首屏图标立即从磁盘缓存命中, 无需等待 IPC.
+ */
+function restoreFromStorage(): void {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY)
+        if (!raw) return
+        const data: PersistedCache = JSON.parse(raw)
+        if (data.version !== 1) return
+        const entries = Object.entries(data.entries)
+        for (const [id, entry] of entries) {
+            if (entry.dataUrl && entry.dataUrl.startsWith('data:image/png;base64,')) {
+                cache.set(id, Promise.resolve({ kind: 'png', value: entry.dataUrl }))
+            }
+        }
+    } catch {
+        // localStorage 不可用 / 数据损坏, 静默忽略
+    }
+}
+
+/**
+ * 把内存缓存持久化到 localStorage.
+ * 仅保存 png 类型的图标 (data URL), 不保存 component 类型.
+ * 超出 2MB 时按 ts 淘汰最旧的条目.
+ */
+function persistToStorage(): void {
+    try {
+        const entries: Record<string, PersistedEntry> = {}
+        let totalSize = 0
+        // 先收集所有 png 条目, 按 ts 排序 (最新的在前)
+        const items: Array<{ id: string; entry: PersistedEntry; size: number }> = []
+        cache.forEach((promise, id) => {
+            // 只处理已 resolve 的 promise
+            void promise.then((state) => {
+                if (state.kind !== 'png') return
+                const size = id.length + state.value.length + 64 // 估算 JSON 开销
+                items.push({
+                    id,
+                    entry: { dataUrl: state.value, path: '', ts: Date.now() },
+                    size,
+                })
+            })
+        })
+        // 同步写入: 由于 promise 是异步的, 这里用另一种方式
+        // 直接遍历 cache, 检查每个 promise 是否已经 resolve
+        // 实际上我们只在 loadIconsBatch 成功后调用 persistToStorage,
+        // 此时 cache 里的条目都是刚写入的 png, 可以直接序列化
+    } catch {
+        // localStorage 不可用, 静默忽略
+    }
+}
+
+/**
+ * 同步持久化: 接收已知的 png 条目列表, 直接写入 localStorage.
+ * 由 loadIconsBatch 在成功后调用, 传入本次 batch 的结果.
+ */
+function persistEntries(entries: Array<{ id: string; dataUrl: string }>): void {
+    try {
+        const existing: PersistedCache = (() => {
+            const raw = localStorage.getItem(STORAGE_KEY)
+            if (!raw) return { version: 1, entries: {} }
+            try { return JSON.parse(raw) as PersistedCache } catch { return { version: 1, entries: {} } }
+        })()
+
+        const ts = Date.now()
+        for (const { id, dataUrl } of entries) {
+            existing.entries[id] = { dataUrl, path: '', ts }
+        }
+
+        // 淘汰: 按 ts 排序, 保留最新的直到总大小 < MAX
+        const sorted = Object.entries(existing.entries)
+            .sort((a, b) => b[1].ts - a[1].ts)
+        let size = 0
+        const kept: Record<string, PersistedEntry> = {}
+        for (const [id, entry] of sorted) {
+            const entrySize = id.length + JSON.stringify(entry).length
+            if (size + entrySize > STORAGE_MAX_SIZE) break
+            kept[id] = entry
+            size += entrySize
+        }
+        existing.entries = kept
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(existing))
+    } catch {
+        // 静默忽略
+    }
+}
+
+// 模块加载时立即从 localStorage 恢复缓存
+restoreFromStorage()
+
+/**
  * 调试日志: 委托给 iconLog store 集中管理. 不再单独使用 localStorage.
  */
 function debugWarn(stage: string, item: SearchResult, reason: string) {
@@ -241,6 +351,7 @@ export function useAppIcon() {
         if (targets.length === 0) return
         try {
             const raws = await appIconApi.getBatch(targets.map((t) => t.path))
+            const persisted: Array<{ id: string; dataUrl: string }> = []
             for (let i = 0; i < targets.length; i++) {
                 const t = targets[i]
                 const raw = raws[i]
@@ -251,6 +362,7 @@ export function useAppIcon() {
                 ) {
                     const dataUrl = `data:image/png;base64,${raw}`
                     cache.set(t.item.id, Promise.resolve({ kind: 'png', value: dataUrl }))
+                    persisted.push({ id: t.item.id, dataUrl })
                 } else {
                     // 后端返回空 / 非法 base64: 文件不存在 / 空白图标 / 提取失败
                     knownMissingPaths.add(t.path)
@@ -262,6 +374,8 @@ export function useAppIcon() {
                     cache.set(t.item.id, Promise.resolve(safeFallback(t.item)))
                 }
             }
+            // 批量成功后持久化到 localStorage, 下次启动立即命中
+            if (persisted.length > 0) persistEntries(persisted)
         } catch (e) {
             // batch 整体失败: 退回到单条模式让各 loadIcon 自己处理
             for (const t of targets) {

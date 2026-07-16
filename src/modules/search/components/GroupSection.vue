@@ -122,6 +122,9 @@ function onItemContextMenu(event: MouseEvent, item: SearchResult, localIndex: nu
   emit('contextmenu', event, item, globalIndexOf(localIndex))
 }
 
+const DURATION = 300
+const EASE = 'cubic-bezier(0.25, 0, 0.15, 1)'
+
 function finishTransition(node: HTMLElement, done: () => void) {
   let finished = false
   const finish = () => {
@@ -135,45 +138,60 @@ function finishTransition(node: HTMLElement, done: () => void) {
     done()
   }
   const onEnd = (event: TransitionEvent) => {
-    if (event.target === node && event.propertyName === 'height') finish()
+    if (event.target === node) finish()
   }
 
   node.addEventListener('transitionend', onEnd)
-  window.setTimeout(finish, 340)
+  window.setTimeout(finish, DURATION + 80)
 }
 
 function onCollapseBeforeEnter(el: Element) {
   const node = el as HTMLElement
+  // 记录展开后的自然高度, expand 时用
+  node.dataset.naturalHeight = String(node.scrollHeight)
+  // 起点: 折叠态
   node.style.height = '0'
   node.style.opacity = '0'
-  node.style.transform = 'translateY(-4px)'
+  node.style.transform = 'translateY(6px) scale(0.99)'
 }
 
 function onCollapseEnter(el: Element, done: () => void) {
   const node = el as HTMLElement
-  node.style.transition = 'height 260ms cubic-bezier(0.22, 1, 0.36, 1), opacity 160ms ease-out, transform 260ms cubic-bezier(0.22, 1, 0.36, 1)'
+  const targetH = parseInt(node.dataset.naturalHeight || '0', 10)
+  if (targetH <= 0) { done(); return }
+
+  // 设置 transition, 先确保浏览器处理了折叠态
+  node.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-out 20ms, transform ${DURATION}ms ${EASE} 10ms`
+  // 强制 reflow, 让浏览器记录初始状态
+  void node.offsetHeight
+
   requestAnimationFrame(() => {
-    node.style.height = `${node.scrollHeight}px`
+    node.style.height = `${targetH}px`
     node.style.opacity = '1'
-    node.style.transform = 'translateY(0)'
+    node.style.transform = 'translateY(0) scale(1)'
   })
   finishTransition(node, done)
 }
 
 function onCollapseBeforeLeave(el: Element) {
   const node = el as HTMLElement
+  // 钉住当前高度, 防止 Vue 移除元素后高度塌陷
   node.style.height = `${node.scrollHeight}px`
   node.style.opacity = '1'
-  node.style.transform = 'translateY(0)'
+  node.style.transform = 'translateY(0) scale(1)'
 }
 
 function onCollapseLeave(el: Element, done: () => void) {
   const node = el as HTMLElement
-  node.style.transition = 'height 180ms cubic-bezier(0.4, 0, 1, 1), opacity 120ms ease-in, transform 180ms cubic-bezier(0.4, 0, 1, 1)'
+  // 对称的缓动: 展开 ease-out (先慢后快), 收缩 ease-in (先快后慢)
+  node.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-in 20ms, transform ${DURATION}ms ${EASE} 10ms`
+  // 强制 reflow 确保浏览器处理了起始状态
+  void node.offsetHeight
+
   requestAnimationFrame(() => {
     node.style.height = '0'
     node.style.opacity = '0'
-    node.style.transform = 'translateY(-3px)'
+    node.style.transform = 'translateY(6px) scale(0.99)'
   })
   finishTransition(node, done)
 }

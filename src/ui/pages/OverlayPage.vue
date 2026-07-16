@@ -45,6 +45,13 @@
   animation: overlay-fade-in 220ms var(--ease-out);
 }
 
+/* 全局屏蔽 webview 右键菜单 (Raycast / Linear 桌面应用规范).
+   所有右键交互由 SearchPage / SearchInput / ContextMenu 自行处理. */
+.os-no-contextmenu {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .os-win10 .overlay-page__container {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
