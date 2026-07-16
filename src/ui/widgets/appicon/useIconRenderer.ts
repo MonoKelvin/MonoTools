@@ -29,9 +29,9 @@
  */
 
 import { ref, nextTick, onBeforeUnmount, type Ref, type Component } from 'vue'
-import type { SearchResult } from '@/modules/search'
+import type { SearchResult } from '@/core/types/search'
 import { useAppIcon } from './useAppIcon'
-import type { IconState } from './iconSources'
+import type { IconState } from './sources'
 import { ICON_CONFIG } from '@/core/config/icon'
 
 export interface UseIconRendererOptions {

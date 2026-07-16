@@ -12,7 +12,7 @@
  */
 
 import type { Component } from 'vue'
-import type { SearchResult } from '@/modules/search'
+import type { SearchResult } from '@/core/types/search'
 
 /** 4 种图标状态 (与 useAppIcon.IconKind 对齐). */
 export type IconKind = 'svg' | 'png' | 'component' | 'monogram'

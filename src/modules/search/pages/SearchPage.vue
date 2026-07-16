@@ -15,9 +15,9 @@ import SearchInput from '@/modules/search/components/SearchInput.vue'
 import GroupSection from '@/modules/search/components/GroupSection.vue'
 import ActionBar from '@/modules/search/components/ActionBar.vue'
 import ContextMenu from '@/modules/search/components/ContextMenu.vue'
-import HotkeyModal from '@/common/components/HotkeyModal.vue'
+import HotkeyModal from '@/ui/widgets/HotkeyModal.vue'
 import { useCommandsStore, dispatchKeyEvent } from '@/core/command'
-import { useAppIcon } from '@/common/composables/useAppIcon'
+import { useAppIcon } from '@/ui/widgets/appicon/useAppIcon'
 import { useSearchStatusBar } from '@/modules/search/composables/useSearchStatusBar'
 
 const showContextMenu = ref(false)

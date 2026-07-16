@@ -25,7 +25,7 @@
  *   4. 3 次都不命中 -> 返回 null
  */
 
-import type { IconState } from '@/common/composables/iconSources'
+import type { IconState } from './types'
 
 const LOBEHUB_TIMEOUT_MS = 5000
 

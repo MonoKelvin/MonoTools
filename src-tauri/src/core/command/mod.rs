@@ -1,4 +1,4 @@
-﻿//! 命令系统 —— 通用机制 + 自定义命令模型 + 系统内置命令
+//! 命令系统 —— 通用机制 + 自定义命令模型 + 系统内置命令
 //!
 //! 核心框架（纯机制，无业务逻辑）：
 //! - `Command` trait / `CommandSpec`: 命令接口
@@ -119,7 +119,7 @@ impl CommandContext {
     }
 
     /// 从全局 AppState 抽取命令执行所需的依赖：保留原 `from_app_state` 接口以兼容旧模块。
-    pub fn from_app_state(state: &std::sync::Arc<crate::services::app_state::AppState>) -> Self {
+    pub fn from_app_state(state: &std::sync::Arc<crate::app::state::AppState>) -> Self {
         let command_specs =
             crate::core::command::command_registry::build_default_registry().all_specs();
         Self {

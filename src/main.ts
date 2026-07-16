@@ -23,8 +23,8 @@ import Aura from '@primeuix/themes/aura'
 import Tooltip from 'primevue/tooltip'
 
 import { router, pinia } from './core'
-import { useAppIcon } from './common'
-import { dumpIconTraceSummary, resetIconTrace } from './common/composables/iconLog'
+import { useAppIcon } from './ui/widgets/appicon/useAppIcon'
+import { dumpIconTraceSummary, resetIconTrace } from './ui/widgets/appicon/iconLog'
 
 const app = createApp(App)
 

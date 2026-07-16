@@ -11,10 +11,10 @@
 import { appIconApi } from '@/services/api'
 import { isTauri } from '@/services/env'
 import { ICON_CONFIG } from '@/core/config/icon'
-import { logIconFailure } from '@/common/composables/iconLog'
+import { logIconFailure } from '../iconLog'
 import { extractPath } from './known'
 import type { IconSource, IconState } from './types'
-import type { SearchResult } from '@/modules/search'
+import type { SearchResult } from '@/core/types/search'
 
 export class IpcIconSource implements IconSource {
     readonly name = 'ipc'

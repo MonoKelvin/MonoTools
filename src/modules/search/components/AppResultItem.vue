@@ -21,7 +21,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { AppWindow, Monitor, Package, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/modules/search'
-import { useIconRenderer } from '@/common/composables/useIconRenderer'
+import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
 
 const props = defineProps<{

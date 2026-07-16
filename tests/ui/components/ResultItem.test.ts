@@ -48,7 +48,7 @@ vi.mock('@/services/api', () => ({
   },
 }))
 
-vi.mock('@/utils/lobehubIcons', () => ({
+vi.mock('@/ui/widgets/appicon/sources/lobehubIcons', () => ({
   lobehubFuzzyMatch: vi.fn().mockResolvedValue(null),
 }))
 

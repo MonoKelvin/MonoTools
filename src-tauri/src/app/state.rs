@@ -1,4 +1,6 @@
-﻿//! 全局 App 状态 - 由 tauri::Builder.manage 注入
+//! GUI 应用状态 - 由 tauri::Builder.manage 注入
+//!
+//! 仅在 GUI 模式下使用，CLI 模式使用 CommandContext::new_headless()。
 
 use crate::repositories::*;
 use crate::search_engine::app_search::AppSearchEngine;

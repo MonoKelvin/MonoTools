@@ -136,11 +136,28 @@ pub fn delete_permanently(path: &PathBuf) -> Result<()> {
     Ok(())
 }
 
-/// 复制文件路径到剪贴板 (由前端实现, 这里仅作占位).
+/// 复制文件路径到剪贴板。
 ///
-/// 注: 剪贴板操作在 Tauri 中通常由前端通过 navigator.clipboard 完成,
-/// 后端只在需要时提供兜底. 此函数预留用于未来扩展 (如 CMD 环境).
-pub fn copy_path_to_clipboard(_path: &PathBuf) -> Result<()> {
+/// 使用 PowerShell Set-Clipboard 实现，兼容 CLI 和 GUI 环境。
+pub fn copy_path_to_clipboard(path: &PathBuf) -> Result<()> {
+    let path_str = path.to_string_lossy();
+    let output = Command::new("powershell")
+        .arg("-NoProfile")
+        .arg("-Command")
+        .arg(format!(
+            "Set-Clipboard -Value '{}'",
+            path_str.replace('\'', "''")
+        ))
+        .output()
+        .map_err(|e| AppError::Other(format!("执行 PowerShell 失败: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::Other(format!(
+            "复制到剪贴板失败: {}",
+            stderr.trim()
+        )));
+    }
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
@@ -30,7 +30,7 @@ pub enum ResultType {
 #[serde(rename_all = "camelCase")]
 pub struct SearchOptions {
     pub categories: Vec<SearchCategory>,
-    pub max_results: u32,
+    pub limit: u32,
     pub include_hidden: bool,
 }
 
@@ -38,7 +38,7 @@ impl Default for SearchOptions {
     fn default() -> Self {
         Self {
             categories: vec![SearchCategory::All],
-            max_results: 20,
+            limit: 20,
             include_hidden: false,
         }
     }

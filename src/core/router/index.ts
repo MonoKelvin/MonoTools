@@ -6,18 +6,18 @@ export const router = createRouter({
     {
       path: '/',
       name: 'search',
-      component: () => import('@/pages/SearchPage.vue'),
+      component: () => import('@/modules/search/pages/SearchPage.vue'),
     },
     {
       path: '/settings',
       name: 'settings',
-      component: () => import('@/pages/SearchPage.vue'),
+      component: () => import('@/modules/search/pages/SearchPage.vue'),
       meta: { isPanel: true },
     },
     {
       path: '/commands',
       name: 'commands',
-      component: () => import('@/pages/SearchPage.vue'),
+      component: () => import('@/modules/search/pages/SearchPage.vue'),
       meta: { isPanel: true },
     },
   ],

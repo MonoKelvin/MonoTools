@@ -1,4 +1,4 @@
-﻿//! Windows 平台相关命令
+//! Windows 平台相关命令
 //!
 //! 文件操作、应用启动等与 Windows Shell 相关的命令实现。
 //! 这些命令属于平台业务模块，通过注册机制接入核心命令系统。
@@ -133,6 +133,32 @@ impl Command for LaunchCommand {
     }
 }
 
+/// copy-path 命令 - 复制文件路径到剪贴板
+pub struct CopyPathCommand;
+
+#[async_trait::async_trait]
+impl Command for CopyPathCommand {
+    fn spec(&self) -> CommandSpec {
+        CommandSpec::new("copy-path", "复制文件路径到剪贴板")
+            .with_aliases(&["cp", "copy"])
+            .with_usage("copy-path <path>")
+    }
+
+    async fn execute(
+        &self,
+        args: &[String],
+        _ctx: &CommandContext,
+    ) -> crate::core::error::Result<CommandOutput> {
+        if args.is_empty() {
+            return Ok(CommandOutput::err("用法：copy-path <path>"));
+        }
+        let path = args.join(" ");
+        let path_buf = std::path::PathBuf::from(&path);
+        shell::copy_path_to_clipboard(&path_buf)?;
+        Ok(CommandOutput::ok(format!("已复制路径: {path}")))
+    }
+}
+
 /// 注册所有 Windows 平台命令到注册表
 pub fn register_commands(reg: &mut crate::core::command::CommandRegistry) {
     reg.register(OpenCommand);
@@ -140,4 +166,5 @@ pub fn register_commands(reg: &mut crate::core::command::CommandRegistry) {
     reg.register(DeleteFileCommand);
     reg.register(ShowPropertiesCommand);
     reg.register(LaunchCommand);
+    reg.register(CopyPathCommand);
 }

@@ -1,11 +1,15 @@
-﻿//! Tauri IPC Commands - 前端 ↔ 后端
+//! Tauri IPC Commands - 前端 ↔ 后端
+//!
+//! 这些命令仅在 GUI 模式下使用，CLI 模式不依赖它们。
+//! 纯后端功能应该通过 Command trait + CommandRegistry 实现，
+//! 这样 CLI 和 GUI 都能共用。
 
+use crate::app::state::AppState;
 use crate::core::command::command_custom::CustomCommand;
 use crate::core::config::{ipc_events, window};
 use crate::models::Settings;
 use crate::platform::windows::shell;
 use crate::search_engine::models::{SearchAction, SearchResult};
-use crate::services::app_state::AppState;
 use std::sync::Arc;
 use tauri::{Emitter, LogicalSize, Manager, State};
 
@@ -49,7 +53,7 @@ pub async fn search_more_cmd(
         .as_ref()
         .and_then(|o| o.get("limit").and_then(|v| v.as_u64()))
         .map(|n| n.min(u32::MAX as u64) as u32)
-        .unwrap_or(200); // 默认 page size, 与旧 LOAD_MORE_LIMIT=50 接近
+        .unwrap_or(200);
     let results = state.search_engine.search_after(&query, after_id, limit);
     Ok(results)
 }
@@ -63,7 +67,6 @@ pub async fn build_file_index(
     let app_clone = app.clone();
 
     tauri::async_runtime::spawn(async move {
-        // 显式声明驱动盘符探测: 让懒枚举 NtfsIndexer 在后台触发.
         let _ = app_clone.emit(
             ipc_events::INDEX_PROGRESS,
             serde_json::json!({
@@ -146,20 +149,12 @@ pub async fn get_index_status(
 }
 
 /// 标记前端 UI 渲染完成,可以显示窗口.
-///
-/// 我们**不**在 Tauri 启动完成后立即显示窗口: 原因是 webview 拿到的前端 bundle
-/// 在 cold-start 时要解析 + 执行, 此时窗口已"visible=true"会出现短暂白屏.
-/// 因此启动时窗口 visible=false; 当前端根 mount 完成 + 首屏数据回来后,
-/// 调用本 IPC 让 Rust 显式 show 窗口.
-///
-/// 一次性触发, 反复调用幂等.
 #[tauri::command]
 pub async fn frontend_ready(
     app: tauri::AppHandle,
     state: State<'_, Arc<AppState>>,
 ) -> Result<(), String> {
     log::info!("[boot] frontend_ready: 显示窗口并标记初始化完成");
-    // 无论前端主动调用几次, 都只触发一次窗口显示.
     use parking_lot::Mutex;
     use std::sync::OnceLock;
     static SHOWN: OnceLock<Mutex<bool>> = OnceLock::new();
@@ -172,9 +167,6 @@ pub async fn frontend_ready(
             let _ = w.show();
             let _ = w.set_focus();
         }
-        // 前端 ready 时, 若文件索引**未在构建中**, 推一次当前统计让 ActionBar 显示
-        // "已索引 N 个文件"; 若正在构建则不 emit, 避免把 building 状态覆盖成 completed
-        // (索引任务自身会在完成时 emit completed).
         if !state.file_search.is_indexing() {
             let stats = state.search_engine.total_indexed();
             let _ = app.emit(
@@ -392,7 +384,6 @@ pub async fn set_pin_top(
         .map_err(|e| e.to_string())?;
     if let Some(w) = app.get_webview_window("search") {
         let _ = w.set_always_on_top(value);
-        // 置顶时立即显示并聚焦窗口，取消置顶时立即隐藏窗口
         if value {
             let _ = w.show();
             let _ = w.set_focus();
@@ -408,14 +399,12 @@ pub async fn set_window_height(app: tauri::AppHandle, height: u32) -> Result<(),
     let Some(w) = app.get_webview_window("search") else {
         return Ok(());
     };
-    // 高度上下界, 防止前端误算导致窗口过大/过小.
     let height = height.clamp(window::MIN_HEIGHT, window::MAX_HEIGHT);
-    // 只改高度，宽度固定为 window::DEFAULT_WIDTH, 永远不重新读取当前 width
     let _ = w.set_size(LogicalSize::new(window::DEFAULT_WIDTH, height as f64));
     Ok(())
 }
 
-/// 应用层提供的"开始拖拽窗口"命令——前端 header 空白区域会触发。
+/// 应用层提供的"开始拖拽窗口"命令。
 #[tauri::command]
 pub async fn start_dragging(
     state: tauri::State<'_, Arc<AppState>>,
@@ -433,7 +422,7 @@ pub async fn start_dragging(
     Ok(())
 }
 
-/// 设置拖拽状态（用于拖拽结束后重置状态）
+/// 设置拖拽状态
 #[tauri::command]
 pub async fn set_dragging(
     state: tauri::State<'_, Arc<AppState>>,
@@ -445,7 +434,7 @@ pub async fn set_dragging(
     Ok(())
 }
 
-/// 退出整个应用（被 menu 关闭 / Quit 等调用）。
+/// 退出整个应用。
 #[tauri::command]
 pub async fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
     app.exit(0);
@@ -453,14 +442,10 @@ pub async fn quit_app(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// 前端命令面板使用：列出全部已注册命令（不含别名）。
-///
-/// 返回 `Vec<CommandSpec>` 序列化后的精简结构（与 Rust 端 [`crate::core::command::CommandSpec`] 字段对齐）。
-/// 只返回主命令名（主键），别名在 dispatch 时自动解析。
 #[tauri::command]
 pub async fn list_command_specs() -> Result<serde_json::Value, String> {
     use crate::core::command::build_default_registry;
     let reg = build_default_registry();
-    // 只遍历主命令（cmds key set），跳过别名
     let names = reg.main_names();
     let mut specs: Vec<serde_json::Value> = Vec::with_capacity(names.len());
     for name in names {
@@ -479,8 +464,6 @@ pub async fn list_command_specs() -> Result<serde_json::Value, String> {
 }
 
 /// 前端命令面板使用：精确路由到后端命令。
-///
-/// 前端 `src/commands/store.ts::execute()` 唯一调用入口。
 #[tauri::command]
 pub async fn dispatch_command(
     state: State<'_, Arc<AppState>>,
@@ -496,24 +479,15 @@ pub async fn dispatch_command(
 }
 
 /// 获取可执行文件图标 (base64 编码 PNG).
-///
-/// 用于应用搜索结果展示:
-/// - 前端拿到 base64 字符串后可以直接 `<img src="data:image/png;base64,...">`.
-/// - 返回 `Ok(None)` 表示提取失败 (文件不存在 / 非 PE / 访问被拒 / 空白图标), 前端降级到 Lucide 通用图标.
-/// - 内部已经过 `parking_lot::Mutex<HashMap>` 缓存, 同路径重复调用 < 1ms.
-/// - 自动解析 .lnk 快捷方式到目标 .exe 路径.
-/// - 性能优化 (2026-07): cache 未命中时走 spawn_blocking, 不在 async runtime 上阻塞, 不卡 UI.
 #[tauri::command]
 pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
-    // 先快速查 cache, 命中直接返回
     let resolved_path =
         crate::platform::windows::shell::resolve_shortcut(&std::path::PathBuf::from(&path))
             .unwrap_or(std::path::PathBuf::from(&path));
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
-    // 快速路径: cache 命中直接返回
     {
         let cache = crate::platform::windows::icon::cache_snapshot();
         if let Some(cached) = cache.get(&resolved_path_str.to_lowercase()) {
@@ -521,7 +495,6 @@ pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
         }
     }
 
-    // 未命中: spawn_blocking 在后台线程提取, 不阻塞 UI
     let path_clone = resolved_path_str.clone();
     let bytes = tokio::task::spawn_blocking(move || {
         crate::platform::windows::icon::get_or_extract_cached(&path_clone).unwrap_or(None)
@@ -540,16 +513,7 @@ pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
     }
 }
 
-/// 批量获取图标 (base64 编码 PNG 数组). 一次 IPC 拉 N 个图标, 减少 RTT 开销.
-///
-/// 性能优化 (2026-07):
-/// - **多线程并发提取**: 用 tokio::task::spawn_blocking 分批并发,
-///   并发上限 = min(CPU 核数, 8), 避免把系统拖垮.
-/// - **spawn_blocking 隔离**: CPU 密集的 GDI 调用和 PNG 编码全部移到
-///   Tokio blocking thread pool, 不占用 async runtime 线程, **窗口拖动/动画不再卡顿**.
-/// - **缓存优先短路**: 先过一遍 cache, 已命中的直接返回 base64,
-///   未命中的才进入 blocking 池实际提取; 二次搜索几乎 0 开销.
-/// - **失败语义**: 单个 path 失败 → 对应位置返回 None, 整体不报错.
+/// 批量获取图标 (base64 编码 PNG 数组).
 #[tauri::command]
 pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String>>, String> {
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -559,7 +523,6 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
         return Ok(Vec::new());
     }
 
-    // 先解析所有 .lnk, 得到最终目标路径
     let resolved: Vec<String> = paths
         .iter()
         .map(|p| {
@@ -570,9 +533,8 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
         })
         .collect();
 
-    // 快速路径: 先查一遍 cache, 已命中的直接编码, 未命中的收集起来交给 blocking 池
     let mut out: Vec<Option<String>> = vec![None; total];
-    let mut pending: Vec<(usize, String)> = Vec::new(); // (index, resolved_path)
+    let mut pending: Vec<(usize, String)> = Vec::new();
     {
         let cache = crate::platform::windows::icon::cache_snapshot();
         for (i, p) in resolved.iter().enumerate() {
@@ -590,23 +552,20 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
         return Ok(out);
     }
 
-    // 并发度: min(CPU 核数, 8). 限制上限避免系统卡顿.
     let concurrency = std::cmp::min(
         std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4),
         8,
     );
-    let concurrency = concurrency.max(2); // 至少 2 个并发
+    let concurrency = concurrency.max(2);
 
-    // 把 pending 均分到 concurrency 个 chunk
     let chunk_size = (pending.len() + concurrency - 1) / concurrency;
     let mut chunks: Vec<Vec<(usize, String)>> = Vec::with_capacity(concurrency);
     for chunk in pending.chunks(chunk_size) {
         chunks.push(chunk.to_vec());
     }
 
-    // 每个 chunk 一个 spawn_blocking 任务, 并发执行
     let mut handles = Vec::with_capacity(chunks.len());
     for chunk in chunks {
         let handle = tokio::task::spawn_blocking(move || {
@@ -621,10 +580,8 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
         handles.push(handle);
     }
 
-    // 等待所有 chunk 完成
     let all_results = futures::future::join_all(handles).await;
 
-    // 把结果写回 out 数组
     for result in all_results {
         match result {
             Ok(chunk_results) => {
@@ -685,8 +642,6 @@ pub async fn show_file_properties(path: String) -> Result<(), String> {
 }
 
 /// 删除文件到回收站.
-///
-/// 注意: Windows 上会弹出确认对话框; 非 Windows 平台可能直接永久删除.
 #[tauri::command]
 pub async fn delete_file_to_recycle_bin(path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&path);

@@ -11,7 +11,7 @@ import { lobehubFuzzyMatch } from './lobehubIcons'
 import { isTauri } from '@/services/env'
 import { extractPath } from './known'
 import type { IconSource, IconState } from './types'
-import type { SearchResult } from '@/modules/search'
+import type { SearchResult } from '@/core/types/search'
 
 export class LobehubIconSource implements IconSource {
   readonly name = 'lobehub'

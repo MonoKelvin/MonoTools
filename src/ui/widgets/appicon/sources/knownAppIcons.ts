@@ -34,7 +34,7 @@ import {
     Newspaper, Bookmark, Map, MapPin, Activity, Boxes,
     FileType, FileQuestion, Hash, StickyNote, File, Files,
 } from '@lucide/vue'
-import type { IconState } from '@/common/composables/iconSources'
+import type { IconState } from './types'
 
 // ============================================================================
 // 关键词 → Lucide 组件 映射表

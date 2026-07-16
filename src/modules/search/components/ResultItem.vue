@@ -24,7 +24,7 @@ import {
   Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
   FileArchive, File, CornerDownLeft
 } from "@lucide/vue"
-import { useIconRenderer } from '@/common/composables/useIconRenderer'
+import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { resultTypeMeta } from '../utils/resultTypeMeta'
 import { ICON_CONFIG } from '@/core/config'
 

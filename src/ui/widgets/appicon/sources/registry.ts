@@ -39,7 +39,7 @@ export interface IconSourceHit {
  * (调用方应自己给一个默认 fallback).
  */
 export async function resolveIconByRegistry(
-    item: import('@/types/search').SearchResult,
+    item: import('@/core/types/search').SearchResult,
     sources: IconSource[] = iconSourceRegistry,
 ): Promise<IconSourceHit | null> {
     for (const src of sources) {

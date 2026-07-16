@@ -142,8 +142,8 @@ import type { SearchResult } from '@/modules/search'
 // **修复**: 用 `vi.hoisted` 把常量也提升, 保证 mock 工厂访问时已初始化.
 // **诊断**: 错误信息含 "Cannot access 'XXX' before initialization" 即中招.
 const { PNG_BASE64 } = vi.hoisted(() => ({
-  PNG_BASE64:
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
+    PNG_BASE64:
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==',
 }))
 
 // ───────────────────────────────────────────────────────────────
@@ -163,7 +163,7 @@ const { PNG_BASE64 } = vi.hoisted(() => ({
 // **进阶**: 如果想测"非 Tauri 环境"的行为, 应该用
 //   `vi.mocked(isTauri).mockReturnValue(false)` 或 vi.doUnmock.
 vi.mock('@/services/env', () => ({
-  isTauri: true,
+    isTauri: true,
 }))
 
 // ───────────────────────────────────────────────────────────────
@@ -184,10 +184,10 @@ vi.mock('@/services/env', () => ({
 // 路径, 反而测不到 PNG 路径的真实代码. 用合法 base64 + 不发 load 的环境
 // 才能同时验证: (1) IPC 路径代码, (2) 兜底 timer 行为.
 vi.mock('@/services/api', () => ({
-  appIconApi: {
-    get: vi.fn().mockResolvedValue(PNG_BASE64),
-    getBatch: vi.fn().mockResolvedValue([PNG_BASE64]),
-  },
+    appIconApi: {
+        get: vi.fn().mockResolvedValue(PNG_BASE64),
+        getBatch: vi.fn().mockResolvedValue([PNG_BASE64]),
+    },
 }))
 
 // ───────────────────────────────────────────────────────────────
@@ -199,183 +199,183 @@ vi.mock('@/services/api', () => ({
 //          网络慢/无网时整个 loadIcon 链路阻塞.
 // **修复**: mock 掉 lobehubFuzzyMatch, 让它 resolve null (miss).
 // **诊断**: `useAppIcon.ts:212-224` 看 lobehub 路径分支.
-vi.mock('@/utils/lobehubIcons', () => ({
-  lobehubFuzzyMatch: vi.fn().mockResolvedValue(null),
+vi.mock('@/ui/widgets/appicon/sources/lobehubIcons', () => ({
+    lobehubFuzzyMatch: vi.fn().mockResolvedValue(null),
 }))
 
 import { appIconApi } from '@/services/api'
 
 beforeEach(() => {
-  // 每个测试前重置 mock 实现, 避免污染
-  vi.mocked(appIconApi.get).mockReset().mockResolvedValue(PNG_BASE64)
-  vi.mocked(appIconApi.getBatch).mockReset().mockResolvedValue([PNG_BASE64])
+    // 每个测试前重置 mock 实现, 避免污染
+    vi.mocked(appIconApi.get).mockReset().mockResolvedValue(PNG_BASE64)
+    vi.mocked(appIconApi.getBatch).mockReset().mockResolvedValue([PNG_BASE64])
 })
 
 function mk(over: Partial<SearchResult> = {}): SearchResult {
-  return {
-    id: 'r-1',
-    // 用一个不在 knownAppIcons 关键词表中的名字, 避免 lookupKnownIcon 命中
-    // 而绕过后端 IPC 路径
-    title: 'RandomUnknown',
-    subtitle: '',
-    icon: null,
-    category: 'apps',
-    resultType: 'user-app',
-    // 路径也不能包含任何已知关键词 (chrome / code / wechat 等),
-    // 否则 lookupKnownIcon 会用 path 匹配命中, 同样绕过后端 IPC.
-    action: { type: 'launch', data: 'C:\\random\\app.exe' },
-    score: 0.9,
-    ...over,
-  }
+    return {
+        id: 'r-1',
+        // 用一个不在 knownAppIcons 关键词表中的名字, 避免 lookupKnownIcon 命中
+        // 而绕过后端 IPC 路径
+        title: 'RandomUnknown',
+        subtitle: '',
+        icon: null,
+        category: 'apps',
+        resultType: 'user-app',
+        // 路径也不能包含任何已知关键词 (chrome / code / wechat 等),
+        // 否则 lookupKnownIcon 会用 path 匹配命中, 同样绕过后端 IPC.
+        action: { type: 'launch', data: 'C:\\random\\app.exe' },
+        score: 0.9,
+        ...over,
+    }
 }
 
 describe('AppResultItem - 图标渲染', () => {
-  // 启用 fake timers 控制 350ms 兜底 timer
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('挂载后调用 loadIcon, 当 IPC 返回 base64 时 iconState 变为 png', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    // 用唯一 id, 避免 module-level cache 命中
-    const wrapper = mount(AppResultItem, {
-      props: { result: mk({ id: 't1-' + Math.random() }), index: 0, active: false },
+    // 启用 fake timers 控制 350ms 兜底 timer
+    beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true })
     })
-    // 等待 onMounted → loadIcon → IPC → iconState 更新
-    await flushPromises()
-    for (let i = 0; i < 5; i++) {
-      await nextTick()
-      await new Promise((r) => setTimeout(r, 30))
-    }
-
-    // IPC 被调用
-    expect(appIconApi.get).toHaveBeenCalled()
-
-    // 找到 img (或占位)
-    const img = wrapper.find('img')
-    if (img.exists()) {
-      const src = img.attributes('src') || ''
-      expect(src).toMatch(/^data:image\/png;base64,/)
-    } else {
-      const lucide = wrapper.find('svg')
-      expect(lucide.exists()).toBe(true)
-    }
-  })
-
-  it('img 元素正确接收 data URL 作为 src', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: { result: mk({ id: 't2-' + Math.random() }), index: 0, active: false },
+    afterEach(() => {
+        vi.useRealTimers()
     })
-    await flushPromises()
-    for (let i = 0; i < 5; i++) {
-      await nextTick()
-      await new Promise((r) => setTimeout(r, 30))
-    }
 
-    // 验证 img 元素存在且 src 是 data URL
-    const img = wrapper.find('img')
-    expect(img.exists()).toBe(true)
-    const src = img.attributes('src') || ''
-    expect(src).toMatch(/^data:image\/png;base64,/)
-    // 验证 base64 长度合理 (96 chars + 22 prefix = 118)
-    expect(src.length).toBeGreaterThan(100)
-  })
+    it('挂载后调用 loadIcon, 当 IPC 返回 base64 时 iconState 变为 png', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        // 用唯一 id, 避免 module-level cache 命中
+        const wrapper = mount(AppResultItem, {
+            props: { result: mk({ id: 't1-' + Math.random() }), index: 0, active: false },
+        })
+        // 等待 onMounted → loadIcon → IPC → iconState 更新
+        await flushPromises()
+        for (let i = 0; i < 5; i++) {
+            await nextTick()
+            await new Promise((r) => setTimeout(r, 30))
+        }
 
-  it('action.type === "open" 时, 也走 IPC 拿图标', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({
-          id: 't3-' + Math.random(),
-          action: { type: 'open', data: 'C:\\some\\file.exe' },
-        }),
-        index: 0,
-      },
+        // IPC 被调用
+        expect(appIconApi.get).toHaveBeenCalled()
+
+        // 找到 img (或占位)
+        const img = wrapper.find('img')
+        if (img.exists()) {
+            const src = img.attributes('src') || ''
+            expect(src).toMatch(/^data:image\/png;base64,/)
+        } else {
+            const lucide = wrapper.find('svg')
+            expect(lucide.exists()).toBe(true)
+        }
     })
-    await flushPromises()
-    for (let i = 0; i < 5; i++) {
-      await nextTick()
-      await new Promise((r) => setTimeout(r, 30))
-    }
 
-    // 即使 action.type 是 open, 也应该走 IPC 拿图标
-    expect(appIconApi.get).toHaveBeenCalled()
-    const img = wrapper.find('img')
-    expect(img.exists()).toBe(true)
-    const src = img.attributes('src') || ''
-    expect(src).toMatch(/^data:image\/png;base64,/)
-  })
+    it('img 元素正确接收 data URL 作为 src', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: { result: mk({ id: 't2-' + Math.random() }), index: 0, active: false },
+        })
+        await flushPromises()
+        for (let i = 0; i < 5; i++) {
+            await nextTick()
+            await new Promise((r) => setTimeout(r, 30))
+        }
 
-  it('happy-dom 中 @load 不触发 → 350ms 兜底 timer 强制 ready', async () => {
-    // 这是关键测试: 验证即使 happy-dom 完全不实现 img 加载管线,
-    // 我们新加的 350ms 兜底 timer 也会把 imgReady 置为 true,
-    // 让用户至少能看到一个 broken-image 状态(而不是永久 opacity: 0).
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: { result: mk(), index: 0, active: false },
+        // 验证 img 元素存在且 src 是 data URL
+        const img = wrapper.find('img')
+        expect(img.exists()).toBe(true)
+        const src = img.attributes('src') || ''
+        expect(src).toMatch(/^data:image\/png;base64,/)
+        // 验证 base64 长度合理 (96 chars + 22 prefix = 118)
+        expect(src.length).toBeGreaterThan(100)
     })
-    await flushPromises()
-    // 走完 refreshIcon + nextTick, 拿到 src 赋值
-    for (let i = 0; i < 5; i++) {
-      await nextTick()
-      await new Promise((r) => setTimeout(r, 30))
-    }
 
-    // 拿到 img 元素, 验证 initial state
-    const img = wrapper.find('img')
-    expect(img.exists()).toBe(true)
+    it('action.type === "open" 时, 也走 IPC 拿图标', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({
+                    id: 't3-' + Math.random(),
+                    action: { type: 'open', data: 'C:\\some\\file.exe' },
+                }),
+                index: 0,
+            },
+        })
+        await flushPromises()
+        for (let i = 0; i < 5; i++) {
+            await nextTick()
+            await new Promise((r) => setTimeout(r, 30))
+        }
 
-    // 触发兜底 timer
-    vi.advanceTimersByTime(500)
-    await nextTick()
-    await flushPromises()
-
-    // 此时 img 应该被加上 --ready 类 (即使 happy-dom 不发 @load)
-    const classes = img.classes()
-    expect(classes).toContain('app-result-item__img--ready')
-  })
-
-  it('不同 result.id 切换时, refreshIcon 重新触发', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: { result: mk({ id: 'a' }), index: 0, active: false },
+        // 即使 action.type 是 open, 也应该走 IPC 拿图标
+        expect(appIconApi.get).toHaveBeenCalled()
+        const img = wrapper.find('img')
+        expect(img.exists()).toBe(true)
+        const src = img.attributes('src') || ''
+        expect(src).toMatch(/^data:image\/png;base64,/)
     })
-    await flushPromises()
-    await new Promise((r) => setTimeout(r, 30))
-    expect(appIconApi.get).toHaveBeenCalledTimes(1)
 
-    // 切换 id
-    await wrapper.setProps({ result: mk({ id: 'b', action: { type: 'launch', data: 'C:\\other.exe' } }) })
-    await flushPromises()
-    await new Promise((r) => setTimeout(r, 30))
+    it('happy-dom 中 @load 不触发 → 350ms 兜底 timer 强制 ready', async () => {
+        // 这是关键测试: 验证即使 happy-dom 完全不实现 img 加载管线,
+        // 我们新加的 350ms 兜底 timer 也会把 imgReady 置为 true,
+        // 让用户至少能看到一个 broken-image 状态(而不是永久 opacity: 0).
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: { result: mk(), index: 0, active: false },
+        })
+        await flushPromises()
+        // 走完 refreshIcon + nextTick, 拿到 src 赋值
+        for (let i = 0; i < 5; i++) {
+            await nextTick()
+            await new Promise((r) => setTimeout(r, 30))
+        }
 
-    // IPC 被再次调用
-    expect(appIconApi.get).toHaveBeenCalledTimes(2)
-  })
+        // 拿到 img 元素, 验证 initial state
+        const img = wrapper.find('img')
+        expect(img.exists()).toBe(true)
 
-  it('相同 result.id 重复时, 不重复 IPC (cache 命中 + skip same IconState)', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: { result: mk({ id: 'same' }), index: 0, active: false },
+        // 触发兜底 timer
+        vi.advanceTimersByTime(500)
+        await nextTick()
+        await flushPromises()
+
+        // 此时 img 应该被加上 --ready 类 (即使 happy-dom 不发 @load)
+        const classes = img.classes()
+        expect(classes).toContain('app-result-item__img--ready')
     })
-    await flushPromises()
-    await new Promise((r) => setTimeout(r, 30))
-    const calls1 = vi.mocked(appIconApi.get).mock.calls.length
 
-    // 重复挂载同一个 id
-    await wrapper.setProps({ result: mk({ id: 'same' }), index: 0, active: false })
-    await flushPromises()
-    await new Promise((r) => setTimeout(r, 30))
+    it('不同 result.id 切换时, refreshIcon 重新触发', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: { result: mk({ id: 'a' }), index: 0, active: false },
+        })
+        await flushPromises()
+        await new Promise((r) => setTimeout(r, 30))
+        expect(appIconApi.get).toHaveBeenCalledTimes(1)
 
-    const calls2 = vi.mocked(appIconApi.get).mock.calls.length
-    // 第二次会再调一次 loadIcon (但 cache 命中) —— 由于 watch 触发, 仍会进 refreshIcon
-    // 注意: 这里不强求 calls2 === calls1, 只验证不会无限增长
-    expect(calls2).toBeLessThanOrEqual(calls1 + 1)
-  })
+        // 切换 id
+        await wrapper.setProps({ result: mk({ id: 'b', action: { type: 'launch', data: 'C:\\other.exe' } }) })
+        await flushPromises()
+        await new Promise((r) => setTimeout(r, 30))
+
+        // IPC 被再次调用
+        expect(appIconApi.get).toHaveBeenCalledTimes(2)
+    })
+
+    it('相同 result.id 重复时, 不重复 IPC (cache 命中 + skip same IconState)', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: { result: mk({ id: 'same' }), index: 0, active: false },
+        })
+        await flushPromises()
+        await new Promise((r) => setTimeout(r, 30))
+        const calls1 = vi.mocked(appIconApi.get).mock.calls.length
+
+        // 重复挂载同一个 id
+        await wrapper.setProps({ result: mk({ id: 'same' }), index: 0, active: false })
+        await flushPromises()
+        await new Promise((r) => setTimeout(r, 30))
+
+        const calls2 = vi.mocked(appIconApi.get).mock.calls.length
+        // 第二次会再调一次 loadIcon (但 cache 命中) —— 由于 watch 触发, 仍会进 refreshIcon
+        // 注意: 这里不强求 calls2 === calls1, 只验证不会无限增长
+        expect(calls2).toBeLessThanOrEqual(calls1 + 1)
+    })
 })
 
 /**
@@ -400,257 +400,257 @@ describe('AppResultItem - 图标渲染', () => {
  *   - action.type 不为 launch/open 时, 走 subtitle 兜底
  */
 describe('AppResultItem - 自定义 hover tooltip', () => {
-  beforeEach(() => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-  })
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  /**
-   * 关键 mock: tooltip 内部用 setTimeout 延迟显示, 必须在 mouseenter 之前
-   * 装配好. fake timers + shouldAdvanceTime 让 setTimeout 自动推进,
-   * 避免"忘了 vi.advanceTimersByTime"导致的测试卡死.
-   */
-  it('hover 后 360ms 显示绝对路径 tooltip (action.data 优先)', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({
-          id: 'tt1-' + Math.random(),
-          action: { type: 'launch', data: 'C:\\Windows\\System32\\notepad.exe' },
-        }),
-        index: 0,
-        active: false,
-      },
+    beforeEach(() => {
+        vi.useFakeTimers({ shouldAdvanceTime: true })
     })
-    await flushPromises()
-    await nextTick()
-
-    // hover 之前: tooltip 不应存在
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-
-    // 触发 mouseenter, 启动 360ms 延迟 timer
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    // 立即检查: tooltip 仍不应出现 (延迟未到)
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-
-    // 推进 timer 到 360ms 后, tooltip 应出现
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    await flushPromises()
-
-    const tooltip = wrapper.find('.app-tooltip')
-    expect(tooltip.exists()).toBe(true)
-    expect(tooltip.text()).toBe('C:\\Windows\\System32\\notepad.exe')
-  })
-
-  it('hover 不够 360ms 就 mouseleave → tooltip 不显示', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({ id: 'tt2-' + Math.random() }),
-        index: 0,
-        active: false,
-      },
+    afterEach(() => {
+        vi.useRealTimers()
     })
-    await flushPromises()
-    await nextTick()
 
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    // 推进 200ms, 不到 360ms
-    vi.advanceTimersByTime(200)
-    await nextTick()
+    /**
+     * 关键 mock: tooltip 内部用 setTimeout 延迟显示, 必须在 mouseenter 之前
+     * 装配好. fake timers + shouldAdvanceTime 让 setTimeout 自动推进,
+     * 避免"忘了 vi.advanceTimersByTime"导致的测试卡死.
+     */
+    it('hover 后 360ms 显示绝对路径 tooltip (action.data 优先)', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({
+                    id: 'tt1-' + Math.random(),
+                    action: { type: 'launch', data: 'C:\\Windows\\System32\\notepad.exe' },
+                }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    // 此时仍不应显示
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+        // hover 之前: tooltip 不应存在
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
 
-    // 立即 mouseleave
-    await wrapper.find('.app-result-item').trigger('mouseleave')
-    // 即使推进到 400ms, tooltip 也不应出现 (timer 已被清)
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    await flushPromises()
+        // 触发 mouseenter, 启动 360ms 延迟 timer
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        // 立即检查: tooltip 仍不应出现 (延迟未到)
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
 
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-  })
+        // 推进 timer 到 360ms 后, tooltip 应出现
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        await flushPromises()
 
-  it('active=true 时 hover 不显示 tooltip (键盘导航时不打扰)', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({ id: 'tt3-' + Math.random() }),
-        index: 0,
-        active: true, // 选中态
-      },
+        const tooltip = wrapper.find('.app-tooltip')
+        expect(tooltip.exists()).toBe(true)
+        expect(tooltip.text()).toBe('C:\\Windows\\System32\\notepad.exe')
     })
-    await flushPromises()
-    await nextTick()
 
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    // 推进到远超 360ms
-    vi.advanceTimersByTime(800)
-    await nextTick()
-    await flushPromises()
+    it('hover 不够 360ms 就 mouseleave → tooltip 不显示', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({ id: 'tt2-' + Math.random() }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    // active 态下 tooltip 不应出现
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-  })
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        // 推进 200ms, 不到 360ms
+        vi.advanceTimersByTime(200)
+        await nextTick()
 
-  it('mouseleave 后立即关闭 tooltip', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({ id: 'tt4-' + Math.random() }),
-        index: 0,
-        active: false,
-      },
+        // 此时仍不应显示
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+
+        // 立即 mouseleave
+        await wrapper.find('.app-result-item').trigger('mouseleave')
+        // 即使推进到 400ms, tooltip 也不应出现 (timer 已被清)
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        await flushPromises()
+
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
     })
-    await flushPromises()
-    await nextTick()
 
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    expect(wrapper.find('.app-tooltip').exists()).toBe(true)
+    it('active=true 时 hover 不显示 tooltip (键盘导航时不打扰)', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({ id: 'tt3-' + Math.random() }),
+                index: 0,
+                active: true, // 选中态
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    // mouseleave → 立即关闭
-    await wrapper.find('.app-result-item').trigger('mouseleave')
-    await nextTick()
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-  })
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        // 推进到远超 360ms
+        vi.advanceTimersByTime(800)
+        await nextTick()
+        await flushPromises()
 
-  it('路径为空 (无 action.data 无 subtitle) → 不显示 tooltip', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({
-          id: 'tt5-' + Math.random(),
-          subtitle: '',
-          // action 是 placeholder 类型, 没有 data 字段
-          action: { type: 'launch', data: '' },
-        }),
-        index: 0,
-        active: false,
-      },
+        // active 态下 tooltip 不应出现
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
     })
-    await flushPromises()
-    await nextTick()
 
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    await flushPromises()
+    it('mouseleave 后立即关闭 tooltip', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({ id: 'tt4-' + Math.random() }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-  })
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        expect(wrapper.find('.app-tooltip').exists()).toBe(true)
 
-  it('action.type === "open" 时, 显示 action.data 路径', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({
-          id: 'tt6-' + Math.random(),
-          action: { type: 'open', data: 'C:\\Users\\me\\app.exe' },
-        }),
-        index: 0,
-        active: false,
-      },
+        // mouseleave → 立即关闭
+        await wrapper.find('.app-result-item').trigger('mouseleave')
+        await nextTick()
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
     })
-    await flushPromises()
-    await nextTick()
 
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    await flushPromises()
+    it('路径为空 (无 action.data 无 subtitle) → 不显示 tooltip', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({
+                    id: 'tt5-' + Math.random(),
+                    subtitle: '',
+                    // action 是 placeholder 类型, 没有 data 字段
+                    action: { type: 'launch', data: '' },
+                }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    const tooltip = wrapper.find('.app-tooltip')
-    expect(tooltip.exists()).toBe(true)
-    expect(tooltip.text()).toBe('C:\\Users\\me\\app.exe')
-  })
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        await flushPromises()
 
-  it('action 不是 launch/open 时, 走 subtitle 兜底', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({
-          id: 'tt7-' + Math.random(),
-          subtitle: 'D:\\fallback\\path.exe',
-          // action 是 unknown / custom, data 为 undefined
-          action: { type: 'custom' as any, data: undefined } as any,
-        }),
-        index: 0,
-        active: false,
-      },
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
     })
-    await flushPromises()
-    await nextTick()
 
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    await flushPromises()
+    it('action.type === "open" 时, 显示 action.data 路径', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({
+                    id: 'tt6-' + Math.random(),
+                    action: { type: 'open', data: 'C:\\Users\\me\\app.exe' },
+                }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    const tooltip = wrapper.find('.app-tooltip')
-    expect(tooltip.exists()).toBe(true)
-    expect(tooltip.text()).toBe('D:\\fallback\\path.exe')
-  })
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        await flushPromises()
 
-  it('result 变化时强制重置 tooltip (避免上一个 item 的 tooltip 残留)', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({ id: 'a', action: { type: 'launch', data: 'C:\\a.exe' } }),
-        index: 0,
-        active: false,
-      },
+        const tooltip = wrapper.find('.app-tooltip')
+        expect(tooltip.exists()).toBe(true)
+        expect(tooltip.text()).toBe('C:\\Users\\me\\app.exe')
     })
-    await flushPromises()
-    await nextTick()
 
-    // hover 显示 a 的 tooltip
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    expect(wrapper.find('.app-tooltip').text()).toBe('C:\\a.exe')
+    it('action 不是 launch/open 时, 走 subtitle 兜底', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({
+                    id: 'tt7-' + Math.random(),
+                    subtitle: 'D:\\fallback\\path.exe',
+                    // action 是 unknown / custom, data 为 undefined
+                    action: { type: 'custom' as any, data: undefined } as any,
+                }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    // 切换 result → tooltip 强制重置 (即使 timer 还在)
-    await wrapper.setProps({
-      result: mk({ id: 'b', action: { type: 'launch', data: 'C:\\b.exe' } }),
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        await flushPromises()
+
+        const tooltip = wrapper.find('.app-tooltip')
+        expect(tooltip.exists()).toBe(true)
+        expect(tooltip.text()).toBe('D:\\fallback\\path.exe')
     })
-    await nextTick()
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
 
-    // 重新 hover → 显示新路径
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    await flushPromises()
-    expect(wrapper.find('.app-tooltip').text()).toBe('C:\\b.exe')
-  })
+    it('result 变化时强制重置 tooltip (避免上一个 item 的 tooltip 残留)', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({ id: 'a', action: { type: 'launch', data: 'C:\\a.exe' } }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-  it('active 从 false 变 true 时, 立即关闭 tooltip (键盘上下键导航)', async () => {
-    const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
-    const wrapper = mount(AppResultItem, {
-      props: {
-        result: mk({ id: 'tt9-' + Math.random() }),
-        index: 0,
-        active: false,
-      },
+        // hover 显示 a 的 tooltip
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        expect(wrapper.find('.app-tooltip').text()).toBe('C:\\a.exe')
+
+        // 切换 result → tooltip 强制重置 (即使 timer 还在)
+        await wrapper.setProps({
+            result: mk({ id: 'b', action: { type: 'launch', data: 'C:\\b.exe' } }),
+        })
+        await nextTick()
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+
+        // 重新 hover → 显示新路径
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        await flushPromises()
+        expect(wrapper.find('.app-tooltip').text()).toBe('C:\\b.exe')
     })
-    await flushPromises()
-    await nextTick()
 
-    // hover 显示 tooltip
-    await wrapper.find('.app-result-item').trigger('mouseenter')
-    vi.advanceTimersByTime(400)
-    await nextTick()
-    expect(wrapper.find('.app-tooltip').exists()).toBe(true)
+    it('active 从 false 变 true 时, 立即关闭 tooltip (键盘上下键导航)', async () => {
+        const AppResultItem = (await import('@/modules/search/components/AppResultItem.vue')).default
+        const wrapper = mount(AppResultItem, {
+            props: {
+                result: mk({ id: 'tt9-' + Math.random() }),
+                index: 0,
+                active: false,
+            },
+        })
+        await flushPromises()
+        await nextTick()
 
-    // 模拟键盘上下键: 当前项被选中 (active=true) → 立即关闭
-    await wrapper.setProps({ active: true })
-    await nextTick()
-    expect(wrapper.find('.app-tooltip').exists()).toBe(false)
-  })
+        // hover 显示 tooltip
+        await wrapper.find('.app-result-item').trigger('mouseenter')
+        vi.advanceTimersByTime(400)
+        await nextTick()
+        expect(wrapper.find('.app-tooltip').exists()).toBe(true)
+
+        // 模拟键盘上下键: 当前项被选中 (active=true) → 立即关闭
+        await wrapper.setProps({ active: true })
+        await nextTick()
+        expect(wrapper.find('.app-tooltip').exists()).toBe(false)
+    })
 })

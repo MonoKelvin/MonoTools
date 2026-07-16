@@ -9,7 +9,7 @@
 
 import { lookupKnownIcon } from './knownAppIcons'
 import type { IconSource, IconState } from './types'
-import type { SearchResult } from '@/modules/search'
+import type { SearchResult } from '@/core/types/search'
 
 export class KnownIconSource implements IconSource {
     readonly name = 'known'

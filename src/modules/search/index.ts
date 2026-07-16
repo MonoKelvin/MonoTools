@@ -3,6 +3,7 @@ export * from './types'
 export { useSearchStatusBar } from './composables/useSearchStatusBar'
 export { useStatusMessages } from './composables/useStatusMessages'
 
+export { default as SearchPage } from './pages/SearchPage.vue'
 export { default as SearchInput } from './components/SearchInput.vue'
 export { default as ResultItem } from './components/ResultItem.vue'
 export { default as AppResultItem } from './components/AppResultItem.vue'

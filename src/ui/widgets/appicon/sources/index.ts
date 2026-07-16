@@ -3,7 +3,7 @@
  *
  * 外部仅需要:
  * ```ts
- * import { resolveIconByRegistry, type IconState } from '@/common/composables/iconSources'
+ * import { resolveIconByRegistry, type IconState } from '@/ui/widgets/appicon/sources'
  * ```
  */
 
