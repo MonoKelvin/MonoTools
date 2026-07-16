@@ -5,7 +5,8 @@ import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
 import MtComboBox from '@/ui/components/MtComboBox.vue'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
-import { LayoutList, Grid3X3, WrapText, LayoutGrid } from '@lucide/vue'
+import type { SortMode } from '@/core/config/sorting'
+import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder } from '@lucide/vue'
 
 export type LayoutMode = 'list' | 'grid-fixed' | 'grid-auto' | 'icon'
 
@@ -23,6 +24,9 @@ const props = defineProps<{
   hoveredGlobalIndex?: number
   startIndex?: number
   gridCols?: number
+  sortMode?: SortMode
+  sortOptions?: MtComboBoxOption[]
+  collapsedItems?: SearchResult[]
 }>()
 
 const emit = defineEmits<{
@@ -32,6 +36,7 @@ const emit = defineEmits<{
   (e: 'hover', globalIndex: number): void
   (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number): void
   (e: 'layout-change', mode: LayoutMode): void
+  (e: 'sort-change', mode: SortMode): void
 }>()
 
 const DEFAULT_LAYOUT_BY_KIND: Record<string, LayoutMode> = {
@@ -42,7 +47,30 @@ const DEFAULT_LAYOUT_BY_KIND: Record<string, LayoutMode> = {
   files: 'list',
 }
 
+/** 各分组类型的默认排序模式 */
+const DEFAULT_SORT_BY_KIND: Record<string, string> = {
+  pinned: 'recent',
+  recent: 'recent',
+  apps: 'smart',
+  system: 'name',
+  commands: 'name',
+  files: 'name',
+}
+
 const layoutMode = ref<LayoutMode>(props.defaultLayout || DEFAULT_LAYOUT_BY_KIND[props.kind] || 'list')
+
+/** 排序图标映射 */
+const sortIconMap: Record<string, any> = {
+  smart: Sparkles,
+  name: Type,
+  recent: Clock,
+  path: Folder,
+}
+
+const sortOptions = computed<MtComboBoxOption[]>(() => props.sortOptions || [])
+
+/** 排序 combobox 的显示值（优先使用传入的 sortMode，否则使用默认值） */
+const displaySortMode = computed(() => props.sortMode || DEFAULT_SORT_BY_KIND[props.kind] || 'name')
 
 const layoutOptions: MtComboBoxOption[] = [
   { key: 'list', label: '列表模式', icon: LayoutList },
@@ -89,11 +117,20 @@ const iconGridStyle = computed(() => {
  * 满足产品诉求 "下面如果没有内容, 则不支持折叠展开". 视觉上 header 还在,
  * 但点击不会触发任何动作, 鼠标光标也保持默认 (不显示 "可点击" 暗示).
  */
-const isInteractive = computed(() => props.items.length > 0)
+const isInteractive = computed(() => (props.collapsedItems ?? props.items).length > 0)
+
+/** 防止快速重复点击导致状态翻转 */
+let toggleDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function toggleCollapse() {
   // 空组不响应 (兜底, store 也会过滤). 防止 hover 出 pointer 误导用户.
   if (!isInteractive.value) return
+  // 防抖: 50ms 内不重复处理
+  if (toggleDebounceTimer) return
+  toggleDebounceTimer = setTimeout(() => {
+    toggleDebounceTimer = null
+  }, 50)
+  console.log('[GroupSection] EMIT toggle-collapse:', props.id, 'current collapsed:', props.collapsed)
   emit('toggle-collapse', props.id)
 }
 
@@ -202,6 +239,11 @@ function onLayoutChange(key: string) {
   emit('layout-change', mode)
 }
 
+function onSortChange(key: string) {
+  const mode = key as SortMode
+  emit('sort-change', mode)
+}
+
 function isItemActive(localIndex: number): boolean {
   return selectedLocalIndex.value === localIndex
 }
@@ -220,11 +262,21 @@ function isItemHovered(localIndex: number): boolean {
         <span v-if="count != null && count > 0" class="group-count">{{ count.toLocaleString() }}</span>
       </div>
       <div class="group-header-right" @click.stop>
+        <div v-if="items.length > 0" class="group-sort-toggle">
+          <MtComboBox
+            :options="sortOptions"
+            :model-value="displaySortMode"
+            dropdown-anchor="#search-container"
+            :compact="true"
+            @update:model-value="onSortChange"
+          />
+        </div>
         <div v-if="items.length > 0" class="group-layout-toggle">
           <MtComboBox
             :options="layoutOptions"
             :model-value="layoutMode"
             dropdown-anchor="#search-container"
+            :compact="true"
             @update:model-value="onLayoutChange"
           />
         </div>
@@ -417,6 +469,11 @@ function isItemHovered(localIndex: number): boolean {
   gap: 6px;
   flex-shrink: 0;
   position: relative;
+}
+
+.group-sort-toggle {
+  display: flex;
+  align-items: center;
 }
 
 .group-layout-toggle {

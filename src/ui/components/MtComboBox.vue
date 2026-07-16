@@ -328,7 +328,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 4px 10px;
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: var(--surface-elevated, rgba(255, 255, 255, 0.04));
   border: 1px solid transparent;
   color: var(--text-tertiary);
   font-size: 12px;
@@ -393,7 +393,6 @@ onBeforeUnmount(() => {
 .mt-combobox--compact .mt-combobox__trigger {
   padding-left: 8px;
   padding-right: 8px;
-  background: var(--surface-elevated, rgba(255, 255, 255, 0.04));
 }
 
 .mt-combobox--compact .mt-combobox__trigger-label {

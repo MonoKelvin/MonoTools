@@ -3,6 +3,8 @@ import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed }
 import { Pin, Clock, Settings, Terminal, Sparkles, Folder } from '@lucide/vue'
 import { useSearchStore, GROUP_ID } from '@/modules/search'
 import type { DisplayGroup } from '@/modules/search'
+import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
+import type { SortMode } from '@/core/config/sorting'
 import { useSettingsStore } from '@/core/stores/settings'
 import { hotkeyApi, windowApi, shellApi } from '@/services'
 import { isTauri } from '@/services/env'
@@ -10,6 +12,7 @@ import { useRouter } from 'vue-router'
 import { listenEvent } from '@/services/tauri'
 import type { SearchResult } from '@/modules/search'
 import { WINDOW_DIMENSIONS, UI_DELAYS, SEARCH_LIMITS_VISIBLE } from '@/core/config'
+import { LayoutList, Grid3X3, WrapText, LayoutGrid, Type } from '@lucide/vue'
 
 import SearchInput from '@/modules/search/components/SearchInput.vue'
 import GroupSection from '@/modules/search/components/GroupSection.vue'
@@ -255,7 +258,7 @@ const displayGroups = computed(() => search.displayGroups)
  * 固定项目为空时, 不显示"固定项目"分组.
  */
 const visibleGroups = computed(() =>
-  displayGroups.value.filter((g) => g.items.length > 0),
+  search.displayGroups.filter((g) => g.items.length > 0),
 )
 
 /** 分组图标映射 */
@@ -268,27 +271,72 @@ const GROUP_ICONS: Record<DisplayGroup['kind'], any> = {
   files: Folder,
 }
 
+/** 支持智能排序的分组类型 */
+const SMART_SORT_KINDS = ['commands', 'apps'] as const
+
+/** 各分组类型的排序选项 */
+const sortOptionsByKind: Record<string, MtComboBoxOption[]> = {
+  pinned: [
+    { key: 'recent', label: '最近访问', icon: Clock },
+    { key: 'name', label: '名称', icon: Type },
+    { key: 'path', label: '路径', icon: Folder },
+  ],
+  recent: [
+    { key: 'recent', label: '最近访问', icon: Clock },
+    { key: 'name', label: '名称', icon: Type },
+  ],
+  apps: [
+    { key: 'smart', label: '智能排序', icon: Sparkles },
+    { key: 'name', label: '名称', icon: Type },
+    { key: 'recent', label: '最近访问', icon: Clock },
+    { key: 'path', label: '路径', icon: Folder },
+  ],
+  system: [
+    { key: 'name', label: '名称', icon: Type },
+  ],
+  commands: [
+    { key: 'smart', label: '智能排序', icon: Sparkles },
+    { key: 'name', label: '名称', icon: Type },
+  ],
+  files: [
+    { key: 'name', label: '名称', icon: Type },
+    { key: 'path', label: '路径', icon: Folder },
+  ],
+}
+
+/** 各分组类型的默认排序模式 */
+const DEFAULT_SORT_BY_KIND: Record<string, SortMode> = {
+  pinned: 'recent',
+  recent: 'recent',
+  apps: 'smart',
+  system: 'name',
+  commands: 'name',
+  files: 'name',
+}
+
 /** 滚动容器 ref */
 const resultsScrollRef = ref<HTMLElement | null>(null)
 
 /**
  * 计算每个分组的 startIndex (在 displayList 中的起始位置).
  * 用于 GroupSection 的 selectedGlobalIndex / hoveredGlobalIndex 计算.
+ * 注意: 只遍历 visibleGroups，保证与渲染的分组一致.
  */
 const groupStartIndices = computed(() => {
   const map = new Map<string, number>()
   let idx = 0
-  for (const g of displayGroups.value) {
+  for (const g of visibleGroups.value) {
     map.set(g.id, idx)
-    if (!g.collapsed) {
-      idx += g.visibleItems.length
-    }
+    idx += g.visibleItems.length
   }
   return map
 })
 
 function onToggleGroup(groupId: string) {
+  const before = search.displayGroups.find(g => g.id === groupId)?.collapsed
   search.toggleGroupCollapse(groupId)
+  const after = search.displayGroups.find(g => g.id === groupId)?.collapsed
+  console.log('[SearchPage] onToggleGroup:', groupId, 'before:', before, 'after:', after)
 }
 
 /**
@@ -390,7 +438,8 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
             :collapsed="group.collapsed"
             :kind="group.kind"
             :count="group.items.length"
-            :sort-mode="search.groupSortModes[group.id]"
+            :sort-mode="search.groupSortModes[group.id] || DEFAULT_SORT_BY_KIND[group.kind]"
+            :sort-options="sortOptionsByKind[group.kind]"
             :selected-global-index="search.selectedIndex"
             :hovered-global-index="search.selectedIndex"
             :start-index="groupStartIndices.get(group.id) ?? 0"
