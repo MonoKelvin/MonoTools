@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed } from 'vue'
-import { Search, Pin, Clock, Settings, Terminal, Sparkles, Folder } from '@lucide/vue'
+import { Pin, Clock, Settings, Terminal, Sparkles, Folder } from '@lucide/vue'
 import { useSearchStore, GROUP_ID } from '@/modules/search'
 import type { DisplayGroup } from '@/modules/search'
 import { useSettingsStore } from '@/core/stores/settings'
@@ -16,6 +16,7 @@ import GroupSection from '@/modules/search/components/GroupSection.vue'
 import ActionBar from '@/modules/search/components/ActionBar.vue'
 import ContextMenu from '@/modules/search/components/ContextMenu.vue'
 import HotkeyModal from '@/ui/widgets/HotkeyModal.vue'
+import OverlayPage from '@/ui/pages/OverlayPage.vue'
 import { useCommandsStore, dispatchKeyEvent } from '@/core/command'
 import { useAppIcon } from '@/ui/widgets/appicon/useAppIcon'
 import { useSearchStatusBar } from '@/modules/search/composables/useSearchStatusBar'
@@ -354,7 +355,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
 </script>
 
 <template>
-  <div class="search-page">
+  <OverlayPage>
     <div class="search-container" id="search-container" ref="containerRef">
       <SearchInput
         ref="inputRef"
@@ -391,18 +392,12 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
           />
         </template>
         <template v-else>
-          <div class="empty-state">
-            <div class="empty-state__icon">
-              <Search :size="32" :stroke-width="1.5" />
-            </div>
-            <span v-if="!search.query" class="empty-state__text">
-              输入关键字搜索应用、文件、命令
-            </span>
-            <template v-else>
-              <span class="empty-state__text">没有找到结果</span>
-              <span class="empty-state__hint">尝试使用不同的关键词</span>
-            </template>
-          </div>
+          <MtEmptyState
+            :icon="search.query ? 'no-results' : 'search'"
+            :title="search.query ? '没有找到结果' : '输入关键字搜索应用、文件、命令'"
+            :hint="search.query ? '尝试使用不同的关键词' : '支持拼音、首字母、模糊匹配'"
+            padding="xl"
+          />
         </template>
       </div>
 
@@ -422,56 +417,13 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
     />
 
     <HotkeyModal :visible="showHotkeyModal" @close="showHotkeyModal = false" />
-  </div>
+  </OverlayPage>
 </template>
 
 <style scoped>
-.search-page {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  background: transparent;
-  overflow: hidden;
-  position: relative;
-}
+/* 浮窗容器样式由 ui/pages/OverlayPage.vue 提供, 此处只写 SearchPage 专属的 */
 
-/* 容器: Win11 使用透明背景让 Mica 效果显示，Win10 使用 CSS backdrop-filter */
-.search-container {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background: transparent;
-  border-radius: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
-  overflow: hidden;
-  /* 220ms 对齐 ICON_CONFIG.fadeInMs (见 @/config/icon.ts). 改 SCSS 同步改 TS. */
-  animation: search-container-fade-in 220ms var(--ease-out);
-}
-
-/* Win10 使用纯 CSS backdrop-filter 实现毛玻璃效果 */
-.os-win10 .search-container {
-  background: rgba(18, 18, 21, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-}
-
-@keyframes search-container-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(-8px) scale(0.985);
-    filter: blur(6px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    filter: blur(0);
-  }
-}
-
+/* 搜索结果区域 - 高度由外层动态控制 */
 .results-scroll-container {
   flex: 1;
   /* overflow-x: visible 让分组头行的 ::before 分割线能穿过 padding 贴到
@@ -481,44 +433,6 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
   overflow-x: visible;
   overflow-y: auto;
   padding: var(--sp-2) var(--sp-3);
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-3);
-  padding: var(--sp-10) var(--sp-5);
-}
-
-.empty-state__icon {
-  width: 48px;
-  height: 48px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-quaternary);
-  opacity: 0.35;
-  transition: all var(--dur-normal) var(--ease-out);
-}
-
-.empty-state:hover .empty-state__icon {
-  opacity: 0.55;
-  transform: scale(1.05);
-}
-
-.empty-state__text {
-  color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 500;
-  letter-spacing: -0.005em;
-}
-
-.empty-state__hint {
-  color: var(--text-quaternary);
-  font-size: 12px;
-  font-weight: 400;
 }
 
 .slide-down-enter-active,

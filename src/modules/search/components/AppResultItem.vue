@@ -259,9 +259,8 @@ const badgeInfo = computed(() => {
   position: relative;
   overflow: visible;
   border: 1px solid transparent;
-  border-radius: 9px;
-  transition:
-    color var(--dur-fast) var(--ease-out);
+  border-radius: var(--radius-md);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .app-result-item__icon {
@@ -271,7 +270,7 @@ const badgeInfo = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-tertiary);
   overflow: visible;
@@ -298,18 +297,14 @@ const badgeInfo = computed(() => {
   object-fit: contain;
   padding: 2px;
   opacity: 0;
-  transition: opacity 220ms var(--ease-out);
+  transition: opacity var(--dur-slow) var(--ease-out);
   pointer-events: none;
 }
+.app-result-item__img--ready { opacity: 1; }
 
-.app-result-item__img--ready {
-  opacity: 1;
-}
+.app-result-item__lucide { pointer-events: none; }
 
-.app-result-item__lucide {
-  pointer-events: none;
-}
-
+/* === Badge 角标 (system / uwp) === */
 .app-result-item__badge {
   position: absolute;
   right: -4px;
@@ -320,7 +315,7 @@ const badgeInfo = computed(() => {
   background: var(--canvas-elevated);
   border: 1px solid var(--border-subtle);
   color: var(--text-tertiary);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-sm);
   z-index: 2;
   pointer-events: none;
   transition:
@@ -329,52 +324,27 @@ const badgeInfo = computed(() => {
     transform var(--dur-fast) var(--ease-out);
 }
 
-.app-result-item__badge--system {
-  color: var(--text-tertiary);
-}
+.app-result-item__badge--sm { width: 16px; height: 16px; border-radius: var(--radius-xs); }
+.app-result-item__badge--xs { width: 18px; height: 18px; border-radius: var(--radius-xs); }
 
-.app-result-item__badge--uwp {
-  color: var(--text-tertiary);
-  border-color: var(--border-subtle);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
-}
-
-.app-result-item__badge--sm {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-}
-
-.app-result-item__badge--xs {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
-  right: -4px;
-  bottom: -4px;
-}
-
-.app-result-item:hover .app-result-item__badge {
+.app-result-item:hover .app-result-item__badge,
+.app-result-item:hover .app-result-item__badge--uwp {
   color: var(--text-secondary);
   border-color: var(--border-default);
 }
 
 .app-result-item:hover .app-result-item__badge--uwp {
-  color: var(--text-secondary);
-  border-color: var(--border-default);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   transform: scale(1.06);
 }
 
 .app-result-item--active .app-result-item__badge--system {
   color: var(--text-secondary);
   border-color: var(--border-default);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
 }
 
 .app-result-item--active .app-result-item__badge--uwp {
   color: var(--text-secondary);
   border-color: var(--border-default);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
   transform: scale(1.06);
 }
 
@@ -385,7 +355,7 @@ const badgeInfo = computed(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 700;
   color: var(--text-primary);
@@ -433,7 +403,7 @@ const badgeInfo = computed(() => {
   margin-left: auto;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   opacity: 0;
   transform: translateX(6px);
   transition:
@@ -464,11 +434,7 @@ const badgeInfo = computed(() => {
 
 /* === 自定义 hover tooltip: 显示应用绝对路径 ===
    通过 Teleport 挂载到 body, 使用 position: fixed 定位,
-   避免被虚拟滚动容器的 overflow: auto 裁剪.
-   视觉与项目全局 .app-tooltip 风格一致:
-   - 玻璃模糊 backdrop-filter
-   - 紧凑 11.5px / 5px 9px padding
-   - 圆角 --radius-sm */
+   避免被虚拟滚动容器的 overflow: auto 裁剪. */
 .app-tooltip {
   position: fixed;
   left: 0;
@@ -486,10 +452,7 @@ const badgeInfo = computed(() => {
   background: var(--glass-bg-soft);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.05) inset,
-    0 8px 24px rgba(0, 0, 0, 0.5),
-    0 2px 6px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-lg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   white-space: normal;
@@ -501,7 +464,6 @@ const badgeInfo = computed(() => {
   font-family: var(--font-mono);
 }
 
-/* Win10 不用 backdrop-filter, 改用纯色背景 */
 .os-win10 .app-tooltip {
   background: rgba(28, 28, 32, 0.98);
   backdrop-filter: none;

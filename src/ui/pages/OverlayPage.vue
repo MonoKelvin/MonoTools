@@ -1,7 +1,16 @@
 <script setup lang="ts">
-defineProps<{
-  maxWidth?: string
-}>()
+/**
+ * OverlayPage — 浮窗页面基类
+ *
+ * 用于所有需要"系统级浮窗"行为的页面（搜索浮窗、设置面板、命令面板等）。
+ * 封装：
+ *  - 全屏透明背景，让 Win11 Mica / Win10 backdrop-filter 透出
+ *  - 容器淡入 + 微缩放进场动效 (220ms, 配合 --ease-out)
+ *  - 自动适配 Windows 版本：Win10 用 CSS backdrop-filter，Win11 透明
+ *  - 顶部细线 + 阴影做层级（Raycast 风格 hairline border）
+ *
+ * 未来新增浮窗类页面（SettingsPage、PluginsPage 等）直接 <OverlayPage> 包裹。
+ */
 </script>
 
 <template>
@@ -30,26 +39,25 @@ defineProps<{
   display: flex;
   flex-direction: column;
   background: transparent;
-  border-radius: 0;
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.55);
+  border-top: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-xl);
   overflow: hidden;
   animation: overlay-fade-in 220ms var(--ease-out);
 }
 
 .os-win10 .overlay-page__container {
-  background: rgba(18, 18, 21, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
 }
 
 @keyframes overlay-fade-in {
-  0% {
+  from {
     opacity: 0;
     transform: translateY(-8px) scale(0.985);
     filter: blur(6px);
   }
-  100% {
+  to {
     opacity: 1;
     transform: translateY(0) scale(1);
     filter: blur(0);

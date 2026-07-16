@@ -217,7 +217,7 @@ function showToast(text: string, type: 'info' | 'success' | 'error' = 'success')
 
 <template>
   <Teleport to="body">
-    <Transition name="ctx-menu">
+    <Transition name="ctx-menu" :appear="true">
       <div
         v-if="showMenu"
         ref="menuRef"
@@ -225,48 +225,48 @@ function showToast(text: string, type: 'info' | 'success' | 'error' = 'success')
         :style="{ left: adjustedX + 'px', top: adjustedY + 'px' }"
       >
         <div class="ctx-menu__content">
-          <div class="ctx-menu__item" @click="handleOpen">
-            <Play :size="14" />
+          <button class="ctx-menu__item" @click="handleOpen">
+            <Play :size="14" :stroke-width="2" />
             <span>打开</span>
             <span class="ctx-menu__shortcut">Enter</span>
-          </div>
+          </button>
           <div class="ctx-menu__divider" />
-          <div class="ctx-menu__item" @click="handleOpenLocation">
-            <FolderOpen :size="14" />
+          <button class="ctx-menu__item" @click="handleOpenLocation">
+            <FolderOpen :size="14" :stroke-width="2" />
             <span>打开文件所在路径</span>
             <span class="ctx-menu__shortcut">Ctrl+Enter</span>
-          </div>
+          </button>
           <div class="ctx-menu__divider" />
-          <div class="ctx-menu__item" @click="handleCopyPath">
-            <Copy :size="14" />
+          <button class="ctx-menu__item" @click="handleCopyPath">
+            <Copy :size="14" :stroke-width="2" />
             <span>复制文件路径</span>
             <span class="ctx-menu__shortcut">Ctrl+C</span>
-          </div>
-          <div class="ctx-menu__item" @click="handleCopyDirPath">
-            <Copy :size="14" />
+          </button>
+          <button class="ctx-menu__item" @click="handleCopyDirPath">
+            <Copy :size="14" :stroke-width="2" />
             <span>复制目录路径</span>
             <span class="ctx-menu__shortcut">Ctrl+Shift+C</span>
-          </div>
-          <div class="ctx-menu__item" @click="handleCopyName">
-            <FileText :size="14" />
+          </button>
+          <button class="ctx-menu__item" @click="handleCopyName">
+            <FileText :size="14" :stroke-width="2" />
             <span>复制名称</span>
-          </div>
+          </button>
           <div class="ctx-menu__divider" />
-          <div class="ctx-menu__item" @click="handleProperties">
-            <Info :size="14" />
+          <button class="ctx-menu__item" @click="handleProperties">
+            <Info :size="14" :stroke-width="2" />
             <span>属性</span>
             <span class="ctx-menu__shortcut">Alt+Enter</span>
-          </div>
+          </button>
           <div class="ctx-menu__divider" />
-          <div class="ctx-menu__item" @click="handlePinToggle">
-            <component :is="isPinned ? PinOff : Pin" :size="14" />
+          <button class="ctx-menu__item" @click="handlePinToggle">
+            <component :is="isPinned ? PinOff : Pin" :size="14" :stroke-width="2" />
             <span>{{ isPinned ? '取消固定' : '固定到首页' }}</span>
-          </div>
-          <div class="ctx-menu__item ctx-menu__item--danger" @click="handleDelete">
-            <Trash2 :size="14" />
+          </button>
+          <button class="ctx-menu__item ctx-menu__item--danger" @click="handleDelete">
+            <Trash2 :size="14" :stroke-width="2" />
             <span>删除</span>
             <span class="ctx-menu__shortcut">Delete</span>
-          </div>
+          </button>
         </div>
       </div>
     </Transition>
@@ -274,92 +274,180 @@ function showToast(text: string, type: 'info' | 'success' | 'error' = 'success')
 </template>
 
 <style scoped>
+/* === 浮层容器 ============================================================= */
 .ctx-menu {
   position: fixed;
   z-index: 9999;
-  min-width: 240px;
+  min-width: 248px;
   max-width: 60vw;
   pointer-events: auto;
 }
 
+/* === 内容卡片 (高级玻璃 + 多层抬升阴影) =================================== */
 .ctx-menu__content {
   border-radius: var(--radius-lg);
   padding: var(--sp-2);
-  background: rgb(17 17 17 / 0.78);
-  backdrop-filter: blur(48px) saturate(180%);
-  -webkit-backdrop-filter: blur(48px) saturate(180%);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.24),
-    0 8px 16px rgba(0, 0, 0, 0.20),
-    0 16px 32px rgba(0, 0, 0, 0.16),
-    0 24px 48px rgba(0, 0, 0, 0.10),
-    0 32px 64px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-xl);
+  /* 顶部 1px 高光, 底部 1px 内阴影 — Raycast 浮层做法 */
   background-image:
     linear-gradient(
       180deg,
-      rgba(255, 255, 255, 0.04) 0%,
-      rgba(255, 255, 255, 0.0) 40%,
-      rgba(0, 0, 0, 0.02) 100%
+      rgba(255, 255, 255, 0.05) 0%,
+      rgba(255, 255, 255, 0) 30%
     );
   user-select: none;
-  transform-origin: top center;
+  transform-origin: var(--ctx-menu-origin-x, top) var(--ctx-menu-origin-y, top);
+  /* 让子项能继承正确的 transform 起点 */
+  contain: layout paint;
 }
 
+.os-win10 .ctx-menu__content {
+  background: rgba(28, 28, 32, 0.98);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+/* === 菜单项 =============================================================== */
 .ctx-menu__item {
+  /* button reset */
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
-  border-radius: 6px;
-  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-md);
   font-weight: 500;
   color: var(--text-primary);
   cursor: pointer;
   background: transparent;
-  transition: background 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  min-height: 36px;
+  min-height: 34px;
+  position: relative;
+  /* 错落进入: 每项 22ms 间隔, 通过 :nth-child 自动算出来 */
+  --enter-delay: calc(var(--idx, 0) * 22ms);
+  transform: translateY(-2px);
+  opacity: 0;
+  animation: ctx-item-in 220ms var(--ease-out) var(--enter-delay) forwards;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
 }
 
-.ctx-menu__item + .ctx-menu__item {
-  margin-top: 1px;
+.ctx-menu__item > svg {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .ctx-menu__item:hover {
   background: var(--interactive-hover);
 }
+.ctx-menu__item:hover > svg {
+  color: var(--text-secondary);
+}
+
+.ctx-menu__item:active {
+  transform: scale(0.985);
+  background: var(--list-selected-bg);
+}
 
 .ctx-menu__item--danger {
   color: var(--color-danger);
 }
-
+.ctx-menu__item--danger > svg {
+  color: var(--color-danger);
+}
 .ctx-menu__item--danger:hover {
-  background: var(--color-danger-bg);
+  background: var(--color-danger-soft);
+}
+.ctx-menu__item--danger:hover > svg {
+  color: var(--color-danger);
 }
 
 .ctx-menu__shortcut {
   margin-left: auto;
-  font-size: 11px;
-  color: var(--text-tertiary);
+  font-size: var(--text-xs);
+  color: var(--text-quaternary);
   font-weight: 400;
+  font-family: var(--font-mono);
+  letter-spacing: 0.01em;
 }
 
+.ctx-menu__item:hover .ctx-menu__shortcut {
+  color: var(--text-tertiary);
+}
+
+/* === 分隔线 =============================================================== */
 .ctx-menu__divider {
   height: 1px;
   background: var(--border-subtle);
-  margin: 6px 14px;
+  margin: 4px 8px;
+  /* 分隔线淡入, 比菜单项稍晚 */
+  opacity: 0;
+  animation: ctx-divider-in 200ms var(--ease-out) 60ms forwards;
 }
 
+/* === 进出动画 (容器) ====================================================== */
 .ctx-menu-enter-active .ctx-menu__content,
 .ctx-menu-leave-active .ctx-menu__content {
   transition:
-    transform 0.18s cubic-bezier(0.34, 1.12, 0.64, 1),
-    opacity 0.18s cubic-bezier(0.34, 1.12, 0.64, 1);
+    transform 180ms var(--ease-out),
+    opacity 160ms var(--ease-out);
 }
-
 .ctx-menu-enter-from .ctx-menu__content,
 .ctx-menu-leave-to .ctx-menu__content {
-  transform: scale(0.92) translateY(-6px);
+  transform: scale(0.94) translateY(-4px);
   opacity: 0;
+}
+
+@keyframes ctx-item-in {
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes ctx-divider-in {
+  to { opacity: 1; }
+}
+
+/* === 通过 :nth-child 给菜单项注入 --idx, 避免在模板里手写 style ======== */
+.ctx-menu__item:nth-child(1)  { --idx: 0; }
+.ctx-menu__item:nth-child(2)  { --idx: 1; }
+.ctx-menu__item:nth-child(3)  { --idx: 2; }
+.ctx-menu__item:nth-child(4)  { --idx: 3; }
+.ctx-menu__item:nth-child(5)  { --idx: 4; }
+.ctx-menu__item:nth-child(6)  { --idx: 5; }
+.ctx-menu__item:nth-child(7)  { --idx: 6; }
+.ctx-menu__item:nth-child(8)  { --idx: 7; }
+.ctx-menu__item:nth-child(9)  { --idx: 8; }
+.ctx-menu__item:nth-child(10) { --idx: 9; }
+.ctx-menu__item:nth-child(11) { --idx: 10; }
+.ctx-menu__item:nth-child(12) { --idx: 11; }
+
+/* === 无障碍 ============================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .ctx-menu__item,
+  .ctx-menu__divider {
+    animation: none;
+    transform: none;
+    opacity: 1;
+  }
+  .ctx-menu-enter-active .ctx-menu__content,
+  .ctx-menu-leave-active .ctx-menu__content {
+    transition: opacity 80ms linear;
+  }
 }
 </style>

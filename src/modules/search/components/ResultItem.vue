@@ -245,9 +245,8 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   border: 1px solid transparent;
-  border-radius: 9px;
-  transition:
-    color var(--dur-fast) var(--ease-out);
+  border-radius: var(--radius-md);
+  transition: color var(--dur-fast) var(--ease-out);
 }
 
 .result-item__icon {
@@ -257,7 +256,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-tertiary);
   transition:
@@ -267,29 +266,22 @@ onBeforeUnmount(() => {
   position: relative;
 }
 
-/**
- * PNG 真实图标 (ResultItem 也读 useAppIcon cache, 让"所有文件"组的
- * .url / .lnk / 含图标的文件能显示真实 PNG).
- * - 与 Lucide 通用图标 16x16 视觉对齐, 居中放置
- * - opacity 0 → 1 渐入与 AppResultItem 一致
- * - 350ms 兜底 timer 在 happy-dom / WebView2 不会丢失显示
- */
+/* PNG 真实图标 (ResultItem 也读 useAppIcon cache, 让"所有文件"组的
+ * .url / .lnk / 含图标的文件能显示真实 PNG). 与 AppResultItem 一致的渐入逻辑. */
 .result-item__img {
   width: 18px;
   height: 18px;
   object-fit: contain;
   opacity: 0;
-  transition: opacity 220ms var(--ease-out);
+  transition: opacity var(--dur-slow) var(--ease-out);
   pointer-events: none;
   user-select: none;
 }
-.result-item__img--ready {
-  opacity: 1;
-}
+.result-item__img--ready { opacity: 1; }
 
 .result-item:hover .result-item__icon {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--list-hover-bg);
   transform: scale(1.04);
 }
 
@@ -325,7 +317,6 @@ onBeforeUnmount(() => {
   overflow: hidden;
   white-space: nowrap;
   text-rendering: optimizeLegibility;
-  letter-spacing: 0;
   transition: color var(--dur-fast) var(--ease-out);
 }
 
@@ -336,7 +327,7 @@ onBeforeUnmount(() => {
 .result-item__meta {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-3);
   flex-shrink: 0;
   margin-left: auto;
 }
@@ -364,7 +355,10 @@ onBeforeUnmount(() => {
   background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
-  transition: color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
 }
 
 .result-item--active .result-item__badge {
@@ -376,13 +370,15 @@ onBeforeUnmount(() => {
 .result-item__shortcut {
   opacity: 0;
   transform: translateX(6px);
-  transition: opacity var(--dur-normal) var(--ease-out), transform var(--dur-normal) var(--ease-out);
+  transition:
+    opacity var(--dur-normal) var(--ease-out),
+    transform var(--dur-normal) var(--ease-out);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
 }
 
 .result-item:hover .result-item__shortcut,

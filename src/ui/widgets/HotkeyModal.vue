@@ -46,15 +46,30 @@ if (!commandsStore.isLoaded) {
   >
     <div class="hotkey-modal__inner">
       <div v-if="categories.length === 0" class="hotkey-modal__empty">
-        暂无快捷键
+        <div class="hotkey-modal__empty-icon" aria-hidden="true">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="20" height="14" x="2" y="6" rx="2" />
+            <path d="M6 10h.01" /><path d="M6 14h.01" />
+            <path d="M10 10h.01" /><path d="M10 14h.01" />
+            <path d="M14 10h.01" /><path d="M14 14h.01" />
+          </svg>
+        </div>
+        <p>暂无快捷键</p>
       </div>
-      <div v-for="category in categories" :key="category" class="hotkey-modal__section">
+      <section
+        v-for="(category, ci) in categories"
+        :key="category"
+        class="hotkey-modal__section"
+        :style="{ '--section-delay': `${ci * 40}ms` }"
+      >
         <h3 class="hotkey-modal__section-title">{{ category }}</h3>
-        <div class="hotkey-modal__list">
-          <div
-            v-for="hotkey in getHotkeysByCategory(category)"
+        <ul class="hotkey-modal__list">
+          <li
+            v-for="(hotkey, hi) in getHotkeysByCategory(category)"
             :key="hotkey.id"
             class="hotkey-modal__item"
+            :style="{ '--item-delay': `${ci * 40 + hi * 18 + 30}ms` }"
           >
             <span class="hotkey-modal__description">{{ hotkey.description }}</span>
             <div class="hotkey-modal__keys">
@@ -66,64 +81,84 @@ if (!commandsStore.isLoaded) {
                 {{ part }}
               </span>
             </div>
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+      </section>
     </div>
   </MtModal>
 </template>
 
 <style scoped>
-/* 内层容器:高度固定 + 滚动, 避免整个 modal 因内容超出而拉伸. */
+/* === 内层滚动区 ========================================================== */
 .hotkey-modal__inner {
   max-height: calc(70vh - 80px);
   overflow-y: auto;
   overflow-x: hidden;
-  padding-right: 4px;
+  padding: 4px 6px 4px 4px;
+  margin: -4px -6px -4px -4px;
 }
 
-/* 滚动条: webkit 玻璃感. */
 .hotkey-modal__inner::-webkit-scrollbar {
   width: 6px;
 }
 .hotkey-modal__inner::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+  transition: background var(--dur-fast) var(--ease-out);
 }
 .hotkey-modal__inner::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--border-hover);
 }
 .hotkey-modal__inner::-webkit-scrollbar-track {
   background: transparent;
 }
 
+/* === 空状态 ============================================================== */
 .hotkey-modal__empty {
-  font-size: var(--text-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-3);
+  padding: var(--sp-9) 0;
   color: var(--text-quaternary);
-  padding: var(--sp-5) 0;
-  text-align: center;
+  font-size: var(--text-sm);
+}
+.hotkey-modal__empty-icon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  background: var(--inset);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-tertiary);
 }
 
+/* === 分类标题 ============================================================ */
 .hotkey-modal__section {
   margin-bottom: var(--sp-5);
+  /* 整个 section 也错落进入 */
+  opacity: 0;
+  transform: translateY(4px);
+  animation: hotkey-section-in 280ms var(--ease-out) var(--section-delay, 0ms) forwards;
 }
-
 .hotkey-modal__section:last-child {
   margin-bottom: 0;
 }
 
 .hotkey-modal__section-title {
-  font-size: 12.5px;
+  font-size: var(--text-xs);
   font-weight: 600;
   color: var(--text-tertiary);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   margin-bottom: var(--sp-3);
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
 .hotkey-modal__section-title::before {
   content: '';
   width: 3px;
@@ -133,10 +168,14 @@ if (!commandsStore.isLoaded) {
   flex-shrink: 0;
 }
 
+/* === 列表 & 列表项 ====================================================== */
 .hotkey-modal__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .hotkey-modal__item {
@@ -144,12 +183,18 @@ if (!commandsStore.isLoaded) {
   align-items: center;
   justify-content: space-between;
   padding: 7px 10px;
-  border-radius: var(--radius-md);
-  transition: background var(--dur-fast) var(--ease-out);
+  border-radius: var(--radius-sm);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+  /* 错落进入, 单项比 section 再晚一拍 */
+  opacity: 0;
+  transform: translateX(-4px);
+  animation: hotkey-item-in 240ms var(--ease-out) var(--item-delay, 0ms) forwards;
 }
-
 .hotkey-modal__item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--list-hover-bg);
+  transform: translateX(2px);
 }
 
 .hotkey-modal__description {
@@ -164,21 +209,65 @@ if (!commandsStore.isLoaded) {
   gap: 4px;
 }
 
+/* === 键帽 (Fluent 2 风格: 1px 边框 + 顶部 1px 高光) ===================== */
 .kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 24px;
-  height: 24px;
-  padding: 0 8px;
+  height: 22px;
+  padding: 0 7px;
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 500;
   color: var(--text-secondary);
   background: var(--inset);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xs);
   line-height: 1;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  /* 顶部 1px 高光 (Fluent 键帽标志性细节) + 底部 1px 暗线 */
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0) 60%
+  );
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.18) inset,
+    0 1px 0 rgba(255, 255, 255, 0.02) inset;
+  transition:
+    transform var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out);
+}
+
+.hotkey-modal__item:hover .kbd {
+  border-color: var(--border-default);
+}
+
+/* === 动画 ================================================================ */
+@keyframes hotkey-section-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes hotkey-item-in {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* === 无障碍 ============================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .hotkey-modal__section,
+  .hotkey-modal__item {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .hotkey-modal__item:hover {
+    transform: none;
+  }
 }
 </style>

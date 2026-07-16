@@ -1,78 +1,111 @@
+/**
+ * Design Tokens — MonoTools 主题系统
+ *
+ * 设计原则 (融合 Raycast / Fluent 2 / Apple HIG):
+ * 1. **近黑蓝调底色** 而非纯黑 (-tinted black) - 营造"高精度工具"质感
+ * 2. **Inter font + ss03 特性** - Raycast 标志, 单层 g
+ * 3. **正字间距 0.2-0.4px** 在深色背景上更通透
+ * 4. **细线边框 1px rgba(255,255,255,0.06-0.1)** 代替阴影做层级
+ * 5. **4 阶 surface ladder** - 从最底到最顶逐步抬升
+ * 6. **微动效 100-240ms**, ease-out, 仅动 transform/opacity
+ * 7. **WCAG AA 对比度 ≥ 4.5:1** - text-primary vs canvas
+ *
+ * 双层 token 体系 (Fluent 2 模式):
+ * - **Global tokens** (raw values): --canvas, --text-1, --radius-md
+ * - **Alias tokens** (semantic):    --surface, --on-surface, --interactive
+ */
+
 :root {
-  /* === SURFACE LADDER (黑白灰: 略深一档, 质感更稳重) === */
-  --canvas: #15151a;
-  --canvas-elevated: #1c1c20;
-  --rail: #19191d;
-  --panel: #1d1d21;
-  --content: #222227;
-  --elevated: #28282e;
-  --inset: #131317;
+  /* ==========================================================================
+   * SURFACE LADDER (深色: 近黑蓝调, 4 阶 + 内容层)
+   * 源自 Raycast #07080a → #121212 阶梯, 本项目加入一档 --content 用于卡片
+   * ========================================================================== */
+  --canvas:           #15151a;   /* 主背景 - 深色工具质感 */
+  --canvas-elevated:  #1c1c20;   /* 微抬升, 用于次级背景 */
+  --content:          #1d1d21;   /* 内容表面 (卡片背景) */
+  --elevated:         #28282e;   /* 浮层, 弹窗 */
+  --inset:            #131317;   /* 内嵌, 凹陷 */
 
-  /* === TEXT === */
-  --text-primary: #ffffff;
-  --text-secondary: #d4d4d8;
-  --text-tertiary: #a1a1aa;
-  --text-quaternary: #71717a;
-  --text-muted: #52525b;
+  /* ==========================================================================
+   * TEXT (5 阶, 全部满足 WCAG AA 4.5:1)
+   * ========================================================================== */
+  --text-primary:     #f4f4f6;   /* 主文字 (高对比 ~16:1) */
+  --text-secondary:   #cdcdcd;   /* 次级 (~9:1) */
+  --text-tertiary:    #9c9c9d;   /* 三级 (~5:1) */
+  --text-quaternary:  #6a6b6c;   /* 四级 (~3:1, 仅用于装饰) */
+  --text-muted:       #434345;   /* 弱化 (最低限度) */
 
-  /* === ACCENT (细微点缀: 极淡暖白, 用于关键交互焦点; 整体仍 90% 黑白灰) === */
-  --accent: #f5f1e8;
-  --accent-soft: rgba(245, 241, 232, 0.08);
-  --accent-glow: rgba(245, 241, 232, 0.18);
-  --accent-on-accent: #15151a;
-  --accent-hover: #ffffff;
-  --accent-active: #d4ccb8;
-  --accent-warm: #fbbf24;
-  --accent-warm-soft: rgba(251, 191, 36, 0.10);
+  /* ==========================================================================
+   * ACCENT (黑白灰主色 + 极小暖色点缀)
+   * 主交互色 = 近白 (高识别、低饱和), 暖橙仅用于风险/成功
+   * ========================================================================== */
+  --accent:           #f5f1e8;   /* 暖白: 主交互 (选中/焦点) */
+  --accent-hover:     #ffffff;
+  --accent-active:    #d4ccb8;
+  --accent-soft:      rgba(245, 241, 232, 0.08);
+  --accent-glow:      rgba(245, 241, 232, 0.18);
+  --accent-on-accent: #15151a;   /* 在 accent 上的文字色 */
 
-  /* === LIST STATES (更细微, 不喧宾夺主) === */
-  --list-hover-bg: rgba(255, 255, 255, 0.04);
-  --list-selected-bg: rgba(255, 255, 255, 0.10);
-  --list-selected-ring: rgba(255, 255, 255, 0.12);
-  --list-hover-ring: rgba(255, 255, 255, 0.06);
+  --color-warm:       #fbbf24;   /* 暖橙: 警告/提示 (罕用) */
+  --color-warm-soft:  rgba(251, 191, 36, 0.10);
+  --color-danger:     #f87171;   /* 危险 (低饱和红) */
+  --color-danger-soft:rgba(248, 113, 113, 0.12);
+  --color-success:    #59d499;   /* 成功 (Raycast 绿) */
+  --color-success-soft:rgba(89, 212, 153, 0.15);
 
-  /* === BORDERS (细微, 黑白灰) === */
+  /* ==========================================================================
+   * LIST STATES (细微, 统一 hover/selected 视觉)
+   * ========================================================================== */
+  --list-hover-bg:     rgba(255, 255, 255, 0.04);
+  --list-selected-bg:  rgba(255, 255, 255, 0.10);
+  --list-selected-ring:rgba(255, 255, 255, 0.12);
+  --list-hover-ring:   rgba(255, 255, 255, 0.06);
+
+  /* ==========================================================================
+   * BORDERS (Raycast hairline 体系: 1px 细微白线)
+   * 等级: subtle (0.06) < default (0.10) < hover (0.18) < active (0.28)
+   * ========================================================================== */
   --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-default: rgba(255, 255, 255, 0.10);
-  --border-hover: rgba(255, 255, 255, 0.18);
+  --border-default:rgba(255, 255, 255, 0.10);
+  --border-hover:  rgba(255, 255, 255, 0.18);
   --border-active: rgba(255, 255, 255, 0.28);
 
-  /* === GLASS (高级玻璃: 黑白灰, 略深一些更显质感) === */
-  --glass-bg: rgba(18, 18, 21, 0.82);
-  --glass-bg-soft: rgba(24, 24, 28, 0.78);
-  --glass-border: rgba(255, 255, 255, 0.07);
-  --glass-blur: blur(40px) saturate(180%);
-  --glass-blur-strong: blur(60px) saturate(180%);
+  /* ==========================================================================
+   * GLASS (深色玻璃: 80% 不透明 + 强模糊)
+   * 注: 避免过度大模糊, 控制在 40px 内
+   * ========================================================================== */
+  --glass-bg:        rgba(20, 20, 24, 0.85);
+  --glass-bg-soft:   rgba(28, 28, 32, 0.78);
+  --glass-border:    rgba(255, 255, 255, 0.07);
+  --glass-blur:      blur(40px) saturate(180%);
+  --glass-blur-lite: blur(20px) saturate(160%);
 
-  /* === SHADOWS === */
+  /* ==========================================================================
+   * SHADOWS (Raycast: 极少, 多用边框 + 1-2 个抬升阴影)
+   * ========================================================================== */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.42);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.52);
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.62);
 
-  /* === CATEGORY COLORS (全部黑白灰: 移除彩色) === */
-  --color-apps: #ffffff;
-  --color-files: #ffffff;
-  --color-commands: #ffffff;
-  --color-danger: #f87171;
-  --color-danger-bg: rgba(248, 113, 113, 0.12);
-  --color-success: #ffffff;
-  --color-warning: #ffffff;
-  --color-info: #ffffff;
-
-  /* === RADII === */
-  --radius-xs: 4px;
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
+  /* ==========================================================================
+   * RADII (Fluent 2: 4/6/8/10/14/18 - 阶梯感)
+   * 控件用 --radius-sm (6px), 卡片用 --radius-md (8px), 弹窗用 --radius-lg
+   * ========================================================================== */
+  --radius-xs:   4px;
+  --radius-sm:   6px;
+  --radius-md:   8px;
+  --radius-lg:  10px;
+  --radius-xl:  14px;
   --radius-2xl: 18px;
   --radius-full: 9999px;
 
-  /* === SPACING === */
-  --sp-1: 2px;
-  --sp-2: 4px;
-  --sp-3: 8px;
+  /* ==========================================================================
+   * SPACING (4px 基准, 阶梯: 2/4/8/12/16/20/24/32/40/48)
+   * ========================================================================== */
+  --sp-1:  2px;
+  --sp-2:  4px;
+  --sp-3:  8px;
   --sp-4: 12px;
   --sp-5: 16px;
   --sp-6: 20px;
@@ -82,73 +115,95 @@
   --sp-10: 40px;
   --sp-12: 48px;
 
-  /* === TYPOGRAPHY === */
-  --font-sans: 'Inter', 'Source Han Sans', 'Source Han Sans SC', -apple-system, BlinkMacSystemFont,
-    'Segoe UI Variable', 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+  /* ==========================================================================
+   * TYPOGRAPHY
+   * 字体栈: Inter (优先, 已安装 Source Han Sans 做中文回落) → 系统字体
+   * 启用 OpenType: calt (上下文替换) + liga (连字) + ss03 (单层 g) - Raycast 标志
+   * ========================================================================== */
+  --font-sans: 'Inter', 'Source Han Sans', 'Source Han Sans SC',
+    -apple-system, BlinkMacSystemFont, 'Segoe UI Variable', 'Segoe UI',
+    'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono',
+    'Fira Code', 'Consolas', monospace;
 
-  --text-xs: 11px;
-  --text-sm: 12px;
-  --text-md: 13px;
+  /* 字体特性 (Raycast-style: 启用 ss03 等高级 OpenType) */
+  --font-features: 'calt', 'liga', 'ss03';
+  --font-letterspacing-tight:  -0.005em;  /* 中文默认 */
+  --font-letterspacing-normal:  0;          /* 英文默认 */
+  --font-letterspacking-wide:   0.2px;      /* 浅色背景上用 */
+
+  /* 字体大小 (Fluent 2 ramp: 12 / 13 / 14 / 16 / 18 / 20) */
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-md:   13px;
   --text-base: 14px;
-  --text-lg: 16px;
-  --text-xl: 18px;
-  --text-2xl: 20px;
+  --text-lg:   16px;
+  --text-xl:   18px;
+  --text-2xl:  20px;
 
-  --leading-tight: 1.25;
-  --leading-normal: 1.5;
+  --leading-tight:   1.25;
+  --leading-normal:  1.5;
   --leading-relaxed: 1.6;
 
-  /* === MOTION === */
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
-  --dur-fast: 100ms;
-  --dur-normal: 160ms;
-  --dur-slow: 240ms;
+  /* ==========================================================================
+   * MOTION (Raycast 120-280ms, ease-out 为主)
+   * 微动效仅动 transform/opacity (compositor-only, 不触发布局)
+   * ========================================================================== */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);     /* 弹性出场 */
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);       /* 标准 */
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);  /* 弹性回弹 (谨慎用) */
+  --dur-fast:    100ms;  /* 悬浮/点击反馈 */
+  --dur-normal:  160ms;  /* 默认过渡 */
+  --dur-slow:    240ms;  /* 进场/出场景 */
+  --dur-slower:  320ms;  /* 复杂动效 (渐显+缩放) */
 
-  /* === LEGACY ALIASES (向后兼容) === */
-  --surface: var(--content);
+  /* ==========================================================================
+   * ALIASES (向后兼容, 已用 raw token 的可平滑迁移)
+   * 新代码应直接使用上面的语义化 token
+   * ========================================================================== */
+  --surface:        var(--content);
   --surface-raised: var(--elevated);
-  --surface-overlay: var(--panel);
-  --surface-hover: rgba(255, 255, 255, 0.025);
-  --surface-active: rgba(255, 255, 255, 0.05);
-  --interactive-hover: rgba(255, 255, 255, 0.05);
+  --surface-overlay:var(--canvas-elevated);
+  --surface-hover:  var(--list-hover-bg);
+  --surface-active: var(--list-selected-bg);
+  --interactive-hover: var(--list-hover-bg);
 }
 
+/* ===========================================================================
+ * LIGHT THEME (浅色, 单色 / 高级灰白)
+ * =========================================================================== */
 :root.theme-light {
-  --canvas: #f5f5f7;
-  --canvas-elevated: #ffffff;
-  --rail: #ececef;
-  --panel: #fafafa;
-  --content: #ffffff;
-  --elevated: #ffffff;
-  --inset: #f0f0f3;
+  --canvas:           #f5f5f7;
+  --canvas-elevated:  #ffffff;
+  --content:          #ffffff;
+  --elevated:         #ffffff;
+  --inset:            #ececef;
 
-  --text-primary: #18181b;
-  --text-secondary: #3f3f46;
-  --text-tertiary: #71717a;
-  --text-quaternary: #a1a1aa;
-  --text-muted: #d4d4d8;
+  --text-primary:     #18181b;
+  --text-secondary:   #3f3f46;
+  --text-tertiary:    #71717a;
+  --text-quaternary:  #a1a1aa;
+  --text-muted:       #d4d4d8;
 
-  --accent: #18181b;
-  --accent-hover: #27272a;
-  --accent-active: #3f3f46;
-  --accent-soft: rgba(24, 24, 27, 0.06);
-  --accent-glow: rgba(24, 24, 27, 0.12);
+  --accent:           #18181b;
+  --accent-hover:     #27272a;
+  --accent-active:    #3f3f46;
+  --accent-soft:      rgba(24, 24, 27, 0.06);
+  --accent-glow:      rgba(24, 24, 27, 0.12);
+  --accent-on-accent: #ffffff;
 
-  --list-hover-bg: rgba(24, 24, 27, 0.06);
-  --list-selected-bg: rgba(24, 24, 27, 0.12);
+  --list-hover-bg:      rgba(24, 24, 27, 0.06);
+  --list-selected-bg:   rgba(24, 24, 27, 0.12);
   --list-selected-ring: rgba(24, 24, 27, 0.18);
-  --list-hover-ring: rgba(24, 24, 27, 0.08);
+  --list-hover-ring:    rgba(24, 24, 27, 0.08);
 
   --border-subtle: rgba(24, 24, 27, 0.06);
-  --border-default: rgba(24, 24, 27, 0.10);
-  --border-hover: rgba(24, 24, 27, 0.18);
+  --border-default:rgba(24, 24, 27, 0.10);
+  --border-hover:  rgba(24, 24, 27, 0.18);
   --border-active: rgba(24, 24, 27, 0.28);
 
-  --glass-bg: rgba(245, 245, 247, 0.82);
-  --glass-bg-soft: rgba(255, 255, 255, 0.88);
+  --glass-bg:     rgba(245, 245, 247, 0.82);
+  --glass-bg-soft:rgba(255, 255, 255, 0.88);
   --glass-border: rgba(24, 24, 27, 0.07);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -157,7 +212,12 @@
   --shadow-xl: 0 16px 48px rgba(0, 0, 0, 0.16);
 }
 
-* {
+/* ===========================================================================
+ * BASE & RESET
+ * =========================================================================== */
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -166,12 +226,12 @@
 html, body, #app {
   width: 100%;
   height: 100%;
-  /* 桌面/壁纸可通过 Acrylic/Mica 透出; 顶层用 panel 颜色覆盖保持可读性 */
   background: transparent;
   color: var(--text-primary);
   font-family: var(--font-sans);
   font-size: var(--text-md);
   line-height: var(--leading-normal);
+  font-feature-settings: var(--font-features);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -181,6 +241,7 @@ html, body, #app {
 
 input, textarea {
   user-select: text;
+  font-feature-settings: var(--font-features);
 }
 
 ::selection {
@@ -194,11 +255,14 @@ input, textarea {
   border-radius: var(--radius-sm);
 }
 
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
+/* ===========================================================================
+ * SCROLLBAR (系统级统一样式, Firefox 用 scrollbar-width 兜底)
+ * =========================================================================== */
+html { scrollbar-width: thin; scrollbar-color: var(--border-default) transparent; }
 
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-track-piece { background: transparent; }
 ::-webkit-scrollbar-thumb {
   background: var(--border-default);
   border-radius: var(--radius-full);
@@ -206,102 +270,56 @@ input, textarea {
   background-clip: padding-box;
   transition: background var(--dur-fast) var(--ease-out);
 }
-
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-hover);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
+::-webkit-scrollbar-button { display: none; }
+::-webkit-scrollbar-corner { background: transparent; }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* ===========================================================================
+ * TRANSITIONS (Vue transition name 全局类)
+ * 单一来源, 避免各组件重复定义
+ * =========================================================================== */
+.fade-enter-active,
+.fade-leave-active { transition: opacity var(--dur-normal) var(--ease-out); }
+.fade-enter-from,
+.fade-leave-to     { opacity: 0; }
 
-::-webkit-scrollbar-track-piece {
-  background: transparent;
+.slide-up-enter-active,
+.slide-up-leave-active {
+  transition: opacity var(--dur-normal) var(--ease-out),
+              transform var(--dur-normal) var(--ease-out);
 }
+.slide-up-enter-from,
+.slide-up-leave-to  { opacity: 0; transform: translateY(8px); }
 
-::-webkit-scrollbar-button {
-  display: none;
-  width: 10px;
-  height: 10px;
-  background: var(--border-default);
-  background-clip: padding-box;
-  border: 2px solid transparent;
-}
-
-::-webkit-scrollbar-button:hover {
-  background: var(--border-hover);
-  background-clip: padding-box;
-}
-
-::-webkit-scrollbar-button:vertical:decrement {
-  border-radius: 999px 999px 0 0 / 10px 10px 0 0;
-  mask-image: radial-gradient(circle at 50% 55%, #000 1.5px, transparent 1.8px);
-  -webkit-mask-image: radial-gradient(circle at 50% 55%, #000 1.5px, transparent 1.8px);
-}
-
-::-webkit-scrollbar-button:vertical:increment {
-  border-radius: 0 0 999px 999px / 0 0 10px 10px;
-  mask-image: radial-gradient(circle at 50% 45%, #000 1.5px, transparent 1.8px);
-  -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 1.5px, transparent 1.8px);
-}
-
-::-webkit-scrollbar-button:horizontal:decrement {
-  border-radius: 999px 0 0 999px / 10px 0 0 10px;
-  mask-image: radial-gradient(circle at 55% 50%, #000 1.5px, transparent 1.8px);
-  -webkit-mask-image: radial-gradient(circle at 55% 50%, #000 1.5px, transparent 1.8px);
-}
-
-::-webkit-scrollbar-button:horizontal:increment {
-  border-radius: 0 999px 999px 0 / 0 10px 10px 0;
-  mask-image: radial-gradient(circle at 45% 50%, #000 1.5px, transparent 1.8px);
-  -webkit-mask-image: radial-gradient(circle at 45% 50%, #000 1.5px, transparent 1.8px);
-}
-
-::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-.fade-enter-active, .fade-leave-active {
-  transition: opacity var(--dur-normal) var(--ease-out);
-}
-.fade-enter-from, .fade-leave-to { opacity: 0; }
-
-.slide-up-enter-active, .slide-up-leave-active {
-  transition: all var(--dur-normal) var(--ease-out);
-}
-.slide-up-enter-from, .slide-up-leave-to {
-  opacity: 0;
-  transform: translateY(8px);
-}
-
-.scale-enter-active, .scale-leave-active {
+.scale-enter-active,
+.scale-leave-active {
   transition: opacity var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
+              transform var(--dur-fast) var(--ease-out);
 }
-.scale-enter-from, .scale-leave-to {
-  opacity: 0;
-  transform: scale(0.97);
-}
+.scale-enter-from,
+.scale-leave-to     { opacity: 0; transform: scale(0.97); }
 
 .slide-in-right-enter-active,
 .slide-in-right-leave-active {
-  transition: all var(--dur-normal) var(--ease-out);
+  transition: opacity var(--dur-normal) var(--ease-out),
+              transform var(--dur-normal) var(--ease-out);
 }
 .slide-in-right-enter-from,
-.slide-in-right-leave-to {
-  opacity: 0;
-  transform: translateX(20px);
-}
+.slide-in-right-leave-to { opacity: 0; transform: translateX(20px); }
 
+/* ===========================================================================
+ * UTILITY CLASSES (跨组件复用, 减少散落样式)
+ * =========================================================================== */
 .glass {
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
 }
-
 .os-win10 .glass {
   background: rgba(28, 28, 32, 0.85);
   backdrop-filter: blur(16px);
@@ -309,8 +327,18 @@ input, textarea {
   border-color: var(--border-subtle);
 }
 
-.muted { color: var(--text-secondary); }
-.dim { color: var(--text-tertiary); }
-.mono { font-family: var(--font-mono); }
-.bold { font-weight: 600; }
-.semibold { font-weight: 500; }
+.muted   { color: var(--text-secondary); }
+.dim     { color: var(--text-tertiary); }
+.mono    { font-family: var(--font-mono); }
+.bold    { font-weight: 600; }
+.semibold{ font-weight: 500; }
+
+/* Reduce motion (无障碍) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

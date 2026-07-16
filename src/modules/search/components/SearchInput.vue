@@ -335,6 +335,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   width: 100%;
   padding: 0;
   font-family: var(--font-sans);
+  font-feature-settings: var(--font-features);
   font-size: 17px;
   font-weight: 400;
   line-height: 1.4;
@@ -410,13 +411,5 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   transform: scale(0.95);
 }
 
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity var(--dur-fast) var(--ease-out);
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
+/* .fade 动画由 theme.scss 全局提供, 此处不再重复定义 */
 </style>
