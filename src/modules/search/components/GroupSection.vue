@@ -140,78 +140,59 @@ watch(
   () => props.collapsed,
   (collapsed) => {
     const wrapper = document.getElementById(`group-content-${props.id}`)
-    if (!wrapper) {
-      console.warn('[CollapseDebug] wrapper not found', props.id)
-      return
-    }
-
-    console.log('[CollapseDebug] collapsed:', collapsed, 'scrollHeight:', wrapper.scrollHeight, 'clientHeight:', wrapper.clientHeight, 'offsetHeight:', wrapper.offsetHeight, 'display:', wrapper.style.display, 'height:', wrapper.style.height, 'opacity:', wrapper.style.opacity, 'computedTransition:', getComputedStyle(wrapper).transition)
+    if (!wrapper) return
 
     if (collapsed) {
-      // 收缩：v-show 可能已隐藏元素，强制显示
+      // 收缩：钉住当前高度 → 读取消动画自然高度 → 设置基线 → 动画收拢
       isAnimating.value = true
-      wrapper.style.display = ''
-      // 暂停 transition 并读取自然高度
       wrapper.style.transition = 'none'
       wrapper.style.height = 'auto'
       void wrapper.offsetHeight // 强制重排，确保 scrollHeight 正确
       const naturalH = wrapper.scrollHeight
-      console.log('[CollapseDebug] collapse start naturalH:', naturalH, 'after auto height, offsetHeight:', wrapper.offsetHeight)
-      // 重置到展开态
+
+      // 回到展开态基线
       wrapper.style.height = `${naturalH}px`
       wrapper.style.opacity = '1'
       wrapper.style.transform = ''
       void wrapper.offsetHeight // 强制重排，应用基线
-      console.log('[CollapseDebug] collapse baseline set, height:', wrapper.style.height, 'scrollHeight:', wrapper.scrollHeight)
-      // 开始收缩动画
+
+      // 启用 transition 并在下一个 frame 触发收拢
       wrapper.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-in 20ms, transform ${DURATION}ms ${EASE} 10ms`
-      console.log('[CollapseDebug] collapse animation started, baselineHeight:', wrapper.style.height)
-      const onEnd = (event: TransitionEvent) => {
-        if (event.target === wrapper) {
-          wrapper.removeEventListener('transitionend', onEnd)
-          console.log('[CollapseDebug] collapse transitionend')
-        }
-      }
-      wrapper.addEventListener('transitionend', onEnd)
       requestAnimationFrame(() => {
-        console.log('[CollapseDebug] collapse rAF started, before set height=', wrapper.style.height, 'scrollHeight=', wrapper.scrollHeight)
         wrapper.style.height = '0'
         wrapper.style.opacity = '0'
         wrapper.style.transform = 'translateY(6px) scale(0.99)'
-        console.log('[CollapseDebug] collapse rAF after set height=', wrapper.style.height)
       })
-      // 动画结束后允许 v-show 隐藏
-      setTimeout(() => {
-        isAnimating.value = false
-        console.log('[CollapseDebug] collapse animation ended')
-      }, DURATION + 50)
+
+      setTimeout(() => { isAnimating.value = false }, DURATION + 50)
     } else {
-      // 展开：强制显示元素，确保能读取正确高度
+      // 展开：强制显示 → 回到起始状态 → 动画展开
       isAnimating.value = true
       wrapper.style.display = 'block'
       wrapper.style.transition = 'none'
-      wrapper.style.height = 'auto'
-      void wrapper.offsetHeight
-      const targetH = wrapper.scrollHeight
-      console.log('[CollapseDebug] expand start targetH:', targetH)
-      // 回到起始状态
       wrapper.style.height = '0'
       wrapper.style.opacity = '0'
       wrapper.style.transform = 'translateY(6px) scale(0.99)'
+      void wrapper.offsetHeight // 强制重排
+
+      // 读取目标高度
+      wrapper.style.height = 'auto'
       void wrapper.offsetHeight
+      const targetH = wrapper.scrollHeight
+
+      // 回到展开的起始状态
+      wrapper.style.height = '0'
+      wrapper.style.opacity = '0'
+      wrapper.style.transform = 'translateY(6px) scale(0.99)'
+
       wrapper.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-out 20ms, transform ${DURATION}ms ${EASE} 10ms`
-      console.log('[CollapseDebug] expand animation started')
       requestAnimationFrame(() => {
-        console.log('[CollapseDebug] expand rAF started')
         wrapper.style.height = `${targetH}px`
         wrapper.style.opacity = '1'
         wrapper.style.transform = ''
       })
-      // 动画结束后允许 v-show 正常工作
-      setTimeout(() => {
-        isAnimating.value = false
-        console.log('[CollapseDebug] expand animation ended')
-      }, DURATION + 50)
+
+      setTimeout(() => { isAnimating.value = false }, DURATION + 50)
     }
   },
   { flush: 'post' }
