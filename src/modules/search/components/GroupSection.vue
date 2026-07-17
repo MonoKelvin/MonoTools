@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
 import type { SearchResult } from '@/modules/search'
 import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
@@ -136,32 +136,64 @@ function toggleCollapse() {
 /** 使用 watch + requestAnimationFrame 实现流畅的折叠/展开动画 */
 const isAnimating = ref(false)
 
+/** 是否已完成首次初始化 */
+const isInitialized = ref(false)
+
+// 组件挂载后初始化默认展开状态的内联高度
+onMounted(async () => {
+  await nextTick()
+  const wrapper = document.getElementById(`group-content-${props.id}`)
+  if (!wrapper) return
+
+  // 如果 props.collapsed 是 false（默认展开），读取真实高度并设置内联样式
+  if (!props.collapsed) {
+    wrapper.style.transition = 'none'
+    wrapper.style.height = 'auto'
+    await nextTick()
+    const realH = wrapper.scrollHeight
+    wrapper.style.height = `${realH}px`
+  }
+  isInitialized.value = true
+})
+
 watch(
   () => props.collapsed,
   (collapsed) => {
     const wrapper = document.getElementById(`group-content-${props.id}`)
     if (!wrapper) return
 
+    if (!isInitialized.value) {
+      // 首次 watch 触发时等待初始化完成
+      return
+    }
+
     if (collapsed) {
-      // 收缩：钉住当前高度 → 读取消动画自然高度 → 设置基线 → 动画收拢
+      // 收缩：先渐隐再收拢高度，避免内容直接消失
       isAnimating.value = true
+
+      // 读取当前高度
       wrapper.style.transition = 'none'
-      wrapper.style.height = 'auto'
-      void wrapper.offsetHeight // 强制重排，确保 scrollHeight 正确
-      const naturalH = wrapper.scrollHeight
+      const currentInlineH = parseInt(wrapper.style.height, 10)
+      const readH = currentInlineH > 15 ? currentInlineH : wrapper.scrollHeight
+      if (readH <= 15) return
 
-      // 回到展开态基线
-      wrapper.style.height = `${naturalH}px`
+      // 重置到展开态基线
+      wrapper.style.height = `${readH}px`
       wrapper.style.opacity = '1'
-      wrapper.style.transform = ''
-      void wrapper.offsetHeight // 强制重排，应用基线
+      void wrapper.offsetHeight
 
-      // 启用 transition 并在下一个 frame 触发收拢
-      wrapper.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-in 20ms, transform ${DURATION}ms ${EASE} 10ms`
+      // 第一段：只渐隐，不改变高度
+      wrapper.style.transition = `opacity ${DURATION}ms ease-out 0ms`
       requestAnimationFrame(() => {
-        wrapper.style.height = '0'
         wrapper.style.opacity = '0'
-        wrapper.style.transform = 'translateY(6px) scale(0.99)'
+
+        // opacity 动画开始后，再收拢高度
+        setTimeout(() => {
+          wrapper.style.transition = `height ${DURATION}ms ease-in 0ms`
+          requestAnimationFrame(() => {
+            wrapper.style.height = '0'
+          })
+        }, 40)
       })
 
       setTimeout(() => { isAnimating.value = false }, DURATION + 50)
