@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { SearchResult } from '@/modules/search'
 import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
@@ -130,9 +130,92 @@ function toggleCollapse() {
   toggleDebounceTimer = setTimeout(() => {
     toggleDebounceTimer = null
   }, 50)
-  console.log('[GroupSection] EMIT toggle-collapse:', props.id, 'current collapsed:', props.collapsed)
   emit('toggle-collapse', props.id)
 }
+
+/** 使用 watch + requestAnimationFrame 实现流畅的折叠/展开动画 */
+const isAnimating = ref(false)
+
+watch(
+  () => props.collapsed,
+  (collapsed) => {
+    const wrapper = document.getElementById(`group-content-${props.id}`)
+    if (!wrapper) {
+      console.warn('[CollapseDebug] wrapper not found', props.id)
+      return
+    }
+
+    console.log('[CollapseDebug] collapsed:', collapsed, 'scrollHeight:', wrapper.scrollHeight, 'clientHeight:', wrapper.clientHeight, 'offsetHeight:', wrapper.offsetHeight, 'display:', wrapper.style.display, 'height:', wrapper.style.height, 'opacity:', wrapper.style.opacity, 'computedTransition:', getComputedStyle(wrapper).transition)
+
+    if (collapsed) {
+      // 收缩：v-show 可能已隐藏元素，强制显示
+      isAnimating.value = true
+      wrapper.style.display = ''
+      // 暂停 transition 并读取自然高度
+      wrapper.style.transition = 'none'
+      wrapper.style.height = 'auto'
+      void wrapper.offsetHeight // 强制重排，确保 scrollHeight 正确
+      const naturalH = wrapper.scrollHeight
+      console.log('[CollapseDebug] collapse start naturalH:', naturalH, 'after auto height, offsetHeight:', wrapper.offsetHeight)
+      // 重置到展开态
+      wrapper.style.height = `${naturalH}px`
+      wrapper.style.opacity = '1'
+      wrapper.style.transform = ''
+      void wrapper.offsetHeight // 强制重排，应用基线
+      console.log('[CollapseDebug] collapse baseline set, height:', wrapper.style.height, 'scrollHeight:', wrapper.scrollHeight)
+      // 开始收缩动画
+      wrapper.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-in 20ms, transform ${DURATION}ms ${EASE} 10ms`
+      console.log('[CollapseDebug] collapse animation started, baselineHeight:', wrapper.style.height)
+      const onEnd = (event: TransitionEvent) => {
+        if (event.target === wrapper) {
+          wrapper.removeEventListener('transitionend', onEnd)
+          console.log('[CollapseDebug] collapse transitionend')
+        }
+      }
+      wrapper.addEventListener('transitionend', onEnd)
+      requestAnimationFrame(() => {
+        console.log('[CollapseDebug] collapse rAF started, before set height=', wrapper.style.height, 'scrollHeight=', wrapper.scrollHeight)
+        wrapper.style.height = '0'
+        wrapper.style.opacity = '0'
+        wrapper.style.transform = 'translateY(6px) scale(0.99)'
+        console.log('[CollapseDebug] collapse rAF after set height=', wrapper.style.height)
+      })
+      // 动画结束后允许 v-show 隐藏
+      setTimeout(() => {
+        isAnimating.value = false
+        console.log('[CollapseDebug] collapse animation ended')
+      }, DURATION + 50)
+    } else {
+      // 展开：强制显示元素，确保能读取正确高度
+      isAnimating.value = true
+      wrapper.style.display = 'block'
+      wrapper.style.transition = 'none'
+      wrapper.style.height = 'auto'
+      void wrapper.offsetHeight
+      const targetH = wrapper.scrollHeight
+      console.log('[CollapseDebug] expand start targetH:', targetH)
+      // 回到起始状态
+      wrapper.style.height = '0'
+      wrapper.style.opacity = '0'
+      wrapper.style.transform = 'translateY(6px) scale(0.99)'
+      void wrapper.offsetHeight
+      wrapper.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-out 20ms, transform ${DURATION}ms ${EASE} 10ms`
+      console.log('[CollapseDebug] expand animation started')
+      requestAnimationFrame(() => {
+        console.log('[CollapseDebug] expand rAF started')
+        wrapper.style.height = `${targetH}px`
+        wrapper.style.opacity = '1'
+        wrapper.style.transform = ''
+      })
+      // 动画结束后允许 v-show 正常工作
+      setTimeout(() => {
+        isAnimating.value = false
+        console.log('[CollapseDebug] expand animation ended')
+      }, DURATION + 50)
+    }
+  },
+  { flush: 'post' }
+)
 
 function globalIndexOf(localIndex: number): number {
   return startIdx.value + localIndex
@@ -161,77 +244,6 @@ function onItemContextMenu(event: MouseEvent, item: SearchResult, localIndex: nu
 
 const DURATION = 300
 const EASE = 'cubic-bezier(0.25, 0, 0.15, 1)'
-
-function finishTransition(node: HTMLElement, done: () => void) {
-  let finished = false
-  const finish = () => {
-    if (finished) return
-    finished = true
-    node.removeEventListener('transitionend', onEnd)
-    node.style.height = ''
-    node.style.opacity = ''
-    node.style.transform = ''
-    node.style.transition = ''
-    done()
-  }
-  const onEnd = (event: TransitionEvent) => {
-    if (event.target === node) finish()
-  }
-
-  node.addEventListener('transitionend', onEnd)
-  window.setTimeout(finish, DURATION + 80)
-}
-
-function onCollapseBeforeEnter(el: Element) {
-  const node = el as HTMLElement
-  // 记录展开后的自然高度, expand 时用
-  node.dataset.naturalHeight = String(node.scrollHeight)
-  // 起点: 折叠态
-  node.style.height = '0'
-  node.style.opacity = '0'
-  node.style.transform = 'translateY(6px) scale(0.99)'
-}
-
-function onCollapseEnter(el: Element, done: () => void) {
-  const node = el as HTMLElement
-  const targetH = parseInt(node.dataset.naturalHeight || '0', 10)
-  if (targetH <= 0) { done(); return }
-
-  // 设置 transition, 先确保浏览器处理了折叠态
-  node.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-out 20ms, transform ${DURATION}ms ${EASE} 10ms`
-  // 强制 reflow, 让浏览器记录初始状态
-  void node.offsetHeight
-
-  requestAnimationFrame(() => {
-    node.style.height = `${targetH}px`
-    node.style.opacity = '1'
-    node.style.transform = 'translateY(0) scale(1)'
-  })
-  finishTransition(node, done)
-}
-
-function onCollapseBeforeLeave(el: Element) {
-  const node = el as HTMLElement
-  // 钉住当前高度, 防止 Vue 移除元素后高度塌陷
-  node.style.height = `${node.scrollHeight}px`
-  node.style.opacity = '1'
-  node.style.transform = 'translateY(0) scale(1)'
-}
-
-function onCollapseLeave(el: Element, done: () => void) {
-  const node = el as HTMLElement
-  // 对称的缓动: 展开 ease-out (先慢后快), 收缩 ease-in (先快后慢)
-  node.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION - 40}ms ease-in 20ms, transform ${DURATION}ms ${EASE} 10ms`
-  // 强制 reflow 确保浏览器处理了起始状态
-  void node.offsetHeight
-
-  requestAnimationFrame(() => {
-    node.style.height = '0'
-    node.style.opacity = '0'
-    node.style.transform = 'translateY(6px) scale(0.99)'
-  })
-  finishTransition(node, done)
-}
 
 function onLayoutChange(key: string) {
   const mode = key as LayoutMode
@@ -283,14 +295,8 @@ function isItemHovered(localIndex: number): boolean {
       </div>
     </div>
 
-    <Transition
-      @before-enter="onCollapseBeforeEnter"
-      @enter="onCollapseEnter"
-      @before-leave="onCollapseBeforeLeave"
-      @leave="onCollapseLeave"
-    >
-      <div v-if="!collapsed" class="group-content-wrapper">
-        <div class="group-content-inner">
+    <div :id="`group-content-${id}`" class="group-content-wrapper">
+      <div class="group-content-inner">
           <Transition name="layout-fade" mode="out-in">
             <div :key="layoutMode" class="group-content" :class="`group-content--${layoutMode}`">
               <!-- list mode -->
@@ -366,7 +372,6 @@ function isItemHovered(localIndex: number): boolean {
           </Transition>
         </div>
       </div>
-    </Transition>
   </div>
 </template>
 

@@ -333,10 +333,7 @@ const groupStartIndices = computed(() => {
 })
 
 function onToggleGroup(groupId: string) {
-  const before = search.displayGroups.find(g => g.id === groupId)?.collapsed
   search.toggleGroupCollapse(groupId)
-  const after = search.displayGroups.find(g => g.id === groupId)?.collapsed
-  console.log('[SearchPage] onToggleGroup:', groupId, 'before:', before, 'after:', after)
 }
 
 /**
