@@ -291,11 +291,13 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   user-select: none;
   background: transparent;
   border-bottom: 1px solid var(--border-subtle);
-  transition: all var(--dur-fast) var(--ease-out);
+  transition: all var(--dur-normal) var(--ease-out);
 }
 
 .search-bar--focused {
   background: rgba(255, 255, 255, 0.015);
+  border-bottom-color: var(--border-default);
+  box-shadow: inset 0 -1px 0 var(--accent-soft);
 }
 
 .search-bar__left {

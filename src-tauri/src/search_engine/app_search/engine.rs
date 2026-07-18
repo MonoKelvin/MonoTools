@@ -373,7 +373,8 @@ impl crate::search_engine::search_source::SearchSource for AppSearchEngine {
 /// - 多 token: 每个 token 命中 name 加 APP_SCORE_FUZZY, 命中 path 加 APP_SCORE_TOKEN
 /// - 拼音首字母命中 → PINYIN_SCORE_INITIALS (例: "wj" → "微信")
 /// - 拼音全拼命中   → PINYIN_SCORE_FULL (例: "weixin" → "微信")
-/// - launch_count 加权: launch_count * APP_LAUNCH_COUNT_WEIGHT
+/// - 位置敏感加分: 匹配位置越靠前, 加分越高 (鼓励"开头匹配")
+/// - launch_count 加权: 使用对数缩放, 避免高频应用垄断
 ///
 /// 返回 0 表示不匹配, 调用方应据此过滤. 规则与 config::search::APP_SCORE_*
 /// 一一对应, 改阈值只动 config.
@@ -387,16 +388,36 @@ pub fn score_app_match(
 ) -> f32 {
     let name_lower = name.to_lowercase();
     let mut s = 0.0;
+    let mut best_match_pos = usize::MAX;
+
     if name_lower == query_lower {
         s += search_cfg::APP_SCORE_EXACT;
+        best_match_pos = 0;
     } else if name_lower.starts_with(query_lower) {
         s += search_cfg::APP_SCORE_PREFIX;
-    } else if name_lower.contains(query_lower) {
+        best_match_pos = 0;
+    } else if let Some(pos) = name_lower.find(query_lower) {
         s += search_cfg::APP_SCORE_SUBSTR;
+        best_match_pos = pos;
     }
+
+    // 位置敏感加分: 匹配越靠前, 额外加分越多
+    if best_match_pos != usize::MAX {
+        let pos_bonus = match best_match_pos {
+            0 => 15.0,       // 开头匹配
+            1..=3 => 8.0,    // 前几个字符内
+            _ => 3.0,        // 其他位置
+        };
+        s += pos_bonus;
+    }
+
     for term in query_lower.split_whitespace() {
-        if name_lower.contains(term) {
+        if let Some(pos) = name_lower.find(term) {
             s += search_cfg::APP_SCORE_FUZZY;
+            // term 级位置加分
+            if pos <= 1 {
+                s += 5.0;
+            }
         }
         if path_lower.contains(term) {
             s += search_cfg::APP_SCORE_TOKEN;
@@ -409,7 +430,13 @@ pub fn score_app_match(
             s += search_cfg::PINYIN_SCORE_FULL;
         }
     }
-    s += (launch_count as f32) * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
+
+    // 启动次数使用对数缩放: ln(count + 1) * weight
+    // 这样 1 次=0.35, 10次=1.2, 100次=2.3, 1000次=3.45
+    // 避免 1000 次启动的应用永远排在 100 次前面
+    let count_factor = ((launch_count as f32) + 1.0).ln();
+    s += count_factor * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
+
     s
 }
 
@@ -666,7 +693,7 @@ mod tests {
         );
     }
 
-    /// 多 token 搜索: 拆分后每段独立加分, 加 launch_count 权重.
+    /// 多 token 搜索: 拆分后每段独立加分, 加 launch_count 权重 (对数缩放).
     #[test]
     fn score_multi_term_and_launch_count() {
         let s0 = score_app_match(
@@ -685,21 +712,37 @@ mod tests {
             "",
             "",
         );
-        // launch_count=100 应再加 100*0.5=50
+        // launch_count=100 的对数加权: ln(101) * 0.5 ≈ 2.307
+        let expected_diff = (101.0_f32).ln() * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
         assert!(
-            (s_high - s0 - 100.0 * search_cfg::APP_LAUNCH_COUNT_WEIGHT).abs() < 0.01,
-            "launch_count 加权差值异常: s0={s0} s_high={s_high}"
+            (s_high - s0 - expected_diff).abs() < 0.01,
+            "launch_count 加权差值异常: s0={s0} s_high={s_high} expected_diff={expected_diff}"
         );
         // 多 token: "vs" 和 "code" 各加一次 FUZZY (命中 name)
         assert!(s0 > 0.0);
     }
 
     /// 不匹配返回 0 (而非负数, 调用方据此过滤).
+    /// 注意: 即使名称不匹配, launch_count 仍会贡献分数 (对数缩放).
     #[test]
     fn score_no_match_returns_zero() {
-        let s = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 100, "", "");
-        // 没任何匹配 → 0 + launch_count 加权 50
-        assert_eq!(s, 100.0 * search_cfg::APP_LAUNCH_COUNT_WEIGHT);
+        let s = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        // 没任何匹配 + launch_count=0 → 0
+        assert_eq!(s, 0.0);
+    }
+
+    /// launch_count 对数缩放: 验证高频应用不会线性垄断.
+    #[test]
+    fn score_launch_count_log_scaling() {
+        let s_1 = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 1, "", "");
+        let s_10 = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 10, "", "");
+        let s_100 = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 100, "", "");
+        // ln(2)*0.5 ≈ 0.347, ln(11)*0.5 ≈ 1.2, ln(101)*0.5 ≈ 2.3
+        assert!((s_1 - (2.0_f32).ln() * search_cfg::APP_LAUNCH_COUNT_WEIGHT).abs() < 0.01);
+        assert!(s_10 > s_1, "10次启动应高于1次: {s_10} > {s_1}");
+        assert!(s_100 > s_10, "100次启动应高于10次: {s_100} > {s_10}");
+        // 对数缩放: 100次 vs 1次 的差距远小于线性 (100*0.5=50)
+        assert!(s_100 - s_1 < 10.0, "对数缩放应限制差距: got {}", s_100 - s_1);
     }
 
     /// path 命中 token 应加 APP_SCORE_TOKEN.

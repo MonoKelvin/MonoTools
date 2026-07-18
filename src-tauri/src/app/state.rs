@@ -9,6 +9,7 @@ use crate::search_engine::file_search::FileSearchEngine;
 use crate::search_engine::SearchEngine;
 use crate::services::hotkey::HotkeyService;
 use crate::services::window::WindowService;
+use crate::services::window_monitor::WindowMonitorService;
 use std::sync::Arc;
 use std::sync::Mutex;
 use tauri::AppHandle;
@@ -27,6 +28,7 @@ pub struct AppState {
 
     pub hotkey: Arc<HotkeyService>,
     pub window: Arc<WindowService>,
+    pub window_monitor: Arc<Mutex<WindowMonitorService>>,
 
     pub is_dragging: Arc<Mutex<bool>>,
 }

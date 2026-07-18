@@ -38,7 +38,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background: transparent;
+  background: linear-gradient(180deg, rgba(255,255,255,0.018) 0%, rgba(255,255,255,0) 100%);
   border-top: 1px solid var(--border-subtle);
   box-shadow: var(--shadow-xl);
   overflow: hidden;

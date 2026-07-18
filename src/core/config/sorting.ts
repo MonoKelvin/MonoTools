@@ -47,18 +47,19 @@ export interface SmartSortWeights {
  * 智能排序权重配置.
  *
  * 权重设计原则:
- * - recommendation >> launchCount: 推荐项应该显著排在前面
- * - launchCount > nameMatch: 实际使用频率比名称匹配更重要
+ * - launchCount >> recommendation: 实际使用频率是最重要的信号
+ * - nameMatch 适中: 名称匹配作为辅助信号
  * - dirAccess 适中: 目录访问时间作为辅助信号
+ * - freshnessDecayPerHour: 每小时衰减比例, 24小时后衰减至约 50%
  *
  * 当前权重经过实测调优, 如需调整请同步修改注释中的说明.
  */
 export const SMART_WEIGHTS: SmartSortWeights = {
-  launchCount: 10,       // 每次访问 +10 分
+  launchCount: 25,       // 每次访问 +25 分 (对数缩放后, 大幅提升)
   nameMatch: 5,          // 名称命中 +5 分
   dirAccess: 8,          // 目录最近访问 +8 分
-  recommendation: 50,    // 智能推荐 +50 分 (高权重, 确保推荐项靠前)
-  freshnessDecayPerHour: 0.02, // 每小时衰减 2%
+  recommendation: 30,    // 智能推荐 +30 分 (降低, 让 launchCount 主导)
+  freshnessDecayPerHour: 0.029, // 每小时衰减 ~2.9% (半衰期 24 小时)
 }
 
 // ============================================================================

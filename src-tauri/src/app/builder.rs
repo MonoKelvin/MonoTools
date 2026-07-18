@@ -12,6 +12,7 @@ use crate::search_engine::file_search::FileSearchEngine;
 use crate::search_engine::SearchEngine;
 use crate::services::hotkey::HotkeyService;
 use crate::services::window::WindowService;
+use crate::services::window_monitor::WindowMonitorService;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem};
@@ -209,6 +210,11 @@ pub fn run() {
             let window_inner = WindowService::new(app_handle.clone());
             let window = Arc::new(window_inner);
 
+            // 启动窗口监控服务
+            let mut window_monitor = WindowMonitorService::new();
+            window_monitor.start(app_handle.clone());
+            let window_monitor = Arc::new(Mutex::new(window_monitor));
+
             let state: Arc<AppState> = Arc::new(AppState {
                 app: app_handle.clone(),
                 settings_repo,
@@ -221,6 +227,7 @@ pub fn run() {
                 search_engine,
                 hotkey,
                 window,
+                window_monitor,
                 is_dragging: Arc::new(Mutex::new(false)),
             });
             #[cfg(debug_assertions)]
@@ -370,6 +377,13 @@ pub fn run() {
 
             app.manage(state.clone());
 
+            // 确保窗口在 frontend_ready 之前保持隐藏.
+            // Tauri 在 Windows 上创建窗口时可能短暂显示, 即使 visible: false.
+            // 这里显式隐藏, 防止启动时出现透明窗口闪烁.
+            if let Some(w) = app_handle.get_webview_window("search") {
+                let _ = w.hide();
+            }
+
             #[cfg(debug_assertions)]
             log::info!("[boot] 同步 pin_to_top -> 窗口");
             if let Some(w) = app_handle.get_webview_window("search") {
@@ -445,6 +459,7 @@ pub fn run() {
             crate::app::ipc::delete_file_to_recycle_bin,
             crate::app::ipc::get_system_theme,
             crate::app::ipc::set_follow_system_theme,
+            crate::app::ipc::get_window_monitor_state,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

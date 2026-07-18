@@ -6,9 +6,15 @@ use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 #[cfg(windows)]
-use windows::core::w;
+use windows::core::{w, PCWSTR};
+#[cfg(windows)]
+use windows::Win32::Foundation::HWND;
 #[cfg(windows)]
 use windows::Win32::System::Registry::HKEY;
+#[cfg(windows)]
+use windows::Win32::UI::Shell::ShellExecuteW;
+#[cfg(windows)]
+use windows::Win32::UI::WindowsAndMessaging::SW_SHOW;
 
 /// 启动应用（非阻塞）
 pub fn launch(path: &str, args: &[String]) -> Result<u32> {
@@ -192,12 +198,69 @@ pub fn resolve_shortcut(path: &Path) -> Result<PathBuf> {
     Ok(PathBuf::from(target_path))
 }
 
+/// 通过 ShellExecuteW 启动 .lnk 快捷方式文件.
+///
+/// 与 `Command::new(path)` 直接启动 exe 不同, ShellExecuteW 会让 Windows
+/// 解析 .lnk 文件的所有属性 (目标路径、工作目录、启动参数、窗口状态等),
+/// 确保快捷方式按设计者意图正确启动.
+#[cfg(windows)]
+pub fn launch_lnk(lnk_path: &Path) -> Result<()> {
+    let wide: Vec<u16> = lnk_path
+        .to_string_lossy()
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+
+    let result = unsafe {
+        ShellExecuteW(
+            Some(HWND::default()),
+            w!("open"),
+            PCWSTR(wide.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOW,
+        )
+    };
+
+    // ShellExecuteW 返回值 <= 32 表示失败 (SE_ERR_* 错误码).
+    // HINSTANCE 在内部是一个指针, 转换为 usize 后与 32 比较.
+    let result_val = result.0 as usize;
+    if result_val <= 32 {
+        return Err(AppError::Other(format!(
+            "ShellExecuteW 启动快捷方式失败, 错误码: {}",
+            result_val
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+pub fn launch_lnk(_lnk_path: &Path) -> Result<()> {
+    Err(AppError::Other("非 Windows 平台不支持 .lnk 快捷方式".to_string()))
+}
+
 /// 从 SearchResult 派发
 pub fn launch_str(item: &crate::search_engine::models::SearchResult) -> Result<()> {
     use crate::search_engine::models::SearchAction;
     match &item.action {
         SearchAction::Launch(path) => {
-            launch(path, &[])?;
+            // 对于 .lnk 快捷方式, 使用 ShellExecuteW 而非 Command::new,
+            // 确保 Windows 正确解析快捷方式的所有属性 (目标/工作目录/参数).
+            let path_buf = std::path::PathBuf::from(path);
+            let is_lnk = path_buf
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.eq_ignore_ascii_case("lnk"))
+                .unwrap_or(false);
+            if is_lnk {
+                #[cfg(windows)]
+                launch_lnk(&path_buf)?;
+                #[cfg(not(windows))]
+                launch(path, &[])?;
+            } else {
+                launch(path, &[])?;
+            }
         }
         SearchAction::Open(path) => {
             open_path(&PathBuf::from(path))?;

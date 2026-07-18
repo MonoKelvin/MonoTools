@@ -699,6 +699,23 @@ pub fn get_system_theme() -> Result<String, String> {
     }
 }
 
+/// 获取窗口监控状态 (当前激活应用 + 最近应用历史).
+#[tauri::command]
+pub async fn get_window_monitor_state(
+    state: State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    let monitor = state.window_monitor.lock().map_err(|e| e.to_string())?;
+    let snapshot = monitor.snapshot();
+    Ok(serde_json::json!({
+        "activeAppPath": snapshot.active_app_path,
+        "activeAppTitle": snapshot.active_app_title,
+        "recentApps": snapshot.recent_apps.iter().map(|a| serde_json::json!({
+            "path": &a.path,
+            "title": &a.title,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
 /// 设置是否跟随系统主题.
 #[tauri::command]
 pub async fn set_follow_system_theme(

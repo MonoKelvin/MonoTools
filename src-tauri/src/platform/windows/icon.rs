@@ -850,10 +850,10 @@ fn find_content_bounds(rgba: &[u8], width: u32, height: u32) -> Option<(u32, u32
                 if y < min_y as usize {
                     min_y = y as i32;
                 }
-                if x > max_x as usize {
+                if x as i32 > max_x {
                     max_x = x as i32;
                 }
-                if y > max_y as usize {
+                if y as i32 > max_y {
                     max_y = y as i32;
                 }
             }
@@ -1209,5 +1209,211 @@ mod tests {
         let ex: Box<dyn IconExtractor> = Box::new(WindowsIconExtractor);
         let platform = ex.platform_name();
         assert_eq!(platform, "windows");
+    }
+
+    // === autocrop_and_center 单元测试 ===
+
+    /// 全透明 32x32 → find_content_bounds 返回 None → autocrop_and_center 返回 None.
+    #[test]
+    fn autocrop_returns_none_for_fully_transparent() {
+        let rgba = vec![0u8; 32 * 32 * 4];
+        let result = autocrop_and_center(&rgba, 32, 32);
+        assert!(result.is_none(), "全透明图像不应触发裁剪");
+    }
+
+    /// 内容占满整个画布 (100%) → 不触发裁剪 (area_ratio >= MIN_AREA_RATIO).
+    #[test]
+    fn autocrop_returns_none_when_content_fills_canvas() {
+        // 32x32 全不透明渐变, 内容占比 = 100%
+        let mut rgba = Vec::with_capacity(32 * 32 * 4);
+        for y in 0..32 {
+            for x in 0..32 {
+                rgba.push(x as u8);
+                rgba.push(y as u8);
+                rgba.push(128);
+                rgba.push(255);
+            }
+        }
+        let result = autocrop_and_center(&rgba, 32, 32);
+        assert!(result.is_none(), "满画布内容不应触发裁剪");
+    }
+
+    /// 小图标 (中心 8x8 不透明方块, 其余透明) → 应触发裁剪并放大.
+    /// 8x8 / 32x32 = 6.25% < 35% (MIN_AREA_RATIO), 应被放大到 ~92% (MAX_SCALE_RATIO).
+    #[test]
+    fn autocrop_enlarges_small_centered_icon() {
+        let size = 32u32;
+        let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+        // 在中心画一个 8x8 的红色方块 (alpha=255)
+        let icon_size = 8u32;
+        let offset = (size - icon_size) / 2; // 12
+        for y in offset..(offset + icon_size) {
+            for x in offset..(offset + icon_size) {
+                let idx = ((y * size + x) * 4) as usize;
+                rgba[idx] = 255;     // R
+                rgba[idx + 3] = 255; // A
+            }
+        }
+
+        let result = autocrop_and_center(&rgba, size, size);
+        assert!(result.is_some(), "小图标应触发裁剪放大");
+        let processed = result.unwrap();
+        assert_eq!(processed.len(), (size * size * 4) as usize);
+
+        // 验证中心区域有红色像素 (放大后的图标应该覆盖大部分画布)
+        let mut red_count = 0;
+        for px in processed.chunks_exact(4) {
+            if px[0] > 128 && px[3] > 128 {
+                red_count += 1;
+            }
+        }
+        // 放大到 92% 后, 红色像素应远多于原始 64 个
+        assert!(
+            red_count > 200,
+            "放大后红色像素应显著增多 (实际: {})",
+            red_count
+        );
+    }
+
+    /// 内容偏左上的图标 → 裁剪后应居中放置.
+    /// 验证 autocrop 不仅放大, 还会将内容居中.
+    #[test]
+    fn autocrop_centers_offset_content() {
+        let size = 32u32;
+        let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+        // 在左上角 (0,0) 开始画 10x10 蓝色方块
+        let icon_size = 10u32;
+        for y in 0..icon_size {
+            for x in 0..icon_size {
+                let idx = ((y * size + x) * 4) as usize;
+                rgba[idx + 2] = 255; // B
+                rgba[idx + 3] = 255; // A
+            }
+        }
+
+        // 10x10 / 32x32 = 9.7% < 35%, 应触发裁剪
+        let result = autocrop_and_center(&rgba, size, size);
+        assert!(result.is_some(), "偏置小图标应触发裁剪");
+        let processed = result.unwrap();
+
+        // 验证蓝色像素在输出中大致居中 (中心区域有蓝色)
+        let center_y = size / 2;
+        let center_x = size / 2;
+        let center_idx = ((center_y * size + center_x) * 4) as usize;
+        // 放大后的图标应该覆盖中心
+        assert!(
+            processed[center_idx + 2] > 0 || processed[center_idx + 3] > 0,
+            "放大后中心附近应有内容"
+        );
+    }
+
+    /// 验证 find_content_bounds 正确识别非透明像素的边界.
+    #[test]
+    fn find_content_bounds_detects_correct_bbox() {
+        let size = 16u32;
+        let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+        // 在 (2,3) 到 (5,7) 画一个矩形 (宽4高5)
+        for y in 3..8 {
+            for x in 2..6 {
+                let idx = ((y * size + x) * 4) as usize;
+                rgba[idx + 3] = 255;
+            }
+        }
+
+        let bounds = find_content_bounds(&rgba, size, size);
+        assert!(bounds.is_some());
+        let (left, top, right, bottom) = bounds.unwrap();
+        assert_eq!(left, 2, "left 应为 2");
+        assert_eq!(top, 3, "top 应为 3");
+        assert_eq!(right, 5, "right 应为 5");
+        assert_eq!(bottom, 7, "bottom 应为 7");
+    }
+
+    /// 验证 crop_rgba 正确裁剪指定区域.
+    #[test]
+    fn crop_rgba_extracts_correct_region() {
+        let src_w = 8u32;
+        let src_h = 8u32;
+        let mut src = vec![0u8; (src_w * src_h * 4) as usize];
+
+        // 填充可识别的模式: 每个像素的 R = x, G = y
+        for y in 0..src_h {
+            for x in 0..src_w {
+                let idx = ((y * src_w + x) * 4) as usize;
+                src[idx] = x as u8;       // R = x
+                src[idx + 1] = y as u8;   // G = y
+                src[idx + 3] = 255;
+            }
+        }
+
+        // 裁剪 (2,1) 开始的 3x2 区域
+        let cropped = crop_rgba(&src, src_w, src_h, 2, 1, 3, 2);
+        assert_eq!(cropped.len(), (3 * 2 * 4) as usize);
+
+        // 验证第一个像素 (原图的 2,1)
+        assert_eq!(cropped[0], 2, "R 应等于原 x=2");
+        assert_eq!(cropped[1], 1, "G 应等于原 y=1");
+
+        // 验证第二行第一个像素 (原图的 2,2)
+        let row1_start = (3 * 4) as usize;
+        assert_eq!(cropped[row1_start], 2, "第二行 R 应等于原 x=2");
+        assert_eq!(cropped[row1_start + 1], 2, "第二行 G 应等于原 y=2");
+    }
+
+    /// 验证 resize_rgba_bilinear 正确缩放图像.
+    #[test]
+    fn resize_rgba_bilinear_scales_correctly() {
+        // 2x2 源图像: 左上红, 右上绿, 左下蓝, 右下白
+        let src = vec![
+            255, 0, 0, 255,   0, 255, 0, 255,
+            0, 0, 255, 255,   255, 255, 255, 255,
+        ];
+
+        let dst = resize_rgba_bilinear(&src, 2, 2, 4, 4);
+        assert_eq!(dst.len(), 4 * 4 * 4);
+
+        // 左上角 (0,0) 应接近红色
+        assert!(dst[0] > 200, "左上角应偏红");
+        // 右下角 (3,3) 应接近白色
+        let last_px_start = (3 * 4 + 3) * 4;
+        assert!(dst[last_px_start] > 200, "右下角 R 应偏白");
+        assert!(dst[last_px_start + 1] > 200, "右下角 G 应偏白");
+        assert!(dst[last_px_start + 2] > 200, "右下角 B 应偏白");
+    }
+
+    /// 验证 autocrop 阈值变更 (0.35) 的效果:
+    /// 一个占 50% 面积的图标 (16x16 内容在 32x32 画布上)
+    /// 旧阈值 0.6 会触发放大, 新阈值 0.35 不应触发.
+    #[test]
+    fn autocrop_threshold_respects_new_ratio() {
+        let size = 32u32;
+        let mut rgba = vec![0u8; (size * size * 4) as usize];
+
+        // 画一个 16x16 的方块 (面积比 = 25%, 仍 < 35%, 应触发)
+        for y in 0..16 {
+            for x in 0..16 {
+                let idx = ((y * size + x) * 4) as usize;
+                rgba[idx + 3] = 255;
+            }
+        }
+
+        // 16*16 / 32*32 = 25% < 35%, 应触发裁剪
+        let result = autocrop_and_center(&rgba, size, size);
+        assert!(result.is_some(), "25% 面积比应触发裁剪 (阈值 0.35)");
+
+        // 再测试 60% 面积比 (不触发)
+        let mut rgba2 = vec![0u8; (size * size * 4) as usize];
+        // 20x20 = 400 / 1024 ≈ 39% > 35%, 不触发
+        for y in 0..20 {
+            for x in 0..20 {
+                let idx = ((y * size + x) * 4) as usize;
+                rgba2[idx + 3] = 255;
+            }
+        }
+        let result2 = autocrop_and_center(&rgba2, size, size);
+        assert!(result2.is_none(), "39% 面积比不应触发裁剪 (阈值 0.35)");
     }
 }

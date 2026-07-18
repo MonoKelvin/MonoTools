@@ -25,6 +25,7 @@ import {
   FileArchive, File, CornerDownLeft
 } from "@lucide/vue"
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
+import { useAdaptiveText } from '@/utils/adaptiveText'
 import { resultTypeMeta } from '../utils/resultTypeMeta'
 import { ICON_CONFIG } from '@/core/config'
 
@@ -44,6 +45,43 @@ const emit = defineEmits<{
 }>()
 // 抑制 "声明但未使用" 警告 —�?保留 emit 以便父级透传扩展事件.
 void emit
+
+/**
+ * 自适应标题文字: 优先缩小字体, 超出则省略号.
+ */
+const {
+  containerRef: titleContainerRef,
+  displayText: adaptiveTitle,
+  displayLines: adaptiveTitleLines,
+  currentFontSize: titleFontSize,
+  isTruncated: titleIsTruncated,
+} = useAdaptiveText(() => props.result?.title || '', {
+  maxFontSize: 13.5,
+  minFontSize: 9,
+  fontWeight: '500',
+  padding: 4,
+  whiteSpace: 'nowrap',
+  maxLines: undefined,
+})
+
+/**
+ * 自适应副标题 (路径) 文字.
+ */
+const {
+  containerRef: subtitleContainerRef,
+  displayText: adaptiveSubtitle,
+  displayLines: adaptiveSubtitleLines,
+  currentFontSize: subtitleFontSize,
+  isTruncated: subtitleIsTruncated,
+} = useAdaptiveText(() => props.result?.subtitle || '', {
+  maxFontSize: 11.5,
+  minFontSize: 9,
+  fontWeight: '400',
+  fontFamily: 'var(--font-mono)',
+  padding: 4,
+  whiteSpace: 'nowrap',
+  maxLines: undefined,
+})
 
 const contentRef = ref<HTMLElement | null>(null)
 const titleRef = ref<HTMLElement | null>(null)
@@ -202,25 +240,31 @@ onBeforeUnmount(() => {
         alt=""
       />
       <component
-        v-else
-        :is="iconState.value || IconComponent"
-        :size="32"
-        :stroke-width="2"
-      />
+          v-else
+          :is="iconState.value || IconComponent"
+          :size="18"
+          :stroke-width="2"
+        />
     </div>
 
     <div class="result-item__content" ref="contentRef">
       <div
         class="result-item__title"
-        ref="titleRef"
-        v-tooltip="titleTooltip"
-      ></div>
+        ref="titleContainerRef"
+        :style="{ fontSize: titleFontSize + 'px' }"
+        :title="titleIsTruncated ? (result.title || '') : ''"
+      >
+        {{ adaptiveTitle }}
+      </div>
       <div
         v-if="result.subtitle"
         class="result-item__subtitle"
-        ref="subtitleRef"
-        v-tooltip="subtitleTooltip"
-      ></div>
+        ref="subtitleContainerRef"
+        :style="{ fontSize: subtitleFontSize + 'px' }"
+        :title="subtitleIsTruncated ? (result.subtitle || '') : ''"
+      >
+        {{ adaptiveSubtitle }}
+      </div>
     </div>
 
     <div class="result-item__meta">
@@ -238,7 +282,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  padding: 7px 12px;
+  padding: 5px 14px;
   cursor: pointer;
   user-select: none;
   background: transparent;
@@ -246,17 +290,28 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  transition: color var(--dur-fast) var(--ease-out);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.result-item:hover {
+  background: var(--list-hover-bg);
+}
+
+.result-item--active {
+  background: var(--list-selected-bg);
 }
 
 .result-item__icon {
   flex-shrink: 0;
-  width: 60px;
-  height: 60px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-tertiary);
   transition:
@@ -281,7 +336,7 @@ onBeforeUnmount(() => {
 
 .result-item:hover .result-item__icon {
   color: var(--text-secondary);
-  background: var(--list-hover-bg);
+  background: rgba(255, 255, 255, 0.04);
   transform: scale(1.04);
 }
 
@@ -307,6 +362,11 @@ onBeforeUnmount(() => {
   text-rendering: optimizeLegibility;
   letter-spacing: -0.005em;
   transition: color var(--dur-fast) var(--ease-out);
+}
+
+.result-title-line {
+  display: block;
+  line-height: 1.35;
 }
 
 .result-item__subtitle {

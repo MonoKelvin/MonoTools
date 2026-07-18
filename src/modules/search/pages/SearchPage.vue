@@ -2,7 +2,7 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed } from 'vue'
 import { Pin, Clock, Settings, Terminal, Sparkles, Folder } from '@lucide/vue'
 import { useSearchStore, GROUP_ID } from '@/modules/search'
-import type { DisplayGroup } from '@/modules/search'
+import type { DisplayGroup, GroupId } from '@/modules/search'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { useSettingsStore } from '@/core/stores/settings'
@@ -54,10 +54,11 @@ const fixWindowWidth = async () => {
   if (!isTauri) return
   try {
     const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow')
+    const { LogicalSize } = await import('@tauri-apps/api/dpi')
     const win = WebviewWindow.getCurrent()
     const currentSize = await win.innerSize()
     if (Math.abs(currentSize.width - WINDOW_FIXED_WIDTH) > 1) {
-      await win.setSize({ width: WINDOW_FIXED_WIDTH, height: currentSize.height })
+      await win.setSize(new LogicalSize(WINDOW_FIXED_WIDTH, currentSize.height))
     }
   } catch {}
 }
@@ -332,7 +333,7 @@ const groupStartIndices = computed(() => {
   return map
 })
 
-function onToggleGroup(groupId: string) {
+function onToggleGroup(groupId: GroupId) {
   search.toggleGroupCollapse(groupId)
 }
 
@@ -361,31 +362,29 @@ onMounted(async () => {
 
   unlistenIndexProgress = await listenEvent('index_progress', handleIndexProgress)
 
+  // 先完成数据加载和布局, 再通知后端显示窗口.
+  // 这样窗口一出现就是完整的主界面, 避免透明窗口闪烁.
+  await search.initialLoad().catch(() => undefined)
+  await search.loadPinned().catch(() => undefined)
+  await settings.load().catch(() => undefined)
+  await tryRegisterHotkey().catch(() => undefined)
+  await fixWindowWidth().catch(() => undefined)
+  await search.loadIndexStatus().catch(() => undefined)
+
+  if (containerRef.value && typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(syncWindowHeight)
+    resizeObserver.observe(containerRef.value)
+    syncWindowHeight()
+  }
+
+  // 再多等一帧, 确保 DOM 布局完全稳定后再显示窗口.
+  await nextTick()
   await nextTick()
   try {
     const { call } = await import('@/services/tauri')
     await call('frontend_ready', {})
   } catch {
     // 非 tauri 环境(浏览器 mock)忽略即可.
-  }
-
-  // 窗口在 tauri.conf.json 中默认不可见，前端就绪后主动显示。
-  if (isTauri) {
-    windowApi.show().catch(() => undefined)
-  }
-
-  search.initialLoad().catch(() => undefined)
-  // 启动后从后端拉取已 pin 的 id 列表, 让"固定项目"分组即时显示.
-  search.loadPinned().catch(() => undefined)
-  settings.load().catch(() => undefined)
-  tryRegisterHotkey().catch(() => undefined)
-  fixWindowWidth().catch(() => undefined)
-  search.loadIndexStatus().catch(() => undefined)
-
-  if (containerRef.value && typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(syncWindowHeight)
-    resizeObserver.observe(containerRef.value)
-    syncWindowHeight()
   }
 })
 

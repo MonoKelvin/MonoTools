@@ -22,6 +22,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
 import { AppWindow, Monitor, Package, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/modules/search'
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
+import { useAdaptiveText } from '@/utils/adaptiveText'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
 
 const props = defineProps<{
@@ -173,6 +174,24 @@ const badgeInfo = computed(() => {
   }
   return null
 })
+
+/**
+ * 自适应标题文字: 优先缩小字体, 超出则省略号, hover 显示 tooltip.
+ */
+const {
+  containerRef: titleContainerRef,
+  displayText: adaptiveTitle,
+  displayLines: adaptiveTitleLines,
+  currentFontSize: titleFontSize,
+  isTruncated: titleIsTruncated,
+} = useAdaptiveText(() => props.result?.title || '', {
+  maxFontSize: 14,
+  minFontSize: 10,
+  fontWeight: '600',
+  padding: 4,
+  whiteSpace: 'nowrap',
+  maxLines: undefined,
+})
 </script>
 
 <template>
@@ -223,7 +242,14 @@ const badgeInfo = computed(() => {
       </div>
     </div>
 
-    <div class="app-result-item__title">{{ result.title }}</div>
+    <div
+      class="app-result-item__title"
+      ref="titleContainerRef"
+      :style="{ fontSize: titleFontSize + 'px' }"
+      :title="titleIsTruncated ? (result?.title || '') : ''"
+    >
+      {{ adaptiveTitle }}
+    </div>
 
     <div class="app-result-item__meta">
       <CornerDownLeft :size="15" :stroke-width="1.8" class="app-result-item__enter" />
@@ -252,7 +278,7 @@ const badgeInfo = computed(() => {
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  padding: 7px 12px;
+  padding: 5px 14px;
   cursor: pointer;
   user-select: none;
   background: transparent;
@@ -260,33 +286,47 @@ const badgeInfo = computed(() => {
   overflow: visible;
   border: 1px solid transparent;
   border-radius: var(--radius-md);
-  transition: color var(--dur-fast) var(--ease-out);
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out),
+    transform var(--dur-fast) var(--ease-out);
+}
+
+.app-result-item:hover {
+  background: var(--list-hover-bg);
+}
+
+.app-result-item--active {
+  background: var(--list-selected-bg);
 }
 
 .app-result-item__icon {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: rgba(255, 255, 255, 0.02);
   color: var(--text-tertiary);
   overflow: visible;
   position: relative;
   transition:
     color var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
+    transform var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
 }
 
 .app-result-item:hover .app-result-item__icon {
   color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
   transform: scale(1.04);
 }
 
 .app-result-item--active .app-result-item__icon {
   color: var(--accent);
+  background: var(--accent-soft);
   filter: drop-shadow(0 0 6px var(--accent-glow));
   transform: scale(1.06);
 }
@@ -350,13 +390,13 @@ const badgeInfo = computed(() => {
 
 /* === Monogram 单字母占位符 (无真实图标时) === */
 .app-result-item__monogram {
-  width: 60px;
-  height: 60px;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  font-size: 26px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.02em;
@@ -393,6 +433,11 @@ const badgeInfo = computed(() => {
   letter-spacing: -0.005em;
   text-rendering: optimizeLegibility;
   transition: color var(--dur-fast) var(--ease-out);
+}
+
+.app-title-line {
+  display: block;
+  line-height: 1.35;
 }
 
 .app-result-item__meta {
