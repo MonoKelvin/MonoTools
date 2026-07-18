@@ -671,8 +671,10 @@ export const useSearchStore = defineStore('search', () => {
     /**
      * 直接按 index 选中, 同时设置 ID 锚点. 给单击 / 双击 / hover 场景用.
      * 边界保护: 越界时 clamp 到 [0, max-1].
+     *
+     * @param fromClick - 是否来自用户点击；点击时抑制跨分组自动滚动.
      */
-    function selectByIndex(idx: number) {
+    function selectByIndex(idx: number, fromClick = false) {
         if (displayMax.value === 0) {
             selectedIndex.value = 0
             selectedGlobalId.value = null

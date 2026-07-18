@@ -26,7 +26,7 @@ pub mod icon {
     pub const MIN_BASE64_LEN: usize = 256;
 
     /// PNG magic 89 50 4E 47 0D 0A 1A 0A 的 base64 编码.
-    pub const PNG_MAGIC_BASE64: &'static str = "iVBORw0KGgo";
+    pub const PNG_MAGIC_BASE64: &str = "iVBORw0KGgo";
 
     /// 256x256 RGBA 图标的字节数 (4 通道).
     /// 用于空白检测时判断 buffer 是否完整.
@@ -106,6 +106,13 @@ pub mod search {
     /// 应用搜索评分: token 命中得分.
     pub const APP_SCORE_TOKEN: f32 = 5.0;
 
+    /// 拼音搜索评分: 首字母命中得分 (例: "wj" → "微信").
+    /// 低于 SUBSTR (50) 但高于 FUZZY (20): 拼音是辅助匹配, 不应超过名称子串.
+    pub const PINYIN_SCORE_INITIALS: f32 = 30.0;
+    /// 拼音搜索评分: 完整拼音命中得分 (例: "weixin" → "微信").
+    /// 与 SUBSTR 持平: 全拼和子串同等可信.
+    pub const PINYIN_SCORE_FULL: f32 = 50.0;
+
     /// SearchCategory 权重 (在 search::apply_category_weight 中使用).
     pub const CATEGORY_WEIGHT_APPS: f32 = 0.8;
     pub const CATEGORY_WEIGHT_COMMANDS: f32 = 1.2;
@@ -125,7 +132,7 @@ pub mod search {
 
 pub mod fs {
     /// 文件索引 SQLite DB 名.
-    pub const DB_NAME: &'static str = "monotools_file_index.db";
+    pub const DB_NAME: &str = "monotools_file_index.db";
     /// 当前 schema 版本 (DB 升级时 +1).
     pub const SCHEMA_VERSION: i64 = 9;
     /// SQLite PRAGMA page_size.
@@ -158,13 +165,13 @@ pub mod fs {
 
 pub mod paths {
     /// ProgramData 下的开始菜单 Programs 路径片段.
-    pub const COMMON_START_MENU: &'static str = "Microsoft\\Windows\\Start Menu\\Programs";
+    pub const COMMON_START_MENU: &str = "Microsoft\\Windows\\Start Menu\\Programs";
     /// APPDATA (roaming) 下的开始菜单 Programs 路径片段.
-    pub const USER_START_MENU: &'static str = "Microsoft\\Windows\\Start Menu\\Programs";
+    pub const USER_START_MENU: &str = "Microsoft\\Windows\\Start Menu\\Programs";
     /// 用户桌面目录名.
-    pub const USER_DESKTOP: &'static str = "Desktop";
+    pub const USER_DESKTOP: &str = "Desktop";
     /// Windows 资源管理器.
-    pub const EXPLORER_EXE: &'static str = "explorer.exe";
+    pub const EXPLORER_EXE: &str = "explorer.exe";
     /// `CreateProcess` CREATE_NO_WINDOW 标志位.
     pub const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
@@ -175,7 +182,7 @@ pub mod paths {
 
 pub mod ipc_events {
     /// 索引进度事件 (Tauri app.emit).
-    pub const INDEX_PROGRESS: &'static str = "index_progress";
+    pub const INDEX_PROGRESS: &str = "index_progress";
     /// 前端 ready 事件.
-    pub const FRONTEND_READY: &'static str = "frontend_ready";
+    pub const FRONTEND_READY: &str = "frontend_ready";
 }

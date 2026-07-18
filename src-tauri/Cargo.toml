@@ -51,6 +51,12 @@ anyhow = "1.0"
 futures = "0.3"
 png = "0.18.1"
 base64 = "0.22.1"
+pinyin = { version = "0.11", default-features = false, features = ["plain"] }
+
+# Benchmark-only dev-dependency: hdr histogram for P50/P99 latency reporting.
+# Added 2026-07 for Phase 0 performance baseline suite (Phase 1.1 pinyin indexing).
+[dev-dependencies]
+hdrhistogram = "7.5"
 
 # Windows only
 [target.'cfg(windows)'.dependencies]
@@ -69,6 +75,7 @@ windows = { version = "0.62", features = [
     "Win32_UI_Controls",
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
+    "Win32_System_Diagnostics_Debug",
 ] }
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",

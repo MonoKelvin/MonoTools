@@ -369,6 +369,11 @@ onMounted(async () => {
     // 非 tauri 环境(浏览器 mock)忽略即可.
   }
 
+  // 窗口在 tauri.conf.json 中默认不可见，前端就绪后主动显示。
+  if (isTauri) {
+    windowApi.show().catch(() => undefined)
+  }
+
   search.initialLoad().catch(() => undefined)
   // 启动后从后端拉取已 pin 的 id 列表, 让"固定项目"分组即时显示.
   search.loadPinned().catch(() => undefined)

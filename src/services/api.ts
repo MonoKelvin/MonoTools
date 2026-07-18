@@ -115,6 +115,14 @@ export const themeApi = {
     set(appearance: { mode: ThemeMode; accent: string }) {
         return call<void>('set_appearance', { appearance })
     },
+    /** 获取 Windows 系统当前主题 ("light" 或 "dark") */
+    getSystemTheme() {
+        return call<string>('get_system_theme', {})
+    },
+    /** 设置是否跟随系统主题 */
+    setFollowSystemTheme(follow: boolean) {
+        return call<void>('set_follow_system_theme', { value: follow })
+    },
 }
 
 export const windowApi = {

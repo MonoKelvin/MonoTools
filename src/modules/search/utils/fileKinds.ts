@@ -13,7 +13,7 @@
  *   - font:     字体
  *   - design:   设计/原型
  *
- * 不在表内 → 落到 VirtualGroupedResults 的 "所有文件" 默认分组(或 "其他文件").
+ * 不在表内 → 落到"所有文件"默认分组(或"其他文件").
  */
 export type FileKind =
   | 'document'

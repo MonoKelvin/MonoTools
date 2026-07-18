@@ -25,3 +25,8 @@ mod icon_extraction_test;
 
 #[path = "rust/features/icon_extraction/test_frontend_api.rs"]
 mod icon_extraction_frontend_test;
+
+// Phase 0 performance baseline suite. Run with:
+//   cargo test --test monotools_it -- bench_search --nocapture
+#[path = "rust/benchmarks/search_bench.rs"]
+mod bench_search;

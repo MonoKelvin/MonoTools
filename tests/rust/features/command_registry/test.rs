@@ -125,7 +125,7 @@ pub async fn run_command_registry_tests() {
     assert!(!empty.success, "空命令应该报错");
     assert!(empty.message.contains("空命令"));
     reporter.add_test("空字符串派发");
-    reporter.finish_test("空字符串派发", empty.success == false, 0, &empty.message);
+    reporter.finish_test("空字符串派发", !empty.success, 0, &empty.message);
 
     logger.section("测试四: 未知 id / 命令");
     let reg = build_default_registry();
@@ -136,7 +136,7 @@ pub async fn run_command_registry_tests() {
     assert!(!r.success);
     assert!(r.message.contains("未知命令"));
     reporter.add_test("未知命令");
-    reporter.finish_test("未知命令", r.success == false, 0, &r.message);
+    reporter.finish_test("未知命令", !r.success, 0, &r.message);
     logger.success("未注册命令被正确拒绝");
 
     logger.section("测试五: 通过别名派发");
@@ -153,7 +153,7 @@ pub async fn run_command_registry_tests() {
         "别名派发",
         true,
         0,
-        &format!("alias='s' resolved to principal"),
+        "alias='s' resolved to principal",
     );
 
     logger.section("测试六: dispatch_str shell quoting");

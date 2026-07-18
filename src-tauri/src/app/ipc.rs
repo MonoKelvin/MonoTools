@@ -560,7 +560,7 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
     );
     let concurrency = concurrency.max(2);
 
-    let chunk_size = (pending.len() + concurrency - 1) / concurrency;
+    let chunk_size = pending.len().div_ceil(concurrency);
     let mut chunks: Vec<Vec<(usize, String)>> = Vec::with_capacity(concurrency);
     for chunk in pending.chunks(chunk_size) {
         chunks.push(chunk.to_vec());
@@ -646,4 +646,70 @@ pub async fn show_file_properties(path: String) -> Result<(), String> {
 pub async fn delete_file_to_recycle_bin(path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&path);
     crate::platform::windows::shell::delete_to_recycle_bin(&p).map_err(|e| e.to_string())
+}
+
+/// 获取 Windows 系统当前主题模式 ("light" 或 "dark").
+/// 读取注册表 HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize\AppsUseLightTheme.
+#[tauri::command]
+pub fn get_system_theme() -> Result<String, String> {
+    #[cfg(windows)]
+    {
+        use std::process::Command;
+
+        let output = Command::new("reg")
+            .args([
+                "query",
+                r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+                "/v",
+                "AppsUseLightTheme",
+            ])
+            .output()
+            .map_err(|e| format!("无法执行 reg query: {}", e))?;
+
+        if !output.status.success() {
+            // 如果注册表键不存在（如旧版 Windows），默认 dark
+            return Ok("dark".to_string());
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        // reg query 输出格式: "    AppsUseLightTheme    REG_DWORD    0x1"
+        for line in stdout.lines() {
+            if line.contains("AppsUseLightTheme") {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 3 {
+                    let value = parts[2];
+                    // 0x0 = dark, 0x1 = light
+                    if value == "0x0" || value == "0" {
+                        return Ok("dark".to_string());
+                    } else {
+                        return Ok("light".to_string());
+                    }
+                }
+            }
+        }
+
+        // 未找到值，默认 dark
+        Ok("dark".to_string())
+    }
+
+    #[cfg(not(windows))]
+    {
+        // 非 Windows 平台默认 dark
+        Ok("dark".to_string())
+    }
+}
+
+/// 设置是否跟随系统主题.
+#[tauri::command]
+pub async fn set_follow_system_theme(
+    state: State<'_, Arc<AppState>>,
+    value: bool,
+) -> Result<(), String> {
+    state
+        .settings_repo
+        .update(Box::new(move |s| {
+            s.follow_system_theme = value;
+        }))
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }

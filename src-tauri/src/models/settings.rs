@@ -1,4 +1,4 @@
-﻿use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -35,6 +35,9 @@ pub struct Settings {
     /// 窗口是否始终置顶
     #[serde(default = "default_pin_to_top")]
     pub pin_to_top: bool,
+    /// 是否跟随系统主题（light/dark）
+    #[serde(default)]
+    pub follow_system_theme: bool,
 }
 
 fn default_pin_to_top() -> bool {
@@ -80,6 +83,7 @@ impl Default for Settings {
                 "commands".into(),
             ],
             pin_to_top: true,
+            follow_system_theme: false,
         }
     }
 }
@@ -120,6 +124,11 @@ impl Settings {
             "pinToTop" | "pin_to_top" => {
                 if let Some(b) = value.as_bool() {
                     self.pin_to_top = b;
+                }
+            }
+            "followSystemTheme" | "follow_system_theme" => {
+                if let Some(b) = value.as_bool() {
+                    self.follow_system_theme = b;
                 }
             }
             _ => {

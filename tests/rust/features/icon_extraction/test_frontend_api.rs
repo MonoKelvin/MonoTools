@@ -191,7 +191,7 @@ pub async fn run_frontend_api_test() {
         .unwrap();
         writeln!(file).unwrap();
 
-        writeln!(file, "Expected PNG magic: {}", "iVBORw0KGgo").unwrap();
+        writeln!(file, "Expected PNG magic: iVBORw0KGgo").unwrap();
         writeln!(file).unwrap();
 
         writeln!(file, "Detailed results:").unwrap();

@@ -443,6 +443,8 @@ pub fn run() {
             crate::app::ipc::open_file_location,
             crate::app::ipc::show_file_properties,
             crate::app::ipc::delete_file_to_recycle_bin,
+            crate::app::ipc::get_system_theme,
+            crate::app::ipc::set_follow_system_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

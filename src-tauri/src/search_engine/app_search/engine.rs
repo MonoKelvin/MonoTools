@@ -1,4 +1,4 @@
-﻿//! 应用搜索引擎 - 索引安装的应用 + 启动项 + 启动文件夹
+//! 应用搜索引擎 - 索引安装的应用 + 启动项 + 启动文件夹
 use crate::core::config::search as search_cfg;
 use crate::core::error::Result;
 use crate::search_engine::models::{AppEntry, ResultType, SearchAction, SearchResult};
@@ -6,9 +6,10 @@ use crate::platform::windows::shell::resolve_shortcut;
 use crate::platform::windows::special_shortcuts::get_special_shortcut;
 use crate::repositories::SettingsRepo;
 use crate::utils::path::is_executable;
+use crate::utils::pinyin::to_pinyin;
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use walkdir::WalkDir;
 
@@ -147,11 +148,11 @@ impl AppSearchEngine {
                 None
             };
 
-            if special_sc.is_some() {
+            if let Some(sc) = special_sc {
                 // 特殊快捷方式：直接加入，不需要检查目标是否存在
-                let sc = special_sc.unwrap();
                 let name = sc.display_name.to_string();
                 let category = "System Tools".to_string();
+                let (pinyin_initials, pinyin_full) = pinyin_of(&name);
                 let entry = AppEntry {
                     id: uuid::Uuid::new_v4().to_string(),
                     name,
@@ -164,6 +165,10 @@ impl AppSearchEngine {
                     is_special_shortcut: true,
                     special_command: Some(sc.launch_command.to_string()),
                     special_args: Some(sc.launch_args.iter().map(|s| s.to_string()).collect()),
+                    pinyin_initials,
+                    pinyin_full,
+                    version: None,
+                    file_types: Vec::new(),
                 };
                 batch.push(entry);
                 continue;
@@ -202,6 +207,7 @@ impl AppSearchEngine {
                 continue;
             }
             let category = category_of(&target, &name);
+            let (pinyin_initials, pinyin_full) = pinyin_of(&name);
             let entry = AppEntry {
                 id: uuid::Uuid::new_v4().to_string(),
                 name,
@@ -214,6 +220,10 @@ impl AppSearchEngine {
                 is_special_shortcut: false,
                 special_command: None,
                 special_args: None,
+                pinyin_initials,
+                pinyin_full,
+                version: None,
+                file_types: Vec::new(),
             };
             batch.push(entry);
         }
@@ -278,7 +288,14 @@ impl AppSearchEngine {
 
         let mut scored: Vec<(f32, AppEntry)> = Vec::new();
         for app in cache.values() {
-            let s = score_app_match(&q, &app.name, &app.path.to_string_lossy(), app.launch_count);
+            let s = score_app_match(
+                &q,
+                &app.name,
+                &app.path.to_string_lossy(),
+                app.launch_count,
+                app.pinyin_initials.as_deref().unwrap_or(""),
+                app.pinyin_full.as_deref().unwrap_or(""),
+            );
             if s > 0.0 {
                 scored.push((s, app.clone()));
             }
@@ -354,11 +371,20 @@ impl crate::search_engine::search_source::SearchSource for AppSearchEngine {
 /// - 前缀匹配 → APP_SCORE_PREFIX
 /// - 子串匹配 → APP_SCORE_SUBSTR
 /// - 多 token: 每个 token 命中 name 加 APP_SCORE_FUZZY, 命中 path 加 APP_SCORE_TOKEN
+/// - 拼音首字母命中 → PINYIN_SCORE_INITIALS (例: "wj" → "微信")
+/// - 拼音全拼命中   → PINYIN_SCORE_FULL (例: "weixin" → "微信")
 /// - launch_count 加权: launch_count * APP_LAUNCH_COUNT_WEIGHT
 ///
 /// 返回 0 表示不匹配, 调用方应据此过滤. 规则与 config::search::APP_SCORE_*
 /// 一一对应, 改阈值只动 config.
-pub fn score_app_match(query_lower: &str, name: &str, path_lower: &str, launch_count: u32) -> f32 {
+pub fn score_app_match(
+    query_lower: &str,
+    name: &str,
+    path_lower: &str,
+    launch_count: u32,
+    pinyin_initials: &str,
+    pinyin_full: &str,
+) -> f32 {
     let name_lower = name.to_lowercase();
     let mut s = 0.0;
     if name_lower == query_lower {
@@ -375,12 +401,28 @@ pub fn score_app_match(query_lower: &str, name: &str, path_lower: &str, launch_c
         if path_lower.contains(term) {
             s += search_cfg::APP_SCORE_TOKEN;
         }
+        // 拼音匹配: 仅当 term 长度 ≤ 拼音长度时才有意义 (避免 "w" 误匹配 "x")
+        if !pinyin_initials.is_empty() && pinyin_initials.contains(term) {
+            s += search_cfg::PINYIN_SCORE_INITIALS;
+        }
+        if !pinyin_full.is_empty() && pinyin_full.contains(term) {
+            s += search_cfg::PINYIN_SCORE_FULL;
+        }
     }
     s += (launch_count as f32) * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
     s
 }
 
-fn category_of(path: &PathBuf, name: &str) -> String {
+/// 计算名称的拼音 (首字母 + 完整拼音).
+///
+/// 纯函数, 无 I/O. 仅当名称含中文字符时才返回 Some, 否则返回 None
+/// (避免对 "Chrome" 等纯英文应用做无用计算).
+fn pinyin_of(name: &str) -> (Option<String>, Option<String>) {
+    let info = to_pinyin(name);
+    (info.initials, info.full)
+}
+
+fn category_of(path: &Path, name: &str) -> String {
     let p = path.to_string_lossy().to_lowercase();
     let n = name.to_lowercase();
 
@@ -524,6 +566,7 @@ impl AppSearchEngine {
             // 先在 system32 中查找
             let path = system32.join(exe_name);
             if path.exists() {
+                let (pinyin_initials, pinyin_full) = pinyin_of(display_name);
                 batch.push(AppEntry {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: display_name.to_string(),
@@ -536,12 +579,17 @@ impl AppSearchEngine {
                     is_special_shortcut: false,
                     special_command: None,
                     special_args: None,
+                    pinyin_initials,
+                    pinyin_full,
+                    version: None,
+                    file_types: Vec::new(),
                 });
                 continue;
             }
             // 再在 syswow64 中查找
             let path = syswow64.join(exe_name);
             if path.exists() {
+                let (pinyin_initials, pinyin_full) = pinyin_of(display_name);
                 batch.push(AppEntry {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: display_name.to_string(),
@@ -554,6 +602,10 @@ impl AppSearchEngine {
                     is_special_shortcut: false,
                     special_command: None,
                     special_args: None,
+                    pinyin_initials,
+                    pinyin_full,
+                    version: None,
+                    file_types: Vec::new(),
                 });
             }
         }
@@ -566,9 +618,7 @@ impl AppSearchEngine {
             for entry in batch {
                 let key = entry.path.to_string_lossy().to_string();
                 // 避免覆盖已有的同名应用（用户可能自己安装了其他版本）
-                if !cache_write.contains_key(&key) {
-                    cache_write.insert(key, entry);
-                }
+                cache_write.entry(key).or_insert(entry);
             }
         }
 
@@ -584,17 +634,19 @@ mod tests {
     #[test]
     fn score_exact_match_returns_full() {
         // exact: "chrome" == "Chrome" (lowercase) → APP_SCORE_EXACT
-        let exact = score_app_match("chrome", "Chrome", r"c:\program files\chrome\chrome.exe", 0);
+        let exact = score_app_match("chrome", "Chrome", r"c:\program files\chrome\chrome.exe", 0, "", "");
         // prefix: "chrome" 是 "chrome browser" 的前缀 → APP_SCORE_PREFIX
-        let prefix = score_app_match("chrome", "Chrome Browser", r"c:\apps\chrome\browser.exe", 0);
+        let prefix = score_app_match("chrome", "Chrome Browser", r"c:\apps\chrome\browser.exe", 0, "", "");
         // substr: "chrome" 是 "Google Chrome" 的子串 (但不是前缀) → APP_SCORE_SUBSTR
         let substr = score_app_match(
             "chrome",
             "Google Chrome",
             r"c:\program files\google\chrome.exe",
             0,
+            "",
+            "",
         );
-        let _fuzzy = score_app_match("chrome", "Chrm", r"c:\apps\chrm\chrm.exe", 0);
+        let _fuzzy = score_app_match("chrome", "Chrm", r"c:\apps\chrm\chrm.exe", 0, "", "");
         assert!(
             exact >= search_cfg::APP_SCORE_EXACT,
             "完全匹配应至少给 EXACT 分数, got {exact}"
@@ -622,12 +674,16 @@ mod tests {
             "Visual Studio Code",
             r"c:\program files\vs\code.exe",
             0,
+            "",
+            "",
         );
         let s_high = score_app_match(
             "vs code",
             "Visual Studio Code",
             r"c:\program files\vs\code.exe",
             100,
+            "",
+            "",
         );
         // launch_count=100 应再加 100*0.5=50
         assert!(
@@ -641,7 +697,7 @@ mod tests {
     /// 不匹配返回 0 (而非负数, 调用方据此过滤).
     #[test]
     fn score_no_match_returns_zero() {
-        let s = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 100);
+        let s = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 100, "", "");
         // 没任何匹配 → 0 + launch_count 加权 50
         assert_eq!(s, 100.0 * search_cfg::APP_LAUNCH_COUNT_WEIGHT);
     }
@@ -654,12 +710,59 @@ mod tests {
             "MyApp",
             r"c:\program files\microsoft office\office16\outlook.exe",
             0,
+            "",
+            "",
         );
         // name 不含 "office" 但 path 命中 → 0 + APP_SCORE_TOKEN
         assert!(
             (s_path_hit - search_cfg::APP_SCORE_TOKEN).abs() < 0.01,
             "path token 命中应得 APP_SCORE_TOKEN, got {s_path_hit}"
         );
+    }
+
+    /// 拼音首字母命中应加 PINYIN_SCORE_INITIALS.
+    #[test]
+    fn score_pinyin_initials_match() {
+        // "wj" 命中 "微信" 的首字母 "wx"? 不, "wj" != "wx". 用正确的:
+        // "wx" 命中 "微信" (initials = "wx")
+        let s = score_app_match("wx", "微信", r"c:\apps\wechat.exe", 0, "wx", "weixin");
+        assert!(
+            (s - search_cfg::PINYIN_SCORE_INITIALS).abs() < 0.01,
+            "拼音首字母 'wx' 命中 '微信' 应得 PINYIN_SCORE_INITIALS, got {s}"
+        );
+    }
+
+    /// 拼音全拼命中应加 PINYIN_SCORE_FULL.
+    #[test]
+    fn score_pinyin_full_match() {
+        // "weixin" 命中 "微信" 的全拼 "weixin"
+        let s = score_app_match("weixin", "微信", r"c:\apps\wechat.exe", 0, "wx", "weixin");
+        assert!(
+            (s - search_cfg::PINYIN_SCORE_FULL).abs() < 0.01,
+            "拼音全拼 'weixin' 命中 '微信' 应得 PINYIN_SCORE_FULL, got {s}"
+        );
+    }
+
+    /// 拼音首字母 < 全拼 ≤ 子串: 拼音辅助匹配不应超过名称子串.
+    #[test]
+    fn score_pinyin_ordering() {
+        let initials = score_app_match("wx", "微信", "", 0, "wx", "weixin");
+        let full = score_app_match("weixin", "微信", "", 0, "wx", "weixin");
+        let substr = score_app_match("信", "微信", "", 0, "wx", "weixin");
+        // initials (30) < full (50) == substr (50)
+        assert!(
+            initials <= full && full <= substr,
+            "拼音首字母({initials}) <= 全拼({full}) <= 子串({substr})"
+        );
+    }
+
+    /// 无拼音数据时 (纯英文应用), 拼音参数为空串, 不影响原有评分.
+    #[test]
+    fn score_ascii_app_unchanged_with_empty_pinyin() {
+        let with_pinyin = score_app_match("chrome", "Chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        let without = score_app_match("chrome", "Chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        assert_eq!(with_pinyin, without, "空拼音不应改变纯英文应用的评分");
+        assert!(with_pinyin >= search_cfg::APP_SCORE_EXACT);
     }
 
     // === category_of 表驱动查表测试 ===

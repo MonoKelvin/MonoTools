@@ -647,7 +647,7 @@ fn run_search_test(
         }
     }
 
-    let rate = if results.len() > 0 {
+    let rate = if !results.is_empty() {
         valid_count as f64 / results.len() as f64 * 100.0
     } else {
         0.0
@@ -840,12 +840,10 @@ async fn test_usn_journal(
         0.0
     };
 
-    let passed = rate >= config.validity_threshold || changes.len() > 0;
+    let passed = rate >= config.validity_threshold || !changes.is_empty();
 
     let message = if changes.is_empty() {
-        format!(
-            "USN监控完成（非管理员模式），总变化数: 0, 创建: 0, 修改: 0, 删除: 0, 验证: 0/0 (0.0%)。提示：USN Journal 读取需要管理员权限"
-        )
+        "USN监控完成（非管理员模式），总变化数: 0, 创建: 0, 修改: 0, 删除: 0, 验证: 0/0 (0.0%)。提示：USN Journal 读取需要管理员权限".to_string()
     } else {
         format!(
             "USN监控完成，总变化数: {}, 创建: {}, 修改: {}, 删除: {}, 验证: {}/{} ({:.1}%)",

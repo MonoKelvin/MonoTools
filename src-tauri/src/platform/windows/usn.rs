@@ -1,4 +1,4 @@
-﻿//! NTFS USN Journal 和 MFT 枚举 - 实现类似 Everything 的快速文件索引
+//! NTFS USN Journal 和 MFT 枚举 - 实现类似 Everything 的快速文件索引
 //!
 //! 核心架构：
 //! 1. 全量索引：使用 FSCTL_ENUM_USN_DATA 批量读取 MFT，这是最快的全盘枚举方式
@@ -737,7 +737,7 @@ impl NtfsIndexer {
                     file_name: file_name.clone(),
                     full_path: full_path.clone(),
                     file_size: 0,
-                    last_write_time: *timestamp as i64 / 10000000 - 11644473600,
+                    last_write_time: *timestamp / 10000000 - 11644473600,
                     is_directory: true,
                     extension: None,
                     reason: UsnChangeReason::Created,
@@ -762,7 +762,7 @@ impl NtfsIndexer {
                     file_name: file_name.clone(),
                     full_path,
                     file_size: 0,
-                    last_write_time: *timestamp as i64 / 10000000 - 11644473600,
+                    last_write_time: *timestamp / 10000000 - 11644473600,
                     is_directory: false,
                     extension: ext,
                     reason: UsnChangeReason::Created,
@@ -779,11 +779,7 @@ impl NtfsIndexer {
             windows_sys::Win32::Foundation::CloseHandle(handle);
         }
 
-        let file_count = if total_count >= dirs_cached as u64 {
-            total_count - dirs_cached as u64
-        } else {
-            0
-        };
+        let file_count = total_count.saturating_sub(dirs_cached as u64);
         log::info!(
             "MFT 枚举完成: {} 个条目（目录{} + 文件{}），跳过无父路径: {}",
             total_count,
@@ -826,7 +822,10 @@ impl NtfsIndexer {
                 volume,
                 last_error
             );
-            return Ok(Vec::new());
+            return Err(AppError::Other(format!(
+                "无法打开卷 {} (错误码: {})",
+                volume, last_error
+            )));
         }
 
         let mut journal_state = USN_JOURNAL_DATA_V2::default();
@@ -847,12 +846,16 @@ impl NtfsIndexer {
 
         if query_success == 0 {
             let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
-            println!(
-                "DEBUG: FSCTL_QUERY_USN_JOURNAL 失败，错误码: {}",
+            log::warn!(
+                "[usn] FSCTL_QUERY_USN_JOURNAL 失败 (卷={}, 错误码={})",
+                volume,
                 last_error
             );
             unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) };
-            return Ok(Vec::new());
+            return Err(AppError::Other(format!(
+                "查询 USN Journal 失败 (卷={}, 错误码={})",
+                volume, last_error
+            )));
         }
 
         let journal_id = journal_state.UsnJournalID;
@@ -907,8 +910,17 @@ impl NtfsIndexer {
         }
 
         if success == 0 {
+            let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+            log::warn!(
+                "[usn] FSCTL_READ_USN_JOURNAL + FSCTL_ENUM_USN_DATA fallback 均失败 (卷={}, 错误码={})",
+                volume,
+                last_error
+            );
             unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) };
-            return Ok(Vec::new());
+            return Err(AppError::Other(format!(
+                "读取 USN 变更失败 (卷={}, 错误码={})",
+                volume, last_error
+            )));
         }
 
         log::debug!(
@@ -1048,11 +1060,16 @@ impl NtfsIndexer {
             let full_path = parent_path.join(file_name);
 
             let reason_enum = match reason {
+                // USN_REASON_FILE_CREATE = 0x00000100
                 r if r & 0x00000100 != 0 => UsnChangeReason::Created,
-                r if r & 0x00000200 != 0 => UsnChangeReason::Deleted,
+                // USN_REASON_FILE_DELETE = 0x00001000
+                r if r & 0x00001000 != 0 => UsnChangeReason::Deleted,
+                // USN_REASON_DATA_EXTEND = 0x00000002
                 r if r & 0x00000002 != 0 => UsnChangeReason::Modified,
-                r if r & 0x00004000 != 0 => UsnChangeReason::RenamedOldName,
-                r if r & 0x00008000 != 0 => UsnChangeReason::RenamedNewName,
+                // USN_REASON_RENAME_OLD_NAME = 0x00008000
+                r if r & 0x00008000 != 0 => UsnChangeReason::RenamedOldName,
+                // USN_REASON_RENAME_NEW_NAME = 0x00004000
+                r if r & 0x00004000 != 0 => UsnChangeReason::RenamedNewName,
                 _ => UsnChangeReason::Modified,
             };
 

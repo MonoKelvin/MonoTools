@@ -1,5 +1,4 @@
-﻿pub mod hash;
-pub mod path;
+﻿pub mod path;
+pub mod pinyin;
 
-pub use hash::*;
 pub use path::*;

@@ -1,4 +1,4 @@
-﻿//! 搜索引擎协调 - 合并多个来源的结果
+//! 搜索引擎协调 - 合并多个来源的结果
 //!
 //! 核心功能：
 //! - 并行搜索多个 engine (通过 `SearchSource` trait 注册)
@@ -144,7 +144,7 @@ impl SearchEngine {
 
         results
             .into_iter()
-            .map(|r| with_default_action(r))
+            .map(with_default_action)
             .collect()
     }
 

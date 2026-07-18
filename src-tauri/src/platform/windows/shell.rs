@@ -1,7 +1,14 @@
 //! Shell 工具 - 启动程序、打开路径、解析快捷方式、系统操作
 use crate::core::error::{AppError, Result};
-use std::path::PathBuf;
+use std::ffi::OsStr;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(windows)]
+use windows::core::w;
+#[cfg(windows)]
+use windows::Win32::System::Registry::HKEY;
 
 /// 启动应用（非阻塞）
 pub fn launch(path: &str, args: &[String]) -> Result<u32> {
@@ -97,7 +104,7 @@ pub fn show_file_properties(_path: &PathBuf) -> Result<()> {
 /// 注意: 为了安全起见, 默认使用"移动到回收站"而非永久删除.
 /// 如果回收站不可用或非 Windows 平台, 则永久删除 (调用方应自行确认).
 #[cfg(windows)]
-pub fn delete_to_recycle_bin(path: &PathBuf) -> Result<()> {
+pub fn delete_to_recycle_bin(path: &Path) -> Result<()> {
     use crate::core::config::paths;
     use std::os::windows::process::CommandExt;
 
@@ -139,7 +146,7 @@ pub fn delete_permanently(path: &PathBuf) -> Result<()> {
 /// 复制文件路径到剪贴板。
 ///
 /// 使用 PowerShell Set-Clipboard 实现，兼容 CLI 和 GUI 环境。
-pub fn copy_path_to_clipboard(path: &PathBuf) -> Result<()> {
+pub fn copy_path_to_clipboard(path: &Path) -> Result<()> {
     let path_str = path.to_string_lossy();
     let output = Command::new("powershell")
         .arg("-NoProfile")
@@ -162,7 +169,7 @@ pub fn copy_path_to_clipboard(path: &PathBuf) -> Result<()> {
 }
 
 /// 解析 .lnk 快捷方式的目标路径
-pub fn resolve_shortcut(path: &PathBuf) -> Result<PathBuf> {
+pub fn resolve_shortcut(path: &Path) -> Result<PathBuf> {
     let output = std::process::Command::new("powershell")
         .arg("-Command")
         .arg(format!(
@@ -173,13 +180,13 @@ pub fn resolve_shortcut(path: &PathBuf) -> Result<PathBuf> {
         .map_err(|e| AppError::Other(format!("执行 PowerShell 失败: {e}")))?;
 
     if !output.status.success() {
-        return Ok(path.clone());
+        return Ok(path.to_path_buf());
     }
 
     let target_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
     if target_path.is_empty() {
-        return Ok(path.clone());
+        return Ok(path.to_path_buf());
     }
 
     Ok(PathBuf::from(target_path))
@@ -203,4 +210,239 @@ pub fn launch_str(item: &crate::search_engine::models::SearchResult) -> Result<(
         }
     }
     Ok(())
+}
+
+/// 读取 Windows 文件关联 (HKCR), 返回 { 扩展名 → 关联的可执行文件路径 } 映射.
+///
+/// 步骤:
+/// 1. 打开 HKEY_CLASSES_ROOT, 枚举所有以 "." 开头的子键 (文件扩展名).
+/// 2. 读取扩展名键的默认值 → ProgId (如 ".txt" → "txtfile").
+/// 3. 打开 HKCR\{ProgId}\shell\open\command, 读取默认值 → 命令行字符串.
+/// 4. 从命令行字符串中提取可执行文件路径 (去掉引号和参数).
+/// 5. 返回 HashMap, key 为扩展名 (含点, 如 ".txt"), value 为 exe 路径.
+///
+/// 失败时返回空 HashMap (不 panic).
+#[cfg(windows)]
+pub fn get_file_associations() -> std::collections::HashMap<String, PathBuf> {
+    use std::collections::HashMap;
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW,
+        HKEY, HKEY_CLASSES_ROOT, KEY_READ, KEY_WOW64_64KEY,
+    };
+
+    let mut result: HashMap<String, PathBuf> = HashMap::new();
+
+    // 打开 HKEY_CLASSES_ROOT
+    let mut hkcr = HKEY::default();
+    let rc = unsafe {
+        RegOpenKeyExW(
+            HKEY_CLASSES_ROOT,
+            w!(""),
+            None,
+            KEY_READ | KEY_WOW64_64KEY,
+            &mut hkcr,
+        )
+    };
+    if rc != ERROR_SUCCESS || hkcr.is_invalid() {
+        // 尝试不带 WOW64 标志
+        let rc2 = unsafe {
+            RegOpenKeyExW(HKEY_CLASSES_ROOT, w!(""), None, KEY_READ, &mut hkcr)
+        };
+        if rc2 != ERROR_SUCCESS || hkcr.is_invalid() {
+            return result;
+        }
+    }
+
+    // 缓冲区: 枚举扩展名键名
+    let mut name_buf: Vec<u16> = vec![0u16; 260];
+    let mut idx = 0u32;
+
+    loop {
+        let mut name_len = name_buf.len() as u32;
+        let rc = unsafe {
+            RegEnumKeyExW(
+                hkcr,
+                idx,
+                Some(windows::core::PWSTR::from_raw(name_buf.as_mut_ptr())),
+                &mut name_len,
+                None,
+                None,
+                None,
+                None,
+            )
+        };
+        if rc != ERROR_SUCCESS {
+            break;
+        }
+
+        let name_slice = &name_buf[..name_len as usize];
+        // 只处理以 "." 开头的扩展名键, 且不是单独的 "." 或 ".."
+        if name_slice.first() == Some(&u16::from(b'.')) && name_len > 1 {
+            let ext_name = String::from_utf16_lossy(name_slice);
+
+            // 读取扩展名的默认值 → ProgId
+            if let Some(prog_id) = read_default_value_wide(hkcr, &ext_name) {
+                if !prog_id.is_empty() {
+                    let command_key = format!("{}\\shell\\open\\command", prog_id);
+                    if let Some(cmd) = read_default_value_full_path(&command_key) {
+                        if let Some(exe_path) = extract_exe_from_command(&cmd) {
+                            result.insert(ext_name, exe_path);
+                        }
+                    }
+                }
+            }
+        }
+
+        idx += 1;
+    }
+
+    let _ = unsafe { RegCloseKey(hkcr) };
+    result
+}
+
+/// 读取指定子键的默认值 ("") 为 UTF-16 字符串.
+#[cfg(windows)]
+fn read_default_value_wide(parent: HKEY, subkey: &str) -> Option<String> {
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, KEY_READ, REG_NONE, REG_SZ,
+    };
+    use windows::core::PCWSTR;
+
+    let subkey_wide: Vec<u16> = OsStr::new(subkey).encode_wide().chain(Some(0)).collect();
+    let mut key = HKEY::default();
+    let rc = unsafe {
+        RegOpenKeyExW(parent, PCWSTR::from_raw(subkey_wide.as_ptr()), None, KEY_READ, &mut key)
+    };
+    if rc != ERROR_SUCCESS || key.is_invalid() {
+        return None;
+    }
+
+    let mut data: Vec<u8> = vec![0u8; 1024];
+    let mut data_len = data.len() as u32;
+    let mut val_type = REG_NONE;
+
+    let rc = unsafe {
+        RegQueryValueExW(
+            key,
+            w!(""),
+            None,
+            Some(&mut val_type),
+            Some(data.as_mut_ptr()),
+            Some(&mut data_len),
+        )
+    };
+
+    let _ = unsafe { RegCloseKey(key) };
+
+    if rc != ERROR_SUCCESS || data_len == 0 {
+        return None;
+    }
+
+    // REG_SZ 是 UTF-16LE 编码, 以双 null 结尾
+    if val_type == REG_SZ {
+        let words = data[..data_len as usize]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect::<Vec<u16>>();
+        // 去掉尾部 null
+        let trimmed: Vec<u16> = words
+            .split(|&w| w == 0)
+            .next()
+            .unwrap_or(&[])
+            .to_vec();
+        Some(String::from_utf16_lossy(&trimmed))
+    } else {
+        None
+    }
+}
+
+/// 读取完整注册表路径的默认值 (用于 HKCR\ProgId\shell\open\command).
+#[cfg(windows)]
+fn read_default_value_full_path(subkey_full: &str) -> Option<String> {
+    use windows::Win32::Foundation::ERROR_SUCCESS;
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CLASSES_ROOT, KEY_READ, REG_NONE, REG_SZ,
+    };
+    use windows::core::PCWSTR;
+
+    let subkey_wide: Vec<u16> = OsStr::new(subkey_full).encode_wide().chain(Some(0)).collect();
+    let mut key = HKEY::default();
+    let rc = unsafe {
+        RegOpenKeyExW(HKEY_CLASSES_ROOT, PCWSTR::from_raw(subkey_wide.as_ptr()), None, KEY_READ, &mut key)
+    };
+    if rc != ERROR_SUCCESS || key.is_invalid() {
+        return None;
+    }
+
+    let mut data: Vec<u8> = vec![0u8; 2048];
+    let mut data_len = data.len() as u32;
+    let mut val_type = REG_NONE;
+
+    let rc = unsafe {
+        RegQueryValueExW(
+            key,
+            w!(""),
+            None,
+            Some(&mut val_type),
+            Some(data.as_mut_ptr()),
+            Some(&mut data_len),
+        )
+    };
+
+    let _ = unsafe { RegCloseKey(key) };
+
+    if rc != ERROR_SUCCESS || data_len == 0 {
+        return None;
+    }
+
+    if val_type == REG_SZ {
+        let words = data[..data_len as usize]
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect::<Vec<u16>>();
+        let trimmed: Vec<u16> = words
+            .split(|&w| w == 0)
+            .next()
+            .unwrap_or(&[])
+            .to_vec();
+        Some(String::from_utf16_lossy(&trimmed))
+    } else {
+        None
+    }
+}
+
+/// 从命令行字符串中提取可执行文件路径.
+///
+/// 例:
+/// - `"C:\Program Files\Chrome\chrome.exe" --%1` → `C:\Program Files\Chrome\chrome.exe`
+/// - `C:\Windows\notepad.exe %1` → `C:\Windows\notepad.exe`
+/// - `"C:\Apps\My App\app.exe"` → `C:\Apps\My App\app.exe`
+fn extract_exe_from_command(cmd: &str) -> Option<PathBuf> {
+    let cmd = cmd.trim();
+    if cmd.is_empty() {
+        return None;
+    }
+
+    let exe = if let Some(inner) = cmd.strip_prefix('"') {
+        // 引号内的整个路径
+        let end = inner.find('"')?;
+        &inner[..end]
+    } else {
+        // 第一个空格前的部分
+        cmd.split_whitespace().next()?
+    };
+
+    let path = PathBuf::from(exe);
+    if path.exists() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(windows))]
+pub fn get_file_associations() -> std::collections::HashMap<String, PathBuf> {
+    std::collections::HashMap::new()
 }

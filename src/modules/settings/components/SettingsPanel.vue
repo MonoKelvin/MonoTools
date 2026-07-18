@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch, computed, onUnmounted } from 'vue'
 import { useSettingsStore } from '@/core/stores/settings'
+import { useThemeStore } from '@/core/stores/theme'
 import { hotkeyApi, pinTopApi, isTauri } from '@/services'
 import { Keyboard, FolderSearch, Info, Pin, Monitor } from "@lucide/vue"
 import MtCard from '@/ui/components/MtCard.vue'
@@ -8,6 +9,7 @@ import MtButton from '@/ui/components/MtButton.vue'
 import MtDivider from '@/ui/components/MtDivider.vue'
 
 const settingsStore = useSettingsStore()
+const themeStore = useThemeStore()
 
 const newKey = ref('')
 const recording = ref(false)
@@ -112,6 +114,23 @@ onUnmounted(() => {
         极简黑白灰主题。所有交互元素均使用单一暖白 accent (#f5f1e8) 作为关键交互点缀。
         间距、圆角与字阶遵循 Raycast 风格设计规范。
       </p>
+
+      <div class="settings-panel__row">
+        <div class="settings-panel__row-info">
+          <div class="settings-panel__row-label">跟随系统主题</div>
+          <div class="settings-panel__row-desc">开启后自动同步 Windows 浅色/深色模式</div>
+        </div>
+        <label class="settings-panel__toggle">
+          <input
+            type="checkbox"
+            :checked="themeStore.followSystem"
+            @change="themeStore.setFollowSystem(($event.target as HTMLInputElement).checked)"
+          />
+          <span class="settings-panel__toggle-track">
+            <span class="settings-panel__toggle-thumb"></span>
+          </span>
+        </label>
+      </div>
     </MtCard>
 
     <MtCard class="settings-panel__card">

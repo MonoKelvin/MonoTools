@@ -265,8 +265,8 @@ const badgeInfo = computed(() => {
 
 .app-result-item__icon {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -350,13 +350,13 @@ const badgeInfo = computed(() => {
 
 /* === Monogram 单字母占位符 (无真实图标时) === */
 .app-result-item__monogram {
-  width: 28px;
-  height: 28px;
+  width: 60px;
+  height: 60px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-sm);
-  font-size: 14px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--text-primary);
   letter-spacing: 0.02em;

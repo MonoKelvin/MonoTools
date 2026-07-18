@@ -149,7 +149,7 @@ impl ValidationReport {
 
         output.push_str(&self.table.generate());
 
-        output.push_str(&"\n");
+        output.push('\n');
         output.push_str(&"=".repeat(80));
         output.push('\n');
 

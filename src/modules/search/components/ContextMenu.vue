@@ -111,12 +111,14 @@ const itemPath = computed(() => {
   if (!props.item) return ''
   const action = props.item.action
   if (action?.type === 'open' || action?.type === 'launch') {
-    return typeof action.data === 'string' ? action.data : ''
+    const raw = typeof action.data === 'string' ? action.data : ''
+    if (raw) return raw
   }
   if (action?.type === 'run') {
-    return props.item.subtitle || ''
+    const raw = props.item.subtitle || ''
+    if (raw) return raw
   }
-  return props.item.subtitle || ''
+  return props.item.subtitle || props.item.title || ''
 })
 
 /** 获取当前项的目录路径 */
@@ -140,9 +142,15 @@ function handleOpen() {
 }
 
 function handleOpenLocation() {
-  shellApi.openFileLocation(itemPath.value).catch((e) => {
+  const path = itemPath.value
+  if (!path) {
+    showToast('无法打开位置：当前项路径为空', 'error')
+    closeMenu()
+    return
+  }
+  shellApi.openFileLocation(path).catch((e) => {
     showToast('打开文件夹失败', 'error')
-    console.error('打开文件夹失败:', e)
+    console.error('[ContextMenu] 打开文件夹失败:', e)
   })
   closeMenu()
 }
@@ -170,9 +178,15 @@ function handleCopyName() {
 }
 
 function handleProperties() {
-  shellApi.showProperties(itemPath.value).catch((e) => {
+  const path = itemPath.value
+  if (!path) {
+    showToast('无法打开属性：当前项路径为空', 'error')
+    closeMenu()
+    return
+  }
+  shellApi.showProperties(path).catch((e) => {
     showToast('打开属性失败', 'error')
-    console.error('打开属性失败:', e)
+    console.error('[ContextMenu] 打开属性失败:', e)
   })
   closeMenu()
 }
@@ -190,10 +204,16 @@ function handleDelete() {
 
 async function handleDeleteConfirm() {
   if (!props.item) return
+  const path = itemPath.value
+  if (!path) {
+    showToast('无法删除：当前项路径为空', 'error')
+    closeMenu()
+    return
+  }
   const confirmed = window.confirm(`确定要删除 "${props.item.title}" 吗？\n文件将被移到回收站。`)
   if (!confirmed) return
   try {
-    await shellApi.deleteToRecycleBin(itemPath.value)
+    await shellApi.deleteToRecycleBin(path)
     showToast('已删除到回收站')
     search.runSearch().catch(() => undefined)
   } catch (e) {

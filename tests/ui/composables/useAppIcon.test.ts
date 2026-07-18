@@ -53,10 +53,13 @@ function mk(over: Partial<SearchResult> = {}): SearchResult {
 
 /**
  * 真实有效的 1x1 红色 PNG 的 base64 编码 (96 chars).
- * 用于 IPC 校验 ≥ 64 chars 阈值的测试, 防止短 base64 误判为无效.
+ * 注意: useAppIcon / IpcIconSource 当前 minBase64Length = 256,
+ * 所以这里额外补一版长 base64，避免校验失败导致测试进入 fallback。
  */
 const VALID_PNG_BASE64 =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg=='
+
+const LONG_PNG_BASE64 = VALID_PNG_BASE64 + 'A'.repeat(160)
 
 describe('useAppIcon', () => {
     beforeEach(() => {
@@ -159,8 +162,8 @@ describe('useAppIcon', () => {
 
     it('caches result by id — second loadIcon returns same value (no extra IPC)', async () => {
         mockEnv.isTauri = true
-        // 真实 1x1 PNG base64 (96 chars), 满足 useAppIcon 的 ≥ 64 chars 校验
-        vi.mocked(appIconApi.get).mockResolvedValue(VALID_PNG_BASE64)
+        // 用长 base64，满足当前 minBase64Length=256 的校验
+        vi.mocked(appIconApi.get).mockResolvedValue(LONG_PNG_BASE64)
         const { loadIcon } = useAppIcon()
         const result = mk({
             id: 'cache-1',
@@ -198,8 +201,8 @@ describe('useAppIcon', () => {
 
     it('loadIconsBatch calls IPC and populates cache when in Tauri', async () => {
         mockEnv.isTauri = true
-        // 真实 PNG base64, 满足 useAppIcon 的 ≥ 64 chars 校验
-        vi.mocked(appIconApi.getBatch).mockResolvedValueOnce([VALID_PNG_BASE64, null])
+        // 用长 base64 通过校验；第二个项返回 null，验证失败项回退
+        vi.mocked(appIconApi.getBatch).mockResolvedValueOnce([LONG_PNG_BASE64, null])
         const { loadIconsBatch, loadIcon } = useAppIcon()
         const items = [
             mk({ id: 'b-good', action: { type: 'launch', data: 'C:\\a.exe' } }),
@@ -300,8 +303,8 @@ describe('useAppIcon — 监控 trace', () => {
 
     it('ipc 命中会让 counts.ipc 增长', async () => {
         mockEnv.isTauri = true
-        // 真实 PNG base64, 满足 useAppIcon 的 ≥ 64 chars 校验
-        vi.mocked(appIconApi.get).mockResolvedValue(VALID_PNG_BASE64)
+        // 用长 base64 通过当前 256 长度校验
+        vi.mocked(appIconApi.get).mockResolvedValue(LONG_PNG_BASE64)
         const { loadIcon } = useAppIcon()
         const result = mk({
             id: 'trace-ipc',
@@ -316,8 +319,8 @@ describe('useAppIcon — 监控 trace', () => {
 
     it('resetTrace 后 counts 全部归零', async () => {
         mockEnv.isTauri = true
-        // 真实 PNG base64, 满足 useAppIcon 的 ≥ 64 chars 校验
-        vi.mocked(appIconApi.get).mockResolvedValue(VALID_PNG_BASE64)
+        // 用长 base64 通过当前 256 长度校验
+        vi.mocked(appIconApi.get).mockResolvedValue(LONG_PNG_BASE64)
         const { loadIcon, resetTrace } = useAppIcon()
         await loadIcon(
             mk({

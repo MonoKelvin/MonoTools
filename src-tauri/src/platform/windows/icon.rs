@@ -1,4 +1,4 @@
-﻿//! Windows 应用图标提取
+//! Windows 应用图标提取
 //!
 //! 提供从 `.exe` / `.lnk` 中提取 32x32 RGBA 图标并编码为 PNG 的能力.
 //!
@@ -586,7 +586,7 @@ fn draw_hicon_to_rgba(
     let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
     bmi.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
     bmi.bmiHeader.biWidth = size;
-    bmi.bmiHeader.biHeight = -(size as i32);
+    bmi.bmiHeader.biHeight = -size;
     bmi.bmiHeader.biPlanes = 1;
     bmi.bmiHeader.biBitCount = 32;
     bmi.bmiHeader.biCompression = BI_RGB.0;

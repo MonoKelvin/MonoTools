@@ -1,4 +1,4 @@
-﻿//! 文件搜索引擎 - 完全基于 NTFS MFT 和 USN Journal（类似 Everything）
+//! 文件搜索引擎 - 完全基于 NTFS MFT 和 USN Journal（类似 Everything）
 //!
 //! 架构设计：
 //! - 全量索引：使用 FSCTL_ENUM_USN_DATA 批量读取 MFT，这是最快的全盘枚举方式
@@ -13,7 +13,7 @@
 
 use crate::core::config::{fs as fs_cfg, search as search_cfg};
 use crate::core::error::Result;
-use crate::platform::windows::usn::{NtfsIndexer, UsnRecord};
+use crate::platform::windows::usn::{NtfsIndexer, UsnChangeReason, UsnRecord};
 use crate::search_engine::models::{
     FileResult, ResultType, SearchAction, SearchCategory, SearchResult,
 };
@@ -136,13 +136,11 @@ impl FileSearchEngine {
             std::fs::create_dir_all(parent)?;
         }
 
-        // ── Migration: 旧 DB (page_size=65536, FTS5 含 path + prefix='2 3 4') 与新 schema
-        //    不兼容. 直接删除 DB + WAL + SHM 文件重建 —— 比在多 GB DB 上 VACUUM 快得多,
-        //    且无损 (索引每次启动从 MFT 全量重建). ──
-        if self.db_path.exists() && Self::db_needs_migration(&self.db_path) {
-            log::warn!(
-                "[db] 旧 schema 检测到 (user_version<2 或 page_size!=4096), 删除旧 DB+WAL+SHM 重建"
-            );
+        // ── 始终重建 DB: 索引每次启动从 MFT 全量重建, 保留旧 DB 无意义.
+        //    直接删除旧 DB + WAL + SHM 文件, 避免损坏 (database disk image is malformed)
+        //    和 schema 迁移的复杂性. 这是最可靠的策略. ──
+        if self.db_path.exists() {
+            log::warn!("[db] 删除旧 DB (始终重建策略), 重建中...");
             let _ = std::fs::remove_file(&self.db_path);
             let _ = std::fs::remove_file(self.db_path.with_extension("db-wal"));
             let _ = std::fs::remove_file(self.db_path.with_extension("db-shm"));
@@ -171,6 +169,7 @@ impl FileSearchEngine {
     ///   - `remove_diacritics 1` (重音折叠)
     ///   - 新增 `index_state` 表为 USN 增量索引铺路
     ///   FTS5 schema 嵌入到索引结构, 不能 in-place 升级, 一律 delete + rebuild.
+    #[allow(dead_code)]
     fn db_needs_migration(path: &std::path::Path) -> bool {
         // CURRENT_VERSION / REQUIRED_PAGE_SIZE 取自 config::fs::*.
         let conn = match Connection::open_with_flags(
@@ -462,16 +461,11 @@ impl FileSearchEngine {
                         .query_row(
                             "SELECT id FROM dirs WHERE full_path = ?1",
                             [dir_path.as_str()],
-                            |r| r.get(0),
+                            |r| r.get::<_, i64>(0),
                         )
                         .unwrap_or(0);
-                    if dir_id > 0 {
-                        if file_stmt
-                            .execute(rusqlite::params![record.file_name, dir_id,])
-                            .is_ok()
-                        {
-                            inserted += 1;
-                        }
+                    if dir_id > 0 && file_stmt.execute(rusqlite::params![record.file_name, dir_id]).is_ok() {
+                        inserted += 1;
                     }
                 }
             }
@@ -629,53 +623,236 @@ impl FileSearchEngine {
         Ok(())
     }
 
-    /// USN 增量更新. 修复"索引从未增量更新, 新建文件不出现"问题.
+    /// USN 增量更新.
     ///
-    /// 当前实现 (v9 schema 升级版):
-    ///   - 检查 `index_state` 表是否有每个卷的 `last_usn`
-    ///   - 如果没有 (首次启动), 或者 NtfsIndexer 的 USN 句柄读取失败,
-    ///     走 fallback: 返回错误, 让调用方触发 `build_index` 全量重建.
-    ///   - 真正的 USN delta walking (FSCTL_READ_USN_JOURNAL 增量应用) 是
-    ///     下一轮 PR 的工作, 这里只把基础设施 (state table) 准备好.
+    /// 实现完整的 USN delta walking:
+    ///   1. 从 `index_state` 表读取每个卷的 `last_usn` (上次处理到的 USN 位置).
+    ///   2. 若任意卷没有 prior state (首次启动), 走 fallback → 返回 Err 触发全量重建.
+    ///   3. 调用 `NtfsIndexer::read_usn_changes` 读取每个卷自 last_usn 以来的变更记录.
+    ///   4. 按 `UsnChangeReason` 分类处理:
+    ///      - Created / RenamedNewName → 插入文件/目录
+    ///      - Deleted / RenamedOldName → 删除文件/目录
+    ///      - Modified → 跳过 (文件名未变, FTS5 触发器会自动处理)
+    ///   5. 处理完毕后, 将每个卷的新 max_usn 写回 `index_state`.
     ///
-    /// 关键改进: 旧版这里是无声空函数, 任何人都不知道 USN 增量根本
-    /// 没工作. 现在会打 [usn] 标签的 warn, 配合 build_index 的进度事件,
-    /// 用户能直观看到"后台在重建索引".
+    /// Fallback 条件 (返回 Err 让调用方触发 `build_index` 全量重建):
+    ///   - 没有已枚举的卷
+    ///   - 任意卷没有 prior `last_usn` (首次启动)
+    ///   - USN Journal 不可用 (ERROR_USN_JOURNAL_NOT_ACTIVE / journal wrap)
     fn update_index_usn(&self, indexer: &NtfsIndexer) -> Result<()> {
+        // 确保磁盘 DB 已就绪.
+        self.ensure_db()?;
+
         let volumes = indexer.get_volumes();
         if volumes.is_empty() {
-            log::warn!("[usn] no volumes enumerated, falling back to full rebuild");
+            log::warn!("[usn] 无可用卷, 跳过增量更新");
             return Err(crate::core::error::AppError::Other(
                 "no volumes to update".to_string(),
             ));
         }
+
         let conn = self.db.lock();
-        let mut needs_full_rebuild = false;
-        for v in volumes {
+        let mut max_usn_per_volume: Vec<(String, u64)> = Vec::new();
+        let mut any_needs_full_rebuild = false;
+
+        for volume in &volumes {
+            // 读取上次记录的 last_usn.
             let last_usn: i64 = conn
                 .query_row(
                     "SELECT last_usn FROM index_state WHERE volume = ?1",
-                    rusqlite::params![v.to_string()],
+                    rusqlite::params![volume],
                     |r| r.get(0),
                 )
                 .unwrap_or(0);
+
             if last_usn == 0 {
+                // 首次启动: 没有 prior state, 必须全量重建.
                 log::warn!(
-                    "[usn] volume={} has no prior state, full rebuild required",
-                    v
+                    "[usn] 卷={} 无 prior state (last_usn=0), 需要全量重建",
+                    volume
                 );
-                needs_full_rebuild = true;
+                any_needs_full_rebuild = true;
                 break;
             }
+
+            // 读取该卷自 last_usn 以来的 USN 变更记录.
+            let changes = indexer.read_usn_changes(volume, last_usn as u64);
+            match changes {
+                Ok(records) => {
+                    if records.is_empty() {
+                        log::debug!("[usn] 卷={} 无新变更 (start_usn={})", volume, last_usn);
+                        max_usn_per_volume.push((volume.clone(), last_usn as u64));
+                        continue;
+                    }
+
+                    log::debug!(
+                        "[usn] 卷={} 读取到 {} 条变更 (start_usn={})",
+                        volume,
+                        records.len(),
+                        last_usn
+                    );
+
+                    // 按 reason 分类处理.
+                    let mut vol_max_usn = last_usn as u64;
+                    for record in &records {
+                        if record.usn > vol_max_usn {
+                            vol_max_usn = record.usn;
+                        }
+                        match &record.reason {
+                            UsnChangeReason::Created | UsnChangeReason::RenamedNewName => {
+                                self.insert_usn_record(&conn, record)?;
+                            }
+                            UsnChangeReason::Deleted | UsnChangeReason::RenamedOldName => {
+                                self.delete_usn_record(&conn, record)?;
+                            }
+                            UsnChangeReason::Modified => {
+                                // Modified 通常不改变文件名, FTS5 触发器已通过
+                                // files_ai/files_au 自动维护索引. 但如果文件名也变了
+                                // (e.g. rename + content change in one event), 需要更新.
+                                // 保守起见: 仅当文件名不在索引中时才插入.
+                                let exists: i64 = conn.query_row(
+                                    "SELECT 1 FROM files f JOIN dirs d ON d.id = f.dir_id \
+                                     WHERE d.full_path = ?1 AND f.name = ?2 LIMIT 1",
+                                    rusqlite::params![
+                                        record.full_path.parent().map(|p| p.to_string_lossy().to_string()).unwrap_or_default(),
+                                        record.file_name
+                                    ],
+                                    |r| r.get(0),
+                                ).unwrap_or(0);
+                                if exists == 0 {
+                                    self.insert_usn_record(&conn, record)?;
+                                }
+                            }
+                        }
+                    }
+
+                    max_usn_per_volume.push((volume.clone(), vol_max_usn));
+                }
+                Err(e) => {
+                    // USN Journal 不可用 (wrap-around / not active / permission denied).
+                    // 记录警告并标记需要全量重建.
+                    log::warn!(
+                        "[usn] 卷={} USN 读取失败: {}, 将触发全量重建",
+                        volume,
+                        e
+                    );
+                    any_needs_full_rebuild = true;
+                    break;
+                }
+            }
         }
-        if needs_full_rebuild {
-            // 返回错误让上层 build_index 触发全量重建.
+
+        if any_needs_full_rebuild {
             return Err(crate::core::error::AppError::Other(
                 "incremental update unavailable, full rebuild required".to_string(),
             ));
         }
-        // TODO: 真正的 USN delta walking 实现.
-        log::info!("[usn] incremental update would run here (TODO: implement delta walker)");
+
+        // 写回每个卷的新 max_usn.
+        let now = chrono::Utc::now().timestamp();
+        for (volume, new_usn) in &max_usn_per_volume {
+            conn.execute(
+                "INSERT INTO index_state(volume, last_usn, updated_at) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(volume) DO UPDATE SET last_usn = ?2, updated_at = ?3",
+                rusqlite::params![volume, *new_usn as i64, now],
+            )?;
+        }
+
+        log::info!(
+            "[usn] 增量更新完成: {} 个卷, USN 位置: {:?}",
+            volumes.len(),
+            max_usn_per_volume
+        );
+        Ok(())
+    }
+
+    /// 将一条 USN 记录插入索引 (Created / RenamedNewName).
+    /// 先确保目录存在 (dirs 表), 再插入文件记录.
+    fn insert_usn_record(&self, conn: &Connection, record: &UsnRecord) -> Result<()> {
+        if record.is_directory {
+            // 确保目录存在.
+            let dir_path = record.full_path.to_string_lossy().to_string();
+            conn.execute(
+                "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, 0, ?2)",
+                rusqlite::params![record.file_name, dir_path],
+            )?;
+        } else {
+            // 确保父目录存在.
+            let dir_path = record
+                .full_path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if !dir_path.is_empty() {
+                conn.execute(
+                    "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, 0, ?2)",
+                    rusqlite::params![
+                        record
+                            .full_path
+                            .parent()
+                            .and_then(|p| p.file_name())
+                            .map(|s| s.to_string_lossy().to_string())
+                            .unwrap_or_default(),
+                        dir_path
+                    ],
+                )?;
+            }
+
+            // 获取 dir_id.
+            let dir_id: i64 = conn
+                .query_row(
+                    "SELECT id FROM dirs WHERE full_path = ?1",
+                    rusqlite::params![dir_path],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+
+            if dir_id > 0 {
+                // 先删除旧记录 (避免 UNIQUE 冲突), 再插入.
+                conn.execute(
+                    "DELETE FROM files WHERE dir_id = ?1 AND name = ?2",
+                    rusqlite::params![dir_id, record.file_name],
+                )?;
+                conn.execute(
+                    "INSERT INTO files(name, dir_id) VALUES (?1, ?2)",
+                    rusqlite::params![record.file_name, dir_id],
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    /// 从索引中删除一条 USN 记录 (Deleted / RenamedOldName).
+    fn delete_usn_record(&self, conn: &Connection, record: &UsnRecord) -> Result<()> {
+        if record.is_directory {
+            let dir_path = record.full_path.to_string_lossy().to_string();
+            // 先删除文件表中的子文件, 再删除目录.
+            if let Ok(dir_id) = conn.query_row(
+                "SELECT id FROM dirs WHERE full_path = ?1",
+                rusqlite::params![dir_path],
+                |r| r.get::<_, i64>(0),
+            ) {
+                conn.execute("DELETE FROM files WHERE dir_id = ?1", rusqlite::params![dir_id])?;
+                conn.execute("DELETE FROM dirs WHERE full_path = ?1", rusqlite::params![dir_path])?;
+            }
+        } else {
+            let dir_path = record
+                .full_path
+                .parent()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if let Ok(dir_id) = conn.query_row(
+                "SELECT id FROM dirs WHERE full_path = ?1",
+                rusqlite::params![dir_path],
+                |r| r.get::<_, i64>(0),
+            ) {
+                conn.execute(
+                    "DELETE FROM files WHERE dir_id = ?1 AND name = ?2",
+                    rusqlite::params![dir_id, record.file_name],
+                )?;
+            }
+        }
         Ok(())
     }
 
@@ -688,7 +865,7 @@ impl FileSearchEngine {
             return self
                 .all_files(ALL_FILES_EMPTY_QUERY_CAP)
                 .into_iter()
-                .map(|f| file_result_to_search_result(f))
+                .map(file_result_to_search_result)
                 .collect();
         }
 
@@ -726,7 +903,7 @@ impl FileSearchEngine {
             let name: String = row.get(1)?;
             let full_path = PathBuf::from(dir_path).join(&name);
             let ext = name.rsplit('.').next().and_then(|e| {
-                if e.len() < 5 && e.len() > 0 && !name.starts_with('.') {
+                if !e.is_empty() && e.len() < 5 && !name.starts_with('.') {
                     Some(e.to_string())
                 } else {
                     None
@@ -784,7 +961,7 @@ impl FileSearchEngine {
 
         results
             .into_iter()
-            .map(|f| file_result_to_search_result(f))
+            .map(file_result_to_search_result)
             .collect()
     }
 
@@ -796,7 +973,7 @@ impl FileSearchEngine {
             return self
                 .all_files_after(after_id, limit)
                 .into_iter()
-                .map(|f| file_result_to_search_result(f))
+                .map(file_result_to_search_result)
                 .collect();
         }
         let fts_query = build_fts_query(query);

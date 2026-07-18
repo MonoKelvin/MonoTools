@@ -34,7 +34,7 @@ const emit = defineEmits<{
   (e: 'select', item: SearchResult, globalIndex: number, event: MouseEvent): void
   (e: 'open', item: SearchResult): void
   (e: 'hover', globalIndex: number): void
-  (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number): void
+  (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number, target: EventTarget | null): void
   (e: 'layout-change', mode: LayoutMode): void
   (e: 'sort-change', mode: SortMode): void
 }>()
@@ -69,7 +69,7 @@ const sortIconMap: Record<string, any> = {
 
 const sortOptions = computed<MtComboBoxOption[]>(() => props.sortOptions || [])
 
-/** 排序 combobox 的显示值（优先使用传入的 sortMode，否则使用默认值） */
+/** 排序 combobox 的显示值（优先使用传入�?sortMode，否则使用默认值） */
 const displaySortMode = computed(() => props.sortMode || DEFAULT_SORT_BY_KIND[props.kind] || 'name')
 
 const layoutOptions: MtComboBoxOption[] = [
@@ -111,19 +111,19 @@ const iconGridStyle = computed(() => {
 })
 
 /**
- * 空组 (items.length === 0) 不响应点击. store 层 toggleGroupCollapse
- * 也会过滤, 这里再做一道 UI 防御: cursor 不变 pointer, header 不可点击.
+ * 空组 (items.length === 0) 不响应点�? store �?toggleGroupCollapse
+ * 也会过滤, 这里再做一�?UI 防御: cursor 不变 pointer, header 不可点击.
  *
- * 满足产品诉求 "下面如果没有内容, 则不支持折叠展开". 视觉上 header 还在,
- * 但点击不会触发任何动作, 鼠标光标也保持默认 (不显示 "可点击" 暗示).
+ * 满足产品诉求 "下面如果没有内容, 则不支持折叠展开". 视觉�?header 还在,
+ * 但点击不会触发任何动�? 鼠标光标也保持默�?(不显�?"可点�? 暗示).
  */
 const isInteractive = computed(() => (props.collapsedItems ?? props.items).length > 0)
 
-/** 防止快速重复点击导致状态翻转 */
+/** 防止快速重复点击导致状态翻�?*/
 let toggleDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 function toggleCollapse() {
-  // 空组不响应 (兜底, store 也会过滤). 防止 hover 出 pointer 误导用户.
+  // 空组不响�?(兜底, store 也会过滤). 防止 hover �?pointer 误导用户.
   if (!isInteractive.value) return
   // 防抖: 50ms 内不重复处理
   if (toggleDebounceTimer) return
@@ -133,7 +133,7 @@ function toggleCollapse() {
   emit('toggle-collapse', props.id)
 }
 
-/** 使用 watch + requestAnimationFrame 实现流畅的折叠/展开动画 */
+/** 使用 watch + requestAnimationFrame 实现流畅的折�?展开动画 */
 const isAnimating = ref(false)
 
 /** 是否已完成首次初始化 */
@@ -145,7 +145,7 @@ onMounted(async () => {
   const wrapper = document.getElementById(`group-content-${props.id}`)
   if (!wrapper) return
 
-  // 如果 props.collapsed 是 false（默认展开），读取真实高度并设置内联样式
+  // 如果 props.collapsed �?false（默认展开），读取真实高度并设置内联样�?
   if (!props.collapsed) {
     wrapper.style.transition = 'none'
     wrapper.style.height = 'auto'
@@ -168,37 +168,37 @@ watch(
     }
 
     if (collapsed) {
-      // 收缩：先渐隐再收拢高度，避免内容直接消失
+      // 收缩：先保持内容�?DOM，再同步渐隐 + 收拢高度，避免瞬间消�?
       isAnimating.value = true
 
-      // 读取当前高度
-      wrapper.style.transition = 'none'
-      const currentInlineH = parseInt(wrapper.style.height, 10)
-      const readH = currentInlineH > 15 ? currentInlineH : wrapper.scrollHeight
-      if (readH <= 15) return
+      const wrapper = document.getElementById(`group-content-${props.id}`)
+      if (!wrapper) return
 
-      // 重置到展开态基线
+      wrapper.style.transition = 'none'
+      const readH = wrapper.getBoundingClientRect().height
+      if (readH <= 1) return
+
       wrapper.style.height = `${readH}px`
       wrapper.style.opacity = '1'
+      wrapper.style.removeProperty('display')
+      wrapper.style.overflow = 'hidden'
       void wrapper.offsetHeight
 
-      // 第一段：只渐隐，不改变高度
-      wrapper.style.transition = `opacity ${DURATION}ms ease-out 0ms`
+      wrapper.style.transition = `height ${DURATION}ms ${EASE}, opacity ${DURATION}ms ease-out 20ms`
+      wrapper.style.transform = ''
       requestAnimationFrame(() => {
+        wrapper.style.height = '0'
         wrapper.style.opacity = '0'
-
-        // opacity 动画开始后，再收拢高度
-        setTimeout(() => {
-          wrapper.style.transition = `height ${DURATION}ms ease-in 0ms`
-          requestAnimationFrame(() => {
-            wrapper.style.height = '0'
-          })
-        }, 40)
       })
 
-      setTimeout(() => { isAnimating.value = false }, DURATION + 50)
+      const onCollapsedEnd = () => {
+        wrapper.removeEventListener('transitionend', onCollapsedEnd)
+        isAnimating.value = false
+      }
+      wrapper.addEventListener('transitionend', onCollapsedEnd, { once: true })
+      setTimeout(() => { isAnimating.value = false }, DURATION + 80)
     } else {
-      // 展开：强制显示 → 回到起始状态 → 动画展开
+      // 展开：强制显�?�?回到起始状�?�?动画展开
       isAnimating.value = true
       wrapper.style.display = 'block'
       wrapper.style.transition = 'none'
@@ -212,7 +212,7 @@ watch(
       void wrapper.offsetHeight
       const targetH = wrapper.scrollHeight
 
-      // 回到展开的起始状态
+      // 回到展开的起始状�?
       wrapper.style.height = '0'
       wrapper.style.opacity = '0'
       wrapper.style.transform = 'translateY(6px) scale(0.99)'
@@ -252,7 +252,7 @@ function onItemLeave() {
 
 function onItemContextMenu(event: MouseEvent, item: SearchResult, localIndex: number) {
   event.preventDefault()
-  emit('contextmenu', event, item, globalIndexOf(localIndex))
+  emit('contextmenu', event, item, globalIndexOf(localIndex), event.target)
 }
 
 const DURATION = 300
@@ -312,10 +312,11 @@ function isItemHovered(localIndex: number): boolean {
       <div class="group-content-inner">
           <Transition name="layout-fade" mode="out-in">
             <div :key="layoutMode" class="group-content" :class="`group-content--${layoutMode}`">
-              <!-- list mode -->
+              <!-- 使用 collapsedItems 作为降级: �?items 为空�?正在收缩动画�?,
+                   保持内容�?DOM 中以支持渐变消失的高度动�?-->
               <template v-if="layoutMode === 'list'">
                 <div
-                  v-for="(item, idx) in items"
+                  v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
                   :key="`${id}-${item.id}-${idx}`"
                   class="gs-item gs-item--list"
                   :class="{
@@ -337,7 +338,7 @@ function isItemHovered(localIndex: number): boolean {
               <template v-else-if="layoutMode === 'grid-fixed' || layoutMode === 'grid-auto'">
                 <div class="gs-grid" :style="gridStyle">
                   <div
-                    v-for="(item, idx) in items"
+                    v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
                     :key="`${id}-${item.id}-${idx}`"
                     class="gs-item gs-item--grid"
                     :class="{
@@ -360,7 +361,7 @@ function isItemHovered(localIndex: number): boolean {
               <template v-else-if="layoutMode === 'icon'">
                 <div class="gs-grid gs-grid--icon" :style="iconGridStyle">
                   <div
-                    v-for="(item, idx) in items"
+                    v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
                     :key="`${id}-${item.id}-${idx}`"
                     class="gs-item gs-item--icon"
                     :class="{
@@ -409,9 +410,9 @@ function isItemHovered(localIndex: number): boolean {
   cursor: pointer;
   user-select: none;
   position: relative;
-  /* 移除 border-top, 改用 ::before 伪元素延伸到窗口两边, 解决"分组间
-     分割线左右有间距" 的视觉问题. 数值 -8px 对应父容器
-     .results-scroll-container 的 padding-left/right (var(--sp-3) = 8px). */
+  /* 移除 border-top, 改用 ::before 伪元素延伸到窗口两边, 解决"分组�?
+     分割线左右有间距" 的视觉问�? 数�?-8px 对应父容�?
+     .results-scroll-container �?padding-left/right (var(--sp-3) = 8px). */
   border-top: none;
 }
 
@@ -428,11 +429,11 @@ function isItemHovered(localIndex: number): boolean {
 
 .group-section[data-kind="pinned"] .group-header::before,
 .group-section[data-kind="recent"] .group-header::before {
-  /* 固定项目 / 最近访问 是首个分组 (紧贴 SearchInput), 不画顶部分割线 */
+  /* 固定项目 / 最近访�?是首个分�?(紧贴 SearchInput), 不画顶部分割�?*/
   display: none;
 }
 
-/* 空组 (无内容) 不可点击. 鼠标光标保持默认, 避免误导用户. */
+/* 空组 (无内�? 不可点击. 鼠标光标保持默认, 避免误导用户. */
 .group-section[data-interactive="0"] .group-header {
   cursor: default;
 }
@@ -569,7 +570,7 @@ function isItemHovered(localIndex: number): boolean {
   padding: 4px 2px 8px;
 }
 
-/* flex 布局下 gs-item--grid 用内容自然宽度，不强制拉伸 */
+/* flex 布局�?gs-item--grid 用内容自然宽度，不强制拉�?*/
 .group-content--grid-auto .gs-item--grid {
   flex: 0 0 auto;
   width: auto;
@@ -678,9 +679,9 @@ function isItemHovered(localIndex: number): boolean {
 }
 
 .gs-icon-mode-icon :deep(.app-result-item__icon) {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
   transform: none !important;
   filter: none !important;
   transition: none !important;
@@ -706,17 +707,17 @@ function isItemHovered(localIndex: number): boolean {
 }
 
 .gs-icon-mode-icon :deep(.result-item__icon) {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
+  width: 60px;
+  height: 60px;
+  border-radius: 14px;
   transform: none !important;
   filter: none !important;
   transition: none !important;
 }
 
 .gs-icon-mode-icon :deep(.result-item__img) {
-  width: 32px;
-  height: 32px;
+  width: 60px;
+  height: 60px;
 }
 
 .gs-icon-mode-icon :deep(.result-item__content),

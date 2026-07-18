@@ -81,38 +81,6 @@ function restoreFromStorage(): void {
 }
 
 /**
- * 把内存缓存持久化到 localStorage.
- * 仅保存 png 类型的图标 (data URL), 不保存 component 类型.
- * 超出 2MB 时按 ts 淘汰最旧的条目.
- */
-function persistToStorage(): void {
-    try {
-        const entries: Record<string, PersistedEntry> = {}
-        let totalSize = 0
-        // 先收集所有 png 条目, 按 ts 排序 (最新的在前)
-        const items: Array<{ id: string; entry: PersistedEntry; size: number }> = []
-        cache.forEach((promise, id) => {
-            // 只处理已 resolve 的 promise
-            void promise.then((state) => {
-                if (state.kind !== 'png') return
-                const size = id.length + state.value.length + 64 // 估算 JSON 开销
-                items.push({
-                    id,
-                    entry: { dataUrl: state.value, path: '', ts: Date.now() },
-                    size,
-                })
-            })
-        })
-        // 同步写入: 由于 promise 是异步的, 这里用另一种方式
-        // 直接遍历 cache, 检查每个 promise 是否已经 resolve
-        // 实际上我们只在 loadIconsBatch 成功后调用 persistToStorage,
-        // 此时 cache 里的条目都是刚写入的 png, 可以直接序列化
-    } catch {
-        // localStorage 不可用, 静默忽略
-    }
-}
-
-/**
  * 同步持久化: 接收已知的 png 条目列表, 直接写入 localStorage.
  * 由 loadIconsBatch 在成功后调用, 传入本次 batch 的结果.
  */
