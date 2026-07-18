@@ -185,6 +185,47 @@ export const commandSpecsApi = {
 }
 
 /**
+ * 窗口监控 API —— 跟踪系统当前激活应用, 用于基于上下文的智能推荐.
+ *
+ * 数据流向:
+ * - 每 2 秒轮询当前前台窗口, 防抖 3 次确认切换.
+ * - 切换时 emit `window_changed` 事件; 前端 store 监听以更新推荐算法.
+ * - 此 API 提供"一次性拉取当前快照"的能力, 给冷启动场景使用.
+ *
+ * 错误处理协议:
+ * - 所有方法在 IPC 失败时 throw, 由调用方 (search store) 处理.
+ * - listenChanged 在非 Tauri 环境返回 noop unlisten 函数.
+ */
+export const windowMonitorApi = {
+    /**
+     * 拉取窗口监控当前快照: 当前激活应用 + 最近 10 个历史.
+     */
+    getState(): Promise<{
+        activeAppPath: string
+        activeAppTitle: string
+        recentApps: Array<{ path: string; title: string }>
+    }> {
+        return call<{
+            activeAppPath: string
+            activeAppTitle: string
+            recentApps: Array<{ path: string; title: string }>
+        }>('get_window_monitor_state', {})
+    },
+    /**
+     * 后端 `window_changed` 事件订阅.
+     * payload: { path: string; title: string; recent_count: number }
+     */
+    async listenChanged(
+        handler: (payload: { path: string; title: string; recent_count: number }) => void,
+    ): Promise<() => void> {
+        return listenEvent<{ path: string; title: string; recent_count: number }>(
+            'window_changed',
+            handler,
+        )
+    },
+}
+
+/**
  * 固定项目 API —— 用户手动 pin 到首页的应用/文件.
  *
  * 错误处理协议:

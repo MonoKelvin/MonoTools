@@ -25,7 +25,6 @@ pub async fn search_cmd(
     query: String,
     options: Option<serde_json::Value>,
 ) -> Result<Vec<SearchResult>, String> {
-    log::info!("[search] search_cmd called with query='{}'", query);
     let default_limit = if query.is_empty() {
         crate::core::config::search::EMPTY_QUERY_LIMIT
     } else {
@@ -37,7 +36,6 @@ pub async fn search_cmd(
         .map(|n| n.min(crate::core::config::search::MAX_LIMIT as u64) as u32)
         .unwrap_or(default_limit);
     let results = state.search_engine.search(&query, limit);
-    log::info!("[search] search_cmd returned {} results", results.len());
     Ok(results)
 }
 
@@ -179,6 +177,84 @@ pub async fn frontend_ready(
                 }),
             );
         }
+
+        // 窗口已显示后再启动文件索引构建 (非阻塞 UI).
+        let fs_clone = state.file_search.clone();
+        let app_clone = app.clone();
+        tauri::async_runtime::spawn(async move {
+            #[cfg(debug_assertions)]
+            log::info!("[boot] 文件索引构建任务已 spawn (frontend_ready 后)");
+            log::info!("[boot] 启动文件索引构建...");
+            let _ = app_clone.emit(
+                ipc_events::INDEX_PROGRESS,
+                serde_json::json!({
+                    "status": "building",
+                    "message": "正在检测盘符...",
+                    "phase": "files",
+                }),
+            );
+            let start = std::time::Instant::now();
+            let app_for_progress = app_clone.clone();
+            let res = fs_clone
+                .build_index_with_volume_progress(move |volume, idx, cumulative, total_volumes| {
+                    let drive = crate::platform::windows::usn::drive_label(volume);
+                    let msg = if total_volumes == 0 {
+                        format!("正在索引 {}", drive)
+                    } else {
+                        format!(
+                            "正在索引 {}（{}/{}） — 已累计 {} 个文件",
+                            drive, idx, total_volumes, cumulative
+                        )
+                    };
+                    let _ = app_for_progress.emit(
+                        ipc_events::INDEX_PROGRESS,
+                        serde_json::json!({
+                            "status": "building",
+                            "message": msg,
+                            "phase": "files",
+                            "files": cumulative,
+                            "volumes": total_volumes,
+                            "current_volume": drive,
+                            "current_index": idx,
+                        }),
+                    );
+                })
+                .await;
+            match res {
+                Err(e) => {
+                    log::error!("[boot] 文件索引构建失败: {}", e);
+                    let _ = app_clone.emit(
+                        ipc_events::INDEX_PROGRESS,
+                        serde_json::json!({
+                            "status": "error",
+                            "message": format!("索引构建失败: {}", e),
+                            "phase": "files",
+                        }),
+                    );
+                }
+                Ok(_) => {
+                    log::info!("[boot] 文件索引构建完成，耗时 {:?}", start.elapsed());
+                    let total = fs_clone.total();
+                    let _ = app_clone.emit(
+                        ipc_events::INDEX_PROGRESS,
+                        serde_json::json!({
+                            "status": "completed",
+                            "message": "索引构建完成",
+                            "phase": "files",
+                            "files": total,
+                        }),
+                    );
+                }
+            }
+
+            // 启动 USN 增量更新循环 (每 120s 检查一次).
+            use crate::search_engine::start_update_loop;
+            let fs_clone2 = fs_clone.clone();
+            start_update_loop(
+                move || fs_clone2.update_index(),
+                std::time::Duration::from_secs(120),
+            );
+        });
     }
     Ok(())
 }

@@ -10,5 +10,6 @@ export {
     pinTopApi,
     shellApi,
     commandSpecsApi,
+    windowMonitorApi,
 } from './api'
 export { isTauri } from './env'

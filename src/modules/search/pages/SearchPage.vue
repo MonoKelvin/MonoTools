@@ -44,6 +44,8 @@ let resizeObserver: ResizeObserver | null = null
 let pendingHeight = 0
 let resyncTimer: ReturnType<typeof setTimeout> | null = null
 let unlistenIndexProgress: (() => void) | null = null
+let unlistenWindowMonitor: (() => void) | null = null
+let periodicRecommendTimer: ReturnType<typeof setInterval> | null = null
 
 const WINDOW_FIXED_WIDTH = WINDOW_DIMENSIONS.fixedWidth
 
@@ -116,7 +118,8 @@ const handleIndexProgress = (progress: {
 }) => {
   search.setIndexProgress(progress)
   // 应用索引就绪后, 若当前是空查询, 自动刷新一次让应用出现在首屏
-  if (progress.phase === 'apps' && progress.status === 'completed' && !search.query) {
+  // 注意: search.query 是 Ref<string>, 必须用 .value 取值
+  if (progress.phase === 'apps' && progress.status === 'completed' && search.query.value === '') {
     search.runSearch().catch(() => undefined)
   }
 }
@@ -362,6 +365,18 @@ onMounted(async () => {
 
   unlistenIndexProgress = await listenEvent('index_progress', handleIndexProgress)
 
+  // 启动 WindowMonitor 订阅: 切换激活应用时, store 立刻刷新推荐.
+  if (!unlistenWindowMonitor) {
+      unlistenWindowMonitor = await search.listenWindowMonitor()
+  }
+
+  // 定时同步 (兜底, 即便事件流异常也保持推荐新鲜)
+  if (!periodicRecommendTimer) {
+      periodicRecommendTimer = setInterval(() => {
+          search.syncWindowMonitor().catch(() => undefined)
+      }, 60_000)
+  }
+
   // 先完成数据加载和布局, 再通知后端显示窗口.
   // 这样窗口一出现就是完整的主界面, 避免透明窗口闪烁.
   await search.initialLoad().catch(() => undefined)
@@ -393,15 +408,26 @@ onUpdated(() => {
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('keydown', handleGlobalKeydown)
-  if (resizeObserver) {
-    resizeObserver.disconnect()
-    resizeObserver = null
-  }
-  if (unlistenIndexProgress) unlistenIndexProgress()
-  if (containerRef.value) {
-    containerRef.value.removeEventListener('contextmenu', handleContextMenu)
-  }
+    window.removeEventListener('keydown', handleGlobalKeydown)
+    if (resizeObserver) {
+        resizeObserver.disconnect()
+        resizeObserver = null
+    }
+    if (unlistenIndexProgress) {
+        unlistenIndexProgress()
+        unlistenIndexProgress = null
+    }
+    if (unlistenWindowMonitor) {
+        unlistenWindowMonitor()
+        unlistenWindowMonitor = null
+    }
+    if (periodicRecommendTimer) {
+        clearInterval(periodicRecommendTimer)
+        periodicRecommendTimer = null
+    }
+    if (containerRef.value) {
+        containerRef.value.removeEventListener('contextmenu', handleContextMenu)
+    }
 })
 
 watch(() => router.currentRoute.value.path, () => nextTick(syncWindowHeight))

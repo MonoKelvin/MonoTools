@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
 import type { SearchResult, SearchOptions } from '@/modules/search'
 import { searchApi } from '@/services/api'
-import { pinApi, pinTopApi } from '@/services/api'
+import { pinApi, pinTopApi, windowMonitorApi } from '@/services/api'
 import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE, SEARCH_LIMITS } from '@/core/config'
 import { getFileKind } from './utils/fileKinds'
 import type { SortMode } from '@/core/config/sorting'
@@ -12,6 +12,7 @@ import {
   RECOMMENDATION_MAP,
   DEFAULT_SORT_BY_GROUP,
 } from '@/core/config/sorting'
+import { isTauri } from '@/services/env'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
@@ -104,6 +105,22 @@ export const useSearchStore = defineStore('search', () => {
     const appReady = ref(false)
 
     /**
+     * 当前激活窗口的进程路径. 由后端 WindowMonitorService 推送 `window_changed` 事件更新.
+     * 切换前台应用 → 此值变化 → 所有依赖它的 computed 重算 → 推荐排序立刻变化.
+     *
+     * 空字符串代表"尚未收到任何信号"或"非 Windows 平台". 这种情况
+     * activeAppCategories 会回退到最近列表推断.
+     */
+    const activeAppPath = ref<string>('')
+    /** 当前激活窗口的应用标题, 供 UI 状态栏/调试使用. */
+    const activeAppTitle = ref<string>('')
+    /**
+     * WindowMonitorService 记录的最近切换过的应用, 用于次级推荐信号.
+     * 同时也是冷启动场景的兜底数据源.
+     */
+    const activeAppRecent = ref<Array<{ path: string; title: string }>>([])
+
+    /**
      * 用户手动固定的 SearchResult.id 列表 (按用户添加顺序).
      * 不在 results 里出现时, 渲染会自动过滤掉 (避免 stale 引用).
      *
@@ -137,21 +154,47 @@ export const useSearchStore = defineStore('search', () => {
 
     /**
      * 计算当前已打开应用的类别分布, 用于智能推荐.
-     * 基于 recent (按 launch_count 排序的前 N 项) 推断用户偏好.
+     *
+     * 核心改进:
+     * - **Foreground-first**: 以前只依赖 recent (launch_count 排序后固化).
+     *   现在核心信号是当前激活窗口 (`activeAppPath`), 切换前台应用立刻改变推荐.
+     * - **Recent context**: 仅在 foreground 信号缺失时回退.
+     * - **可观测**: 后端 emit `window_changed`, 前端 store 监听 → 触发重算.
      */
     const activeAppCategories = computed<Record<string, number>>(() => {
         const cats: Record<string, number> = {}
-        // recent 已按 launch_count 排序, 用位置加权 (越靠前权重越高)
-        const recentApps = recent.value.filter((r) => r.category === 'apps')
-        recentApps.forEach((app, idx) => {
-            const titleLower = app.title.toLowerCase()
-            const weight = Math.max(1, recentApps.length - idx) // 位置加权
-            for (const [cat, keywords] of Object.entries(APP_CATEGORIES)) {
-                if (keywords.some((kw) => titleLower.includes(kw.toLowerCase()))) {
-                    cats[cat] = (cats[cat] || 0) + weight
-                }
-            }
+
+        // 1) 前台信号, 当前激活应用是首选
+        const foreground = activeAppPath.value
+        if (foreground) {
+            const matched = matchAppCategoryByPath(foreground)
+            if (matched) cats[matched] = (cats[matched] || 0) + 100 // 主导信号, 高权重
+        }
+
+        // 2) 次要信号: 最近窗口监控历史, 按访问顺序加权
+        const recentAppsList = activeAppRecent.value
+        recentAppsList.forEach((entry, idx) => {
+            const cat = matchAppCategoryByPath(entry.path)
+            if (!cat) return
+            // 越新的窗口权重越高
+            const weight = Math.max(1, recentAppsList.length - idx)
+            cats[cat] = (cats[cat] || 0) + weight
         })
+
+        // 3) 最后回退: 最近启动 (launch_count) 列表
+        if (Object.keys(cats).length === 0) {
+            const recentApps = recent.value.filter((r) => r.category === 'apps')
+            recentApps.forEach((app, idx) => {
+                const titleLower = app.title.toLowerCase()
+                const weight = Math.max(1, recentApps.length - idx)
+                for (const [cat, keywords] of Object.entries(APP_CATEGORIES)) {
+                    if (keywords.some((kw) => titleLower.includes(kw.toLowerCase()))) {
+                        cats[cat] = (cats[cat] || 0) + weight
+                    }
+                }
+            })
+        }
+
         return cats
     })
 
@@ -175,7 +218,7 @@ export const useSearchStore = defineStore('search', () => {
         }
         // 移除用户已经在大量使用的类别 (不推荐用户已经在用的)
         for (const cat of userCats) {
-            if (activeCats[cat] >= 3) targetCats.delete(cat)
+            if (activeCats[cat] >= 30) targetCats.delete(cat)
         }
 
         if (targetCats.size === 0) return scores
@@ -185,9 +228,16 @@ export const useSearchStore = defineStore('search', () => {
         for (const app of results.value) {
             if (app.category !== 'apps') continue
             const titleLower = app.title.toLowerCase()
+            const pathLower = (app.subtitle || app.title).toLowerCase()
             for (const cat of targetCats) {
                 const keywords = APP_CATEGORIES[cat] || []
-                if (keywords.some((kw) => titleLower.includes(kw.toLowerCase()))) {
+                if (
+                    keywords.some(
+                        (kw) =>
+                            titleLower.includes(kw.toLowerCase()) ||
+                            pathLower.includes(kw.toLowerCase()),
+                    )
+                ) {
                     scores.set(app.id, (scores.get(app.id) || 0) + recBonus)
                     break
                 }
@@ -199,21 +249,32 @@ export const useSearchStore = defineStore('search', () => {
 
     /**
      * 智能排序打分.
-     * 综合: 访问次数 + 名称匹配 + 目录访问 + 推荐权重.
+     * 综合: 访问次数 + 名称匹配 + 目录访问 + 推荐权重 + **前台上下文加权**.
+     *
+     * 设计:
+     * - **Foreground bonus**: 与当前激活应用属于相同大类的应用获得显著加分.
+     *   这是"切换激活应用后排序立刻变化"的关键信号.
+     * - 用户当前激活 dev → IDE、终端、浏览器加分; 切换到 communication →
+     *   slack/teams/discord 立即兑现.
      */
     function smartSortScore(item: SearchResult, queryStr: string): number {
         let score = 0
         const w = SMART_WEIGHTS
 
-        // 1) 访问次数 (用 score 字段近似, 后端已按 launch_count 排序)
-        score += (item.score || 0) * w.launchCount / 100
+        // 1) 访问次数 (对数缩放避免高频应用垄断)
+        const countFactor = Math.log((item.score || 0) + 1)
+        score += countFactor * w.launchCount
 
-        // 2) 名称匹配 (查询词命中)
+        // 2) 名称匹配 (位置敏感, 前缀 > 子串)
         if (queryStr) {
             const q = queryStr.toLowerCase()
             const title = item.title.toLowerCase()
-            if (title.includes(q)) {
-                score += w.nameMatch * (q.length / Math.max(title.length, 1))
+            const pos = title.indexOf(q)
+            if (pos === 0) {
+                score += w.nameMatch * 3
+            } else if (pos > 0) {
+                const posBonus = pos <= 3 ? 2 : 1
+                score += w.nameMatch * posBonus
             }
         }
 
@@ -221,7 +282,56 @@ export const useSearchStore = defineStore('search', () => {
         const recScore = recommendationScores.value.get(item.id)
         if (recScore) score += recScore
 
+        // 4) **前台上下文加权**: 当前激活应用所属类别直接加分, 让排序"立刻可见"
+        //    切换前台应用 → 此项立即变化 → 排序立即重排.
+        const fgBoost = getForegroundCategoryBoost(item)
+        if (fgBoost) score += fgBoost
+
+        // 5) 路径 catBoost 配套: 即便搜索未命中, 前台大类的应用依然靠前
         return score
+    }
+
+    /**
+     * 当前激活应用所属的类别. 若路径含已知类别关键字, 返回该类别; 否则 null.
+     *
+     * 使用 pathLower (subtitle/exe 路径), 比 title 更稳定 (标题包含文件名时变化).
+     */
+    function matchAppCategoryByPath(path: string): string | null {
+        const lower = path.toLowerCase()
+        let best: { cat: string; len: number } | null = null
+        for (const [cat, keywords] of Object.entries(APP_CATEGORIES)) {
+            for (const kw of keywords) {
+                const k = kw.toLowerCase()
+                if (!k) continue
+                if (lower.includes(k)) {
+                    // 取最长关键字作为"更精确"的类别信号
+                    if (!best || k.length > best.len) {
+                        best = { cat, len: k.length }
+                    }
+                }
+            }
+        }
+        return best?.cat ?? null
+    }
+
+    /**
+     * 前台类别加权: 与当前激活应用同类别的应用获得显著加分.
+     * 切前台应用时, 此函数返回值立即变化 → smartSortScore 重排.
+     *
+     * 注意: 这里用普通函数 + activeAppPath.value, 不用 computed,
+     * 因为 computed 返回函数时, 调用方必须 .value() 才能执行, 容易出错.
+     */
+    function getForegroundCategoryBoost(item: SearchResult): number {
+        const fgPath = activeAppPath.value
+        if (!fgPath) return 0
+        const fgCat = matchAppCategoryByPath(fgPath)
+        if (!fgCat) return 0
+        const itemCat = matchAppCategoryByPath(item.subtitle || item.title)
+        if (itemCat === fgCat) return SMART_WEIGHTS.launchCount * 5
+        // 弱推荐类别也轻微加分, 避免排序完全二元
+        const recs = RECOMMENDATION_MAP[fgCat] || []
+        if (recs.includes(itemCat)) return SMART_WEIGHTS.launchCount * 1.5
+        return 0
     }
 
     /** 按指定模式排序 items */
@@ -359,9 +469,86 @@ export const useSearchStore = defineStore('search', () => {
      * 启动那一刻就把 UI 填满: 立即触发一次空查询,
      * 让后端的 `recent_files/list` 走完,前端立刻展示最近文件 / 应用.
      * `await` 在调用方处理;不阻塞 UI 渲染。
+     *
+     * 同时: 启动后端 WindowMonitor 监听器 (有 `window_changed` 事件流),
+     * 并拉取当前快照, 冷启动也能拿到当前激活应用上下文.
      */
     async function initialLoad() {
+        // 不阻塞搜索, 并行拉监控状态
+        void syncWindowMonitor().catch(() => undefined)
         await runSearch()
+    }
+
+    /**
+     * 同步后端 WindowMonitor 当前状态 (进程路径 + 标题 + 最近历史).
+     * 在冷启动 / 已经存在但需要拿到首屏数据时调用, 秒级完成.
+     */
+    async function syncWindowMonitor(): Promise<void> {
+        if (!isTauri) return
+        try {
+            const snap = await windowMonitorApi.getState()
+            if (snap.activeAppPath) {
+                activeAppPath.value = snap.activeAppPath
+                activeAppTitle.value = snap.activeAppTitle
+            }
+            if (Array.isArray(snap.recentApps)) {
+                activeAppRecent.value = snap.recentApps
+            }
+            logWindowMonitorSync()
+        } catch {
+            // ignore
+        }
+    }
+
+    function logWindowMonitorSync() {
+        logRecommendSignal(
+            `foreground='${activeAppTitle.value || '?'}' (${activeAppPath.value}) recent=${activeAppRecent.value.length}`,
+        )
+    }
+
+    /** 内部日志, 内联避免新增 logger 模块. */
+    function logRecommendSignal(msg: string): void {
+        // 控制台统一加 [recommendation] 前缀, 便于按 tag grep 关闭.
+        // eslint-disable-next-line no-console
+        console.info('[recommendation]', msg)
+    }
+
+    /**
+     * 应用 `window_changed` 事件 payload, 更新本地 ref 触发重算.
+     * 暴露给业务侧手动调用; 也可被 `listenWindowMonitor` 内部使用.
+     */
+    function applyWindowChanged(payload: {
+        path?: string
+        title?: string
+        recent_count?: number
+    }): void {
+        if (typeof payload.path === 'string') {
+            if (activeAppPath.value !== payload.path) {
+                activeAppPath.value = payload.path
+            }
+        }
+        if (typeof payload.title === 'string') {
+            activeAppTitle.value = payload.title
+        }
+        // 后端只推 recent_count, 计数变化时拉一次最新快照拿完整路径列表
+        const targetCount = payload.recent_count ?? 0
+        if (activeAppRecent.value.length !== targetCount) {
+            void syncWindowMonitor().catch(() => undefined)
+        }
+        logWindowMonitorSync()
+    }
+
+    /**
+     * 订阅后端 `window_changed` 事件, 持续更新推荐上下文.
+     * 返回 unlisten, 调用方应在组件卸载时清理.
+     */
+    async function listenWindowMonitor(): Promise<() => void> {
+        if (!isTauri) return () => {}
+        try {
+            return await windowMonitorApi.listenChanged(applyWindowChanged)
+        } catch {
+            return () => {}
+        }
     }
 
     async function buildIndex() {
@@ -914,6 +1101,12 @@ export const useSearchStore = defineStore('search', () => {
         indexVolumeIndex,
         indexCurrentVolume,
         appReady,
+        /** 当前激活窗口路径 (WindowMonitor 推送). */
+        activeAppPath,
+        /** 当前激活窗口标题 (WindowMonitor 推送). */
+        activeAppTitle,
+        /** 最近激活应用历史, 给推荐算法当次级信号. */
+        activeAppRecent,
         pinnedIds,
         collapsedGroups,
         filteredResults,
@@ -955,5 +1148,14 @@ export const useSearchStore = defineStore('search', () => {
         selectWithModifiers,
         toggleSelect,
         clearSelection,
+        // 窗口监控 / 推荐上下文 API
+        syncWindowMonitor,
+        listenWindowMonitor,
+        applyWindowChanged,
+        /** 当前激活应用所属类别 (诊断用). */
+        matchAppCategoryByPath: (p: string) => matchAppCategoryByPath(p),
+        // 智能排序打分, 暴露给 composables / 测试使用
+        smartSortScore: (item: SearchResult, q: string) => smartSortScore(item, q),
+        recommendationScores,
     }
 })
