@@ -18,7 +18,9 @@ pub fn is_executable(path: &Path) -> bool {
     path.extension()
         .map(|e| {
             let e = e.to_string_lossy().to_lowercase();
-            e == "exe" || e == "bat" || e == "cmd" || e == "lnk" || e == "url"
+            // 注意: 不包含 "url" —— .url 是 Internet Shortcut (网址快捷方式),
+            // 不是应用程序, 不应出现在应用搜索结果中.
+            e == "exe" || e == "bat" || e == "cmd" || e == "lnk"
         })
         .unwrap_or(false)
 }

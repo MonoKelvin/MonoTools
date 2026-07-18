@@ -52,7 +52,7 @@ impl AppSearchEngine {
     ///
     /// `on_progress(count, phase)`:
     /// - `count`: 当前已索引的应用总数
-    /// - `phase`: 当前阶段名（"common_start_menu" / "user_start_menu" / "desktop"）
+    /// - `phase`: 当前阶段名（"common_start_menu" / "user_start_menu" / "desktop" / "registry"）
     pub async fn refresh_index_incremental<F>(&self, mut on_progress: F) -> Result<()>
     where
         F: FnMut(usize, &str) + Send + 'static,
@@ -95,6 +95,11 @@ impl AppSearchEngine {
             // 避免连续扫描阻塞 runtime 线程, 导致窗口拖动/滚动卡顿.
             tokio::task::yield_now().await;
         }
+
+        // 从注册表 Uninstall 键发现更多应用 (HKLM + HKCU).
+        let count = Self::scan_registry_apps(&self.cache);
+        on_progress(count, "registry");
+        tokio::task::yield_now().await;
 
         // 额外添加常用系统应用（白名单）
         let count = Self::add_system_apps(&self.cache);
@@ -504,10 +509,52 @@ const SYSTEM_DIR_KEYWORDS: &[&str] = &[
     "\\windows\\assembly\\",
 ];
 
+/// 非应用程序可执行文件名模式 —— 匹配这些名称的文件不应作为应用索引.
+/// 包含卸载程序、更新程序、辅助工具等用户不会直接启动的可执行文件.
+const NON_APP_PATTERNS: &[&str] = &[
+    "unins000.exe",
+    "uninstall.exe",
+    "uninstall_helper.exe",
+    "uninstall_helper_64.exe",
+    "unins.exe",
+    "uninstaller.exe",
+    "update.exe",
+    "updater.exe",
+    "_setup.exe",
+    "setup.exe",
+    "installer.exe",
+    "install_helper.exe",
+    "config.exe",
+    "config64.exe",
+    "diagnostics.exe",
+    "diagnostic_tool.exe",
+    "crash_reporter.exe",
+    "crashpad_handler.exe",
+    "crash_handler.exe",
+    "debug.exe",
+    "debugger.exe",
+    "test.exe",
+    "tests.exe",
+    "benchmark.exe",
+    "launcher_helper.exe",
+    "migration_tool.exe",
+    "repair.exe",
+    "maintenance_tool.exe",
+];
+
 /// 判断给定路径是否位于系统目录中, 是则不应作为用户应用索引.
 fn is_system_executable(path: &std::path::Path) -> bool {
     let path_str = path.to_string_lossy().to_lowercase();
-    SYSTEM_DIR_KEYWORDS.iter().any(|kw| path_str.contains(kw))
+    if SYSTEM_DIR_KEYWORDS.iter().any(|kw| path_str.contains(kw)) {
+        return true;
+    }
+    // 排除非应用程序可执行文件 (卸载程序、更新程序等).
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    NON_APP_PATTERNS.iter().any(|p| file_name == *p)
 }
 
 fn app_type_of(app: &AppEntry) -> ResultType {
@@ -576,6 +623,242 @@ const SYSTEM_APP_WHITELIST: &[(&str, &str)] = &[
 ];
 
 impl AppSearchEngine {
+    /// 从注册表 Uninstall 键发现已安装应用.
+    ///
+    /// Windows 注册表存储了所有已安装程序的卸载信息, 包含 DisplayIcon 字段,
+    /// 指向程序的主可执行文件. 这是 Start Menu 扫描的重要补充, 能发现那些
+    /// 没有在开始菜单创建快捷方式的程序 (如 Steam 游戏、某些绿色软件等).
+    ///
+    /// 扫描范围:
+    /// - HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*
+    /// - HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*
+    /// - HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\* (32-bit apps on 64-bit Windows)
+    fn scan_registry_apps(cache: &RwLock<HashMap<String, AppEntry>>) -> usize {
+        let mut batch: Vec<AppEntry> = Vec::new();
+
+        // 需要扫描的注册表路径列表
+        let registry_paths = [
+            (
+                "HKLM",
+                "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            ),
+            (
+                "HKCU",
+                "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            ),
+            (
+                "HKLM_WOW64",
+                "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+            ),
+        ];
+
+        for (hive, subkey) in registry_paths {
+            let _ = Self::scan_registry_key(hive, subkey, &mut batch);
+        }
+
+        if !batch.is_empty() {
+            let mut cache_write = cache.write();
+            for entry in batch {
+                let key = entry.path.to_string_lossy().to_string();
+                // 不覆盖已存在的条目 (Start Menu 扫描优先)
+                cache_write.entry(key).or_insert(entry);
+            }
+        }
+
+        cache.read().len()
+    }
+
+    /// 扫描单个注册表 Uninstall 键下的所有子键.
+    #[cfg(windows)]
+    fn scan_registry_key(
+        hive: &str,
+        _subkey: &str,
+        batch: &mut Vec<AppEntry>,
+    ) -> std::io::Result<()> {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+        use windows::core::{PCWSTR, PWSTR};
+        use windows::Win32::System::Registry::{
+            HKEY, KEY_READ, RegCloseKey, RegEnumKeyExW, RegOpenKeyExW,
+        };
+
+        let hive_key = match hive {
+            "HKLM" => windows::Win32::System::Registry::HKEY_LOCAL_MACHINE,
+            "HKCU" => windows::Win32::System::Registry::HKEY_CURRENT_USER,
+            "HKLM_WOW64" => windows::Win32::System::Registry::HKEY_LOCAL_MACHINE,
+            _ => return Ok(()),
+        };
+
+        let wide_subkey: Vec<u16> = if hive == "HKLM_WOW64" {
+            "SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect()
+        } else {
+            "SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+                .encode_utf16()
+                .chain(std::iter::once(0))
+                .collect()
+        };
+
+        let mut hkey: HKEY = HKEY::default();
+        let result = unsafe {
+            RegOpenKeyExW(
+                hive_key,
+                PCWSTR(wide_subkey.as_ptr()),
+                Some(0),
+                KEY_READ,
+                &mut hkey,
+            )
+        };
+        if result.is_err() {
+            log::debug!("[registry] failed to open {}: {:?}", hive, result);
+            return Ok(());
+        }
+
+        let mut idx = 0u32;
+        loop {
+            let mut name_buf = [0u16; 256];
+            let mut name_len = name_buf.len() as u32;
+            let ret = unsafe {
+                RegEnumKeyExW(
+                    hkey,
+                    idx,
+                    Some(PWSTR(name_buf.as_mut_ptr())),
+                    &mut name_len,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
+            };
+            if ret.is_err() {
+                break;
+            }
+
+            let sub_name = OsString::from_wide(&name_buf[..name_len as usize])
+                .to_string_lossy()
+                .to_string();
+
+            // 读取 DisplayIcon 和 DisplayName
+            let mut hsub: HKEY = HKEY::default();
+            let wide_sub: Vec<u16> = sub_name.encode_utf16().chain(std::iter::once(0)).collect();
+            let open_result = unsafe {
+                RegOpenKeyExW(
+                    hkey,
+                    PCWSTR(wide_sub.as_ptr()),
+                    Some(0),
+                    KEY_READ,
+                    &mut hsub,
+                )
+            };
+            if open_result.is_ok() {
+                let display_icon = Self::read_registry_string(hsub, "DisplayIcon");
+                let display_name = Self::read_registry_string(hsub, "DisplayName");
+                unsafe { let _ = RegCloseKey(hsub); }
+
+                if let (Some(icon), Some(name)) = (display_icon, display_name) {
+                    // DisplayIcon 可能包含逗号分隔的参数 (如 "path.exe,0"), 取第一部分
+                    let exe_path = icon.split(',').next().unwrap_or(&icon).to_string();
+                    let path = PathBuf::from(&exe_path);
+
+                    // 有效性检查: 文件存在、不是系统目录、不是卸载程序
+                    if path.exists() && !is_system_executable(&path) && !name.is_empty() {
+                        let (pinyin_initials, pinyin_full) = pinyin_of(&name);
+                        batch.push(AppEntry {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            name,
+                            path,
+                            icon_path: None,
+                            category: "Applications".to_string(),
+                            last_launched: None,
+                            launch_count: 0,
+                            alias: None,
+                            is_special_shortcut: false,
+                            special_command: None,
+                            special_args: None,
+                            pinyin_initials,
+                            pinyin_full,
+                            version: None,
+                            file_types: Vec::new(),
+                        });
+                    }
+                }
+            }
+
+            idx += 1;
+        }
+
+        unsafe { let _ = RegCloseKey(hkey); }
+        Ok(())
+    }
+
+    /// 读取注册表字符串值.
+    #[cfg(windows)]
+    fn read_registry_string(hkey: windows::Win32::System::Registry::HKEY, name: &str) -> Option<String> {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::System::Registry::{REG_VALUE_TYPE, REG_SZ, REG_EXPAND_SZ, RegQueryValueExW};
+
+        let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+        let mut data_type: REG_VALUE_TYPE = REG_VALUE_TYPE::default();
+        let mut buf = [0u8; 512];
+        let mut buf_len = buf.len() as u32;
+
+        let result = unsafe {
+            RegQueryValueExW(
+                hkey,
+                PCWSTR(wide_name.as_ptr()),
+                None,
+                Some(&mut data_type),
+                Some(buf.as_mut_ptr()),
+                Some(&mut buf_len),
+            )
+        };
+        if result.is_err() {
+            return None;
+        }
+
+        if data_type == REG_SZ || data_type == REG_EXPAND_SZ {
+            // 将字节转换为 u16 数组 (UTF-16 LE)
+            let wide_data: Vec<u16> = (0..buf_len as usize / 2)
+                .map(|i| u16::from_le_bytes([buf[i * 2], buf[i * 2 + 1]]))
+                .collect();
+            // 去除尾部 null
+            let trimmed: Vec<u16> = wide_data
+                .split(|&c| c == 0)
+                .next()
+                .unwrap_or(&wide_data)
+                .to_vec();
+            OsString::from_wide(&trimmed)
+                .to_string_lossy()
+                .to_string()
+                .into()
+        } else {
+            None
+        }
+    }
+
+    /// 非 Windows 平台: 注册表扫描返回空结果.
+    #[cfg(not(windows))]
+    fn scan_registry_key(
+        _hive: &str,
+        _subkey: &str,
+        _batch: &mut Vec<AppEntry>,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    /// 非 Windows 平台: 注册表字符串读取返回 None.
+    #[cfg(not(windows))]
+    fn read_registry_string(
+        _hkey: (),
+        _name: &str,
+    ) -> Option<String> {
+        None
+    }
+
     /// 添加常用系统应用到缓存中。返回添加后的总应用数。
     ///
     /// 为什么不用 WalkDir 扫描系统目录:

@@ -235,7 +235,8 @@ function globalIndexOf(localIndex: number): number {
 }
 
 function onItemClick(item: SearchResult, localIndex: number, event: MouseEvent) {
-  emit('select', item, globalIndexOf(localIndex), event)
+  const globalIndex = globalIndexOf(localIndex)
+  emit('select', item, globalIndex, event)
 }
 
 function onItemDblClick(item: SearchResult) {
@@ -243,6 +244,7 @@ function onItemDblClick(item: SearchResult) {
 }
 
 function onItemHover(localIndex: number) {
+  // hover 仅在无修饰键时同步高亮, 避免多选 Ctrl/Shift 操作时 hover 抢占
   emit('hover', globalIndexOf(localIndex))
 }
 

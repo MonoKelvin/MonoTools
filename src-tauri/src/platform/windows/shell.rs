@@ -42,16 +42,25 @@ pub fn launch_as_admin(path: &str, args: &[String]) -> Result<()> {
 ///
 /// 注意: 直接传入文件完整路径即可, `/select,` 会自动打开父目录并选中该文件.
 /// 不要先取 parent 再传进来, 否则会多往上跳一级导致定位错误.
+///
+/// 使用 PowerShell 包裹调用以正确处理路径中的特殊字符 (如逗号).
 #[cfg(windows)]
 pub fn open_path(path: &PathBuf) -> Result<()> {
     use crate::core::config::paths;
     use std::os::windows::process::CommandExt;
 
     let path_str = path.to_string_lossy().into_owned();
-    let select_arg = format!("/select,{}", path_str);
 
-    std::process::Command::new(paths::EXPLORER_EXE)
-        .arg(&select_arg)
+    // 使用 PowerShell 包裹 explorer 调用, 避免路径含逗号时参数被截断.
+    // 例如: "C:\Some, App\app.exe" 直接传给 explorer /select, 会被逗号分隔.
+    let ps_arg = format!(
+        "Start-Process -FilePath 'explorer.exe' -ArgumentList '/select,\"{}\"'",
+        path_str.replace("'", "''")  // PowerShell 单引号转义
+    );
+
+    std::process::Command::new("powershell")
+        .arg("-Command")
+        .arg(&ps_arg)
         .creation_flags(paths::CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| AppError::Other(format!("打开路径失败: {e}")))?;

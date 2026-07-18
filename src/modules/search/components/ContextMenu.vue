@@ -148,6 +148,7 @@ function handleOpenLocation() {
     closeMenu()
     return
   }
+  // 直接传文件完整路径, 后端 explorer /select,<path> 会自动打开父目录并选中文件.
   shellApi.openFileLocation(path).catch((e) => {
     showToast('打开文件夹失败', 'error')
     console.error('[ContextMenu] 打开文件夹失败:', e)

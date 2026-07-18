@@ -83,11 +83,25 @@ const syncWindowHeight = () => {
  * 单击 → 只更新 selectedIndex, 不打开.
  * 双击 / Enter / 业务触发 → executeItem (打开).
  * 这样避免"单击"与"双击"产生双重 IPC 调用, 也避免事件冒泡导致打开两次.
+ *
+ * 支持鼠标多选修饰键 (与键盘保持一致):
+ *   - Ctrl      → 切换该项选中状态 (toggle)
+ *   - Shift     → 范围选中
+ *   - Ctrl+Shift→ 范围反选
  */
-const onSelect = (item: SearchResult, _globalIndex: number, _event: MouseEvent) => {
-  // 通过 store.selectByIndex 选中, 自动同步 selectedGlobalId 锚点,
-  // 避免列表重排时 selectedIndex 指向错误位置.
-  search.selectByIndex(search.displayList.findIndex((r) => r.id === item.id))
+const onSelect = (item: SearchResult, globalIndex: number, event: MouseEvent) => {
+  // 优先通过 gid 查找索引 (dedupe / 排序变化后稳定)
+  const byId = search.displayList.findIndex((r) => r.id === item.id)
+  const idx = byId >= 0 ? byId : globalIndex
+
+  if (event.ctrlKey || event.metaKey || event.shiftKey) {
+    // 修饰键按下: 走多选管线, 同时把 selectedIndex 锁定到该项.
+    search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
+  } else {
+    // 普通单击: 单选 + 清空多选集, 同时同步 selectedIndex / selectedGlobalId.
+    search.selectByIndex(idx)
+    search.clearSelection()
+  }
 }
 const onOpen = (item: SearchResult) => {
   search.executeItem(item)
