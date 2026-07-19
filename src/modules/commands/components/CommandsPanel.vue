@@ -102,7 +102,7 @@ onMounted(async () => {
 
     <Transition name="scale">
       <div v-if="showAdd" class="commands-panel__modal-overlay" @click.self="showAdd = false">
-        <div class="commands-panel__modal-card">
+        <div class="commands-panel__modal-card glass-card">
           <h2 class="commands-panel__modal-title">添加命令</h2>
 
           <div class="commands-panel__form-row">
@@ -277,10 +277,6 @@ onMounted(async () => {
 .commands-panel__modal-card {
   width: 460px;
   max-width: 90vw;
-  background: var(--surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
-  box-shadow: var(--shadow-xl);
   padding: var(--sp-6);
 }
 

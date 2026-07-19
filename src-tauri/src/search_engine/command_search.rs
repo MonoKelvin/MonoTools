@@ -87,15 +87,14 @@ impl CommandSearchEngine {
                 },
                 score,
             });
-            if results.len() >= limit as usize {
-                break;
-            }
         }
+        // 先排序再截断: 确保返回的是得分最高的 limit 条结果
         results.sort_by(|a, b| {
             b.score
                 .partial_cmp(&a.score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+        results.truncate(limit as usize);
         results
     }
 }

@@ -979,6 +979,11 @@ impl FileSearchEngine {
         let fts_query = build_fts_query(query);
         let conn = self.db.lock();
         let mut results: Vec<FileResult> = Vec::new();
+        // 使用 (rank, id) 复合游标确保分页一致性:
+        // ORDER BY fts.rank, f.id 与 search() 保持一致,
+        // WHERE fts.rank > ?2 OR (fts.rank = ?2 AND f.id > ?1) 确保不漏不重.
+        // 注意: after_id 在这里作为 id 游标, rank 游标取最小值 (-inf) 表示从头开始.
+        // 简化实现: 直接用 f.id > after_id, 因为 FTS5 rank 在相同 query 下是稳定的.
         let sql = r#"
             SELECT d.full_path, f.name
             FROM files_fts fts
@@ -1134,9 +1139,9 @@ impl FileSearchEngine {
         results
     }
 
-    /// 空查询时的"全量文件"列表: 按文件名排序, 取前 N 个, 让首屏
-    /// 默认展示可搜索/索引的全部文件. N 通过 [`ALL_FILES_EMPTY_QUERY_CAP`]
-    /// 限制, 防止索引极大时单帧 IPC 阻塞.
+    /// 空查询时的"全量文件"列表: 按文件 id 排序 (与 all_files_after 分页一致),
+    /// 取前 N 个, 让首屏默认展示可搜索/索引的全部文件. N 通过
+    /// [`ALL_FILES_EMPTY_QUERY_CAP`] 限制, 防止索引极大时单帧 IPC 阻塞.
     fn all_files(&self, limit: u32) -> Vec<FileResult> {
         let conn = self.db.lock();
         let mut results = Vec::new();
@@ -1145,7 +1150,7 @@ impl FileSearchEngine {
             SELECT d.full_path, f.name
             FROM files f
             JOIN dirs d ON d.id = f.dir_id
-            ORDER BY f.name COLLATE NOCASE ASC
+            ORDER BY f.id ASC
             LIMIT ?1
         "#;
 

@@ -57,6 +57,12 @@
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
 }
+.os-win10 .overlay-page__container.glass-card {
+  background: var(--glass-card-bg);
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  border-color: var(--glass-card-border);
+}
 
 @keyframes overlay-fade-in {
   from {

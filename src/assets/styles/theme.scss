@@ -92,6 +92,21 @@
   --glass-blur-lite: blur(20px) saturate(160%);
 
   /* ==========================================================================
+   * GLASS CARD (装饰性毛玻璃卡片: 浅色玻璃风格)
+   * 用于需要突出"玻璃质感"的独立卡片/弹窗
+   * ========================================================================== */
+  --glass-card-bg:       rgba(28, 28, 32, 0.68);
+  --glass-card-blur:     blur(40px);
+  --glass-card-border:   var(--border-subtle);
+  --glass-card-radius:   12px;
+  --glass-card-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.24),
+    0 8px 16px rgba(0, 0, 0, 0.20),
+    0 16px 32px rgba(0, 0, 0, 0.16),
+    0 24px 48px rgba(0, 0, 0, 0.10),
+    0 32px 64px rgba(0, 0, 0, 0.05);
+
+  /* ==========================================================================
    * SHADOWS (Raycast: 极少, 多用边框 + 1-2 个抬升阴影)
    * ========================================================================== */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
@@ -216,6 +231,16 @@
   --glass-bg:     rgba(245, 245, 247, 0.82);
   --glass-bg-soft:rgba(255, 255, 255, 0.88);
   --glass-border: rgba(24, 24, 27, 0.07);
+
+  --glass-card-bg:       rgba(245, 245, 247, 0.68);
+  --glass-card-blur:     blur(40px);
+  --glass-card-border:   rgba(24, 24, 27, 0.07);
+  --glass-card-shadow:
+    0 4px 8px rgba(0, 0, 0, 0.05),
+    0 8px 16px rgba(0, 0, 0, 0.04),
+    0 16px 32px rgba(0, 0, 0, 0.03),
+    0 24px 48px rgba(0, 0, 0, 0.02),
+    0 32px 64px rgba(0, 0, 0, 0.01);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -344,6 +369,28 @@ html { scrollbar-width: thin; scrollbar-color: var(--border-default) transparent
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-color: var(--border-subtle);
+}
+
+/* ===========================================================================
+ * GLASS CARD (装饰性毛玻璃卡片)
+ * 浅色玻璃风格: 极低透明度背景 + 强模糊 + 细微边框
+ * =========================================================================== */
+.glass-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--glass-card-radius);
+  background: var(--glass-card-bg);
+  backdrop-filter: var(--glass-card-blur);
+  -webkit-backdrop-filter: var(--glass-card-blur);
+  border: 1px solid var(--glass-card-border);
+  box-shadow: var(--glass-card-shadow);
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04) 0%,
+      rgba(255, 255, 255, 0.0) 40%,
+      rgba(0, 0, 0, 0.02) 100%
+    );
 }
 
 .muted   { color: var(--text-secondary); }

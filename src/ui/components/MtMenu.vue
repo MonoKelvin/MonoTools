@@ -201,7 +201,7 @@ onBeforeUnmount(() => {
         role="menu"
         :style="menuStyle"
       >
-        <div class="mt-menu__content">
+        <div class="mt-menu__content glass-card">
           <ul class="mt-menu__list">
           <li
             v-for="(item, idx) in items"
@@ -247,38 +247,10 @@ onBeforeUnmount(() => {
 }
 
 .mt-menu__content {
-  --mt-menu-blur: 48px;
-  --mt-menu-bg: rgb(17 17 17 / 0.78);
-
   pointer-events: auto;
   border-radius: var(--radius-lg);
   padding: var(--sp-2);
-  background: var(--mt-menu-bg);
-  backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--mt-menu-blur)) saturate(180%);
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.24),
-    0 8px 16px rgba(0, 0, 0, 0.20),
-    0 16px 32px rgba(0, 0, 0, 0.16),
-    0 24px 48px rgba(0, 0, 0, 0.10),
-    0 32px 64px rgba(0, 0, 0, 0.05);
-  background-image:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.04) 0%,
-      rgba(255, 255, 255, 0.0) 40%,
-      rgba(0, 0, 0, 0.02) 100%
-    );
   user-select: none;
-}
-
-.os-win10 .mt-menu__content {
-  --mt-menu-bg: rgb(28 28 32 / 0.7);
-  border-color: var(--border-default);
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .mt-menu__list {
@@ -300,10 +272,7 @@ onBeforeUnmount(() => {
   color: var(--text-primary);
   cursor: pointer;
   background: transparent;
-  transition:
-    background 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    color 0.15s cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: background 0.1s ease;
   min-height: 36px;
 }
 
@@ -390,29 +359,25 @@ onBeforeUnmount(() => {
 
 /* ========== 动画 ========== */
 
-.mt-menu__content {
-  transform-origin: top center;
-}
-
+/* 入场: 快速渐隐 (0.12s) */
 .mt-menu-enter-active .mt-menu__content {
   transition:
-    transform 0.18s cubic-bezier(0.34, 1.12, 0.64, 1),
-    opacity 0.18s cubic-bezier(0.34, 1.12, 0.64, 1);
+    opacity 0.12s var(--ease-out);
 }
 
+/* 退场: 缓慢淡出 (0.25s) */
 .mt-menu-leave-active .mt-menu__content {
   transition:
-    transform 0.14s var(--ease-out),
-    opacity 0.14s var(--ease-out);
+    transform 0.25s var(--ease-out),
+    opacity 0.25s var(--ease-out);
 }
 
 .mt-menu-enter-from .mt-menu__content {
-  transform: scale(0.92) translateY(-6px);
   opacity: 0;
 }
 
 .mt-menu-leave-to .mt-menu__content {
-  transform: scale(0.96) translateY(-4px);
+  transform: scale(0.98);
   opacity: 0;
 }
 
@@ -427,5 +392,4 @@ onBeforeUnmount(() => {
     transform: none;
   }
 }
-
 </style>

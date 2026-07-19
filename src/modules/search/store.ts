@@ -330,7 +330,7 @@ export const useSearchStore = defineStore('search', () => {
         if (itemCat === fgCat) return SMART_WEIGHTS.launchCount * 5
         // 弱推荐类别也轻微加分, 避免排序完全二元
         const recs = RECOMMENDATION_MAP[fgCat] || []
-        if (recs.includes(itemCat)) return SMART_WEIGHTS.launchCount * 1.5
+        if (recs.includes(itemCat || '')) return SMART_WEIGHTS.launchCount * 1.5
         return 0
     }
 
@@ -715,14 +715,11 @@ export const useSearchStore = defineStore('search', () => {
         return filteredResults.value.filter((r) => r.category === 'files')
     })
 
-    const allAppsItems = computed<SearchResult[]>(() => {
-        return allAppsSorted.value
-    })
+    // allAppsSorted 已在外部定义, 无需额外 computed 包装.
+    // 直接使用 allAppsSorted.value 即可.
 
-    const systemAppsItems = computed<SearchResult[]>(() => {
-        if (query.value) return systemAppsSorted.value
-        return systemAppsSorted.value
-    })
+    // systemAppsSorted 已在外部定义, 无需额外 computed 包装.
+    // 直接使用 systemAppsSorted.value 即可.
 
     /**
      * 6 个分组的完整数据 —— 单一真源, VGR 不再自己算分组.
@@ -778,7 +775,7 @@ export const useSearchStore = defineStore('search', () => {
         })
 
         // 4) 应用程序
-        const appsItems = allAppsItems.value
+        const appsItems = allAppsSorted.value
         out.push({
             id: GROUP_ID.apps,
             title: '应用程序',

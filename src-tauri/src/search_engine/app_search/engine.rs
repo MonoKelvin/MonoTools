@@ -160,7 +160,8 @@ impl AppSearchEngine {
                 let (pinyin_initials, pinyin_full) = pinyin_of(&name);
                 let entry = AppEntry {
                     id: uuid::Uuid::new_v4().to_string(),
-                    name,
+                    name: name.clone(),
+                    name_lower: name.to_lowercase(),
                     path: p.to_path_buf(), // 存 LNK 本身的路径，用于图标提取
                     icon_path: None,
                     category,
@@ -215,7 +216,8 @@ impl AppSearchEngine {
             let (pinyin_initials, pinyin_full) = pinyin_of(&name);
             let entry = AppEntry {
                 id: uuid::Uuid::new_v4().to_string(),
-                name,
+                name: name.clone(),
+                name_lower: name.to_lowercase(),
                 path: target,
                 icon_path: None,
                 category,
@@ -252,11 +254,11 @@ impl AppSearchEngine {
         if q.is_empty() {
             // 空查询: 返回全部应用 (按 launch_count 倒序), 不截断 limit.
             // 这样首屏"所有应用"分组能展示所有已索引的桌面应用, 而非前 N 个片段.
-            let mut v: Vec<AppEntry> = cache.values().cloned().collect();
+            let mut v: Vec<&AppEntry> = cache.values().collect();
             v.sort_by(|a, b| {
                 b.launch_count
                     .cmp(&a.launch_count)
-                    .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+                    .then_with(|| a.name_lower.cmp(&b.name_lower))
             });
             return v
                 .into_iter()
@@ -295,7 +297,7 @@ impl AppSearchEngine {
         for app in cache.values() {
             let s = score_app_match(
                 &q,
-                &app.name,
+                &app.name_lower, // 使用预计算的小写缓存, 避免重复 to_lowercase()
                 &app.path.to_string_lossy(),
                 app.launch_count,
                 app.pinyin_initials.as_deref().unwrap_or(""),
@@ -385,13 +387,12 @@ impl crate::search_engine::search_source::SearchSource for AppSearchEngine {
 /// 一一对应, 改阈值只动 config.
 pub fn score_app_match(
     query_lower: &str,
-    name: &str,
+    name_lower: &str, // 预计算的小写名称, 避免调用方重复 to_lowercase()
     path_lower: &str,
     launch_count: u32,
     pinyin_initials: &str,
     pinyin_full: &str,
 ) -> f32 {
-    let name_lower = name.to_lowercase();
     let mut s = 0.0;
     let mut best_match_pos = usize::MAX;
 
@@ -438,9 +439,13 @@ pub fn score_app_match(
 
     // 启动次数使用对数缩放: ln(count + 1) * weight
     // 这样 1 次=0.35, 10次=1.2, 100次=2.3, 1000次=3.45
-    // 避免 1000 次启动的应用永远排在 100 次前面
-    let count_factor = ((launch_count as f32) + 1.0).ln();
-    s += count_factor * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
+    // 避免 1000 次启动的应用永远排在 100 次前面.
+    // 关键: 仅当已有其他匹配 (s > 0) 时才加权, 防止无名称匹配的应用
+    // 仅凭高频启动就出现在搜索结果中.
+    if s > 0.0 {
+        let count_factor = ((launch_count as f32) + 1.0).ln();
+        s += count_factor * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
+    }
 
     s
 }
@@ -767,7 +772,8 @@ impl AppSearchEngine {
                         let (pinyin_initials, pinyin_full) = pinyin_of(&name);
                         batch.push(AppEntry {
                             id: uuid::Uuid::new_v4().to_string(),
-                            name,
+                            name: name.clone(),
+                            name_lower: name.to_lowercase(),
                             path,
                             icon_path: None,
                             category: "Applications".to_string(),
@@ -880,6 +886,7 @@ impl AppSearchEngine {
                 batch.push(AppEntry {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: display_name.to_string(),
+                    name_lower: display_name.to_lowercase(),
                     path: path.clone(),
                     icon_path: None,
                     category: "System".to_string(),
@@ -903,6 +910,7 @@ impl AppSearchEngine {
                 batch.push(AppEntry {
                     id: uuid::Uuid::new_v4().to_string(),
                     name: display_name.to_string(),
+                    name_lower: display_name.to_lowercase(),
                     path: path.clone(),
                     icon_path: None,
                     category: "System".to_string(),
@@ -943,20 +951,20 @@ mod tests {
     /// 完全匹配得分最高, 任何模糊/前缀匹配都比不过.
     #[test]
     fn score_exact_match_returns_full() {
-        // exact: "chrome" == "Chrome" (lowercase) → APP_SCORE_EXACT
-        let exact = score_app_match("chrome", "Chrome", r"c:\program files\chrome\chrome.exe", 0, "", "");
+        // exact: "chrome" == "chrome" (already lowercase) → APP_SCORE_EXACT
+        let exact = score_app_match("chrome", "chrome", r"c:\program files\chrome\chrome.exe", 0, "", "");
         // prefix: "chrome" 是 "chrome browser" 的前缀 → APP_SCORE_PREFIX
-        let prefix = score_app_match("chrome", "Chrome Browser", r"c:\apps\chrome\browser.exe", 0, "", "");
-        // substr: "chrome" 是 "Google Chrome" 的子串 (但不是前缀) → APP_SCORE_SUBSTR
+        let prefix = score_app_match("chrome", "chrome browser", r"c:\apps\chrome\browser.exe", 0, "", "");
+        // substr: "chrome" 是 "google chrome" 的子串 (但不是前缀) → APP_SCORE_SUBSTR
         let substr = score_app_match(
             "chrome",
-            "Google Chrome",
+            "google chrome",
             r"c:\program files\google\chrome.exe",
             0,
             "",
             "",
         );
-        let _fuzzy = score_app_match("chrome", "Chrm", r"c:\apps\chrm\chrm.exe", 0, "", "");
+        let _fuzzy = score_app_match("chrome", "chrm", r"c:\apps\chrm\chrm.exe", 0, "", "");
         assert!(
             exact >= search_cfg::APP_SCORE_EXACT,
             "完全匹配应至少给 EXACT 分数, got {exact}"
@@ -981,7 +989,7 @@ mod tests {
     fn score_multi_term_and_launch_count() {
         let s0 = score_app_match(
             "vs code",
-            "Visual Studio Code",
+            "visual studio code",
             r"c:\program files\vs\code.exe",
             0,
             "",
@@ -989,7 +997,7 @@ mod tests {
         );
         let s_high = score_app_match(
             "vs code",
-            "Visual Studio Code",
+            "visual studio code",
             r"c:\program files\vs\code.exe",
             100,
             "",
@@ -1009,23 +1017,29 @@ mod tests {
     /// 注意: 即使名称不匹配, launch_count 仍会贡献分数 (对数缩放).
     #[test]
     fn score_no_match_returns_zero() {
-        let s = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        let s = score_app_match("zzz", "chrome", r"c:\chrome\chrome.exe", 0, "", "");
         // 没任何匹配 + launch_count=0 → 0
         assert_eq!(s, 0.0);
     }
 
-    /// launch_count 对数缩放: 验证高频应用不会线性垄断.
+    /// launch_count 仅在名称有匹配时才加权, 无匹配时返回 0 (不污染结果).
     #[test]
-    fn score_launch_count_log_scaling() {
-        let s_1 = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 1, "", "");
-        let s_10 = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 10, "", "");
-        let s_100 = score_app_match("zzz", "Chrome", r"c:\chrome\chrome.exe", 100, "", "");
-        // ln(2)*0.5 ≈ 0.347, ln(11)*0.5 ≈ 1.2, ln(101)*0.5 ≈ 2.3
-        assert!((s_1 - (2.0_f32).ln() * search_cfg::APP_LAUNCH_COUNT_WEIGHT).abs() < 0.01);
-        assert!(s_10 > s_1, "10次启动应高于1次: {s_10} > {s_1}");
-        assert!(s_100 > s_10, "100次启动应高于10次: {s_100} > {s_10}");
-        // 对数缩放: 100次 vs 1次 的差距远小于线性 (100*0.5=50)
-        assert!(s_100 - s_1 < 10.0, "对数缩放应限制差距: got {}", s_100 - s_1);
+    fn score_launch_count_only_with_name_match() {
+        // 无名称匹配: launch_count 不应贡献分数, 返回 0
+        let s_0 = score_app_match("zzz", "chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        let s_100 = score_app_match("zzz", "chrome", r"c:\chrome\chrome.exe", 100, "", "");
+        assert_eq!(s_0, 0.0, "无匹配时 launch_count=0 应返回 0");
+        assert_eq!(s_100, 0.0, "无匹配时 launch_count=100 也应返回 0 (不污染结果)");
+
+        // 有名称匹配: launch_count 应额外加权
+        let s_match_0 = score_app_match("chrome", "chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        let s_match_100 = score_app_match("chrome", "chrome", r"c:\chrome\chrome.exe", 100, "", "");
+        let expected_bonus = (101.0_f32).ln() * search_cfg::APP_LAUNCH_COUNT_WEIGHT;
+        assert!(
+            (s_match_100 - s_match_0 - expected_bonus).abs() < 0.01,
+            "有匹配时 launch_count=100 应额外加 {expected_bonus}: got {s_match_0} vs {s_match_100}"
+        );
+        assert!(s_match_100 > s_match_0, "高频应用在有匹配时应排更前");
     }
 
     /// path 命中 token 应加 APP_SCORE_TOKEN.
@@ -1033,7 +1047,7 @@ mod tests {
     fn score_path_token_match() {
         let s_path_hit = score_app_match(
             "office",
-            "MyApp",
+            "myapp",
             r"c:\program files\microsoft office\office16\outlook.exe",
             0,
             "",
@@ -1049,8 +1063,8 @@ mod tests {
     /// 拼音首字母命中应加 PINYIN_SCORE_INITIALS.
     #[test]
     fn score_pinyin_initials_match() {
-        // "wj" 命中 "微信" 的首字母 "wx"? 不, "wj" != "wx". 用正确的:
         // "wx" 命中 "微信" (initials = "wx")
+        // name_lower 参数需要传入小写: "微信" 的小写仍是 "微信"
         let s = score_app_match("wx", "微信", r"c:\apps\wechat.exe", 0, "wx", "weixin");
         assert!(
             (s - search_cfg::PINYIN_SCORE_INITIALS).abs() < 0.01,
@@ -1085,8 +1099,8 @@ mod tests {
     /// 无拼音数据时 (纯英文应用), 拼音参数为空串, 不影响原有评分.
     #[test]
     fn score_ascii_app_unchanged_with_empty_pinyin() {
-        let with_pinyin = score_app_match("chrome", "Chrome", r"c:\chrome\chrome.exe", 0, "", "");
-        let without = score_app_match("chrome", "Chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        let with_pinyin = score_app_match("chrome", "chrome", r"c:\chrome\chrome.exe", 0, "", "");
+        let without = score_app_match("chrome", "chrome", r"c:\chrome\chrome.exe", 0, "", "");
         assert_eq!(with_pinyin, without, "空拼音不应改变纯英文应用的评分");
         assert!(with_pinyin >= search_cfg::APP_SCORE_EXACT);
     }

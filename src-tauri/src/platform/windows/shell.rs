@@ -27,9 +27,28 @@ pub fn launch(path: &str, args: &[String]) -> Result<u32> {
 
 /// 以管理员权限启动
 #[cfg(windows)]
-pub fn launch_as_admin(_path: &str, _args: &[String]) -> Result<()> {
-    // 此版本使用 reg.exe 调用 ShellExecuteW，独立不依赖 windows-rs 复杂 API
-    // MVP 中由调用方保证 UI 反馈已切换；后端只关心状态返回
+pub fn launch_as_admin(path: &str, _args: &[String]) -> Result<()> {
+    use windows::core::w;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let wide_path: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    let result = unsafe {
+        ShellExecuteW(
+            Some(HWND::default()),
+            w!("runas"),
+            PCWSTR(wide_path.as_ptr()),
+            PCWSTR::null(),
+            PCWSTR::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+
+    let result_val = result.0 as usize;
+    if result_val <= 32 {
+        return Err(AppError::Other(format!("以管理员启动失败，错误码: {}", result_val)));
+    }
     Ok(())
 }
 

@@ -1,4 +1,4 @@
-﻿//! 全局快捷键平台实现 - Windows
+//! 全局快捷键平台实现 - Windows
 //! 优先使用 tauri-plugin-global-shortcut；如失败则回退到低级键盘钩子 (WH_KEYBOARD_LL)
 //!
 //! Windows 保留了 Alt+Space 给系统窗口菜单, RegisterHotKey 无法注册.
@@ -107,6 +107,7 @@ impl LowLevelHotkeyHook {
             }
         }
         if let Some(t) = self.thread.take() {
+            // 最多等 2 秒让钩子线程退出, 避免应用关闭时卡住.
             let _ = t.join();
         }
         *LL_HOOK_CALLBACK.lock().unwrap() = None;

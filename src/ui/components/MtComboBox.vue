@@ -241,7 +241,7 @@ onBeforeUnmount(() => {
             class="mt-combobox__dropdown"
             :style="dropdownStyle"
           >
-            <div class="mt-combobox__content">
+            <div class="mt-combobox__content glass-card">
               <ul class="mt-combobox__list">
                 <li
                   v-for="(option, idx) in options"
@@ -282,7 +282,7 @@ onBeforeUnmount(() => {
           class="mt-combobox__dropdown"
           :style="dropdownStyle"
         >
-          <div class="mt-combobox__content">
+          <div class="mt-combobox__content glass-card">
             <ul class="mt-combobox__list">
               <li
                 v-for="(option, idx) in options"
@@ -431,38 +431,10 @@ onBeforeUnmount(() => {
 }
 
 .mt-combobox__content {
-  --mt-combobox-blur: 40px;
-  --mt-combobox-bg: rgb(22 22 32 / 0.85);
-
   pointer-events: auto;
   border-radius: var(--radius-lg);
   padding: var(--sp-2);
-  background: var(--mt-combobox-bg);
-  backdrop-filter: blur(var(--mt-combobox-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--mt-combobox-blur)) saturate(180%);
-  border: 1px solid var(--glass-border);
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.24),
-    0 8px 16px rgba(0, 0, 0, 0.20),
-    0 16px 32px rgba(0, 0, 0, 0.16),
-    0 24px 48px rgba(0, 0, 0, 0.10),
-    0 32px 64px rgba(0, 0, 0, 0.05);
-  background-image:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.04) 0%,
-      rgba(255, 255, 255, 0.0) 40%,
-      rgba(0, 0, 0, 0.02) 100%
-    );
   user-select: none;
-}
-
-.os-win10 .mt-combobox__content {
-  --mt-combobox-bg: rgb(28 28 32 / 0.92);
-  border-color: var(--border-default);
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 .mt-combobox__list {

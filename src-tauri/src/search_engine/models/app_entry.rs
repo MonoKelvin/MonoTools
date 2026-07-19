@@ -31,4 +31,6 @@ pub struct AppEntry {
     /// 该应用关联的文件扩展名列表 (从 HKCR 文件关联读取).
     /// 例: [".psd", ".ai"] 表示该应用可打开这些文件类型.
     pub file_types: Vec<String>,
+    /// 小写名称缓存, 索引时预计算, 避免搜索时重复 to_lowercase().
+    pub name_lower: String,
 }

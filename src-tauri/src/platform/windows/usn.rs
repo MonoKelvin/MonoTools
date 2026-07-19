@@ -489,7 +489,7 @@ impl NtfsIndexer {
         }
 
         Some(UsnJournalState {
-            usn: state.UsnJournalID,
+            usn: state.NextUsn as u64,
             next_usn: state.NextUsn as u64,
             first_usn: state.FirstUsn as u64,
             journal_id: state.UsnJournalID,
@@ -911,6 +911,21 @@ impl NtfsIndexer {
 
         if success == 0 {
             let last_error = unsafe { windows_sys::Win32::Foundation::GetLastError() };
+
+            // Journal Wrap 检测: 错误码 1117 = ERROR_JOURNAL_WRAP_DELETED
+            // 表示 USN Journal 已被删除或回绕, 需要全量重新索引.
+            if last_error == 1117 {
+                log::warn!(
+                    "[usn] Journal Wrap 检测到 (卷={}, 错误码=1117), 触发全量重新索引",
+                    volume
+                );
+                unsafe { windows_sys::Win32::Foundation::CloseHandle(handle) };
+                return Err(AppError::Other(format!(
+                    "USN Journal Wrap 检测到, 需要全量重新索引 (卷={})",
+                    volume
+                )));
+            }
+
             log::warn!(
                 "[usn] FSCTL_READ_USN_JOURNAL + FSCTL_ENUM_USN_DATA fallback 均失败 (卷={}, 错误码={})",
                 volume,
@@ -975,8 +990,10 @@ impl NtfsIndexer {
             offset += record.RecordLength as usize;
         }
 
-        let mut path_cache = self.path_cache.write();
-        path_cache.clear();
+        // 关键: 增量更新时使用局部 path_cache 而非清空全局缓存.
+        // 清空全局缓存会导致其他卷的路径信息丢失, 造成后续搜索失败.
+        let mut local_path_cache: std::collections::HashMap<u64, PathBuf> = HashMap::new();
+        local_path_cache.insert(0, root_path.clone());
 
         let all_dir_frns: std::collections::HashSet<u64> =
             dir_records.iter().map(|(frn, _, _, _)| *frn).collect();
@@ -1001,10 +1018,10 @@ impl NtfsIndexer {
         }
 
         if let Some(frn) = root_frn {
-            path_cache.insert(frn, root_path.clone());
+            local_path_cache.insert(frn, root_path.clone());
         } else {
-            path_cache.insert(0, root_path.clone());
-            path_cache.insert(5, root_path.clone());
+            local_path_cache.insert(0, root_path.clone());
+            local_path_cache.insert(5, root_path.clone());
             log::warn!("无法确定根目录 FRN，使用 fallback (0 和 5)");
         }
 
@@ -1017,22 +1034,27 @@ impl NtfsIndexer {
             iterations += 1;
 
             for (file_ref, parent_ref, file_name, _) in &dir_records {
-                if path_cache.contains_key(file_ref) {
+                if local_path_cache.contains_key(file_ref) {
                     continue;
                 }
-                if let Some(parent_path) = path_cache.get(parent_ref) {
+                if let Some(parent_path) = local_path_cache.get(parent_ref) {
                     let full_path = parent_path.join(file_name);
-                    path_cache.insert(*file_ref, full_path);
+                    local_path_cache.insert(*file_ref, full_path);
                     changed = true;
                 }
             }
         }
-        drop(path_cache);
 
-        let path_cache = self.path_cache.read();
+        // 将本地构建的路径映射合并到全局缓存 (仅更新本卷条目)
+        {
+            let mut global_cache = self.path_cache.write();
+            for (frn, path) in &local_path_cache {
+                global_cache.insert(*frn, path.clone());
+            }
+        }
 
         for (file_ref, parent_ref, file_name, usn) in &dir_records {
-            let parent_path = path_cache
+            let parent_path = local_path_cache
                 .get(parent_ref)
                 .cloned()
                 .unwrap_or(root_path.clone());
@@ -1053,7 +1075,7 @@ impl NtfsIndexer {
         }
 
         for (file_ref, parent_ref, file_name, reason, timestamp, usn) in &file_records {
-            let parent_path = path_cache
+            let parent_path = local_path_cache
                 .get(parent_ref)
                 .cloned()
                 .unwrap_or(root_path.clone());
@@ -1109,10 +1131,12 @@ impl NtfsIndexer {
         for volume in &volumes_snapshot {
             let start_usn = last_usn.get(volume).copied().unwrap_or(0);
             if let Ok(volume_changes) = self.read_usn_changes(volume, start_usn) {
-                changes.extend(volume_changes);
-                if let Some(record) = changes.last() {
+                // 关键: 使用 volume_changes.last() 而非 changes.last(),
+                // 避免跨卷 USN 追踪错误 (多卷场景下 changes 包含其他卷的记录).
+                if let Some(record) = volume_changes.last() {
                     last_usn.insert(volume.to_string(), record.usn);
                 }
+                changes.extend(volume_changes);
             }
         }
 

@@ -24,6 +24,20 @@
 
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 
+/**
+ * 模块级 canvas 单例, 用于所有文字测量操作.
+ * 避免每次 measureTextWidth / estimateCharWidths 都创建新 canvas (DOM 开销).
+ * 注意: 这是单线程共享的, 不适合并发调用, 但我们的使用场景是同步的.
+ */
+let MEASURE_CANVAS: HTMLCanvasElement | null = null
+
+function getMeasureCanvas(): HTMLCanvasElement {
+  if (!MEASURE_CANVAS) {
+    MEASURE_CANVAS = document.createElement('canvas')
+  }
+  return MEASURE_CANVAS
+}
+
 export interface AdaptiveTextOptions {
   /** 初始字体大小 (px). 默认 14 */
   maxFontSize?: number
@@ -50,8 +64,7 @@ export interface AdaptiveTextOptions {
  * 用于分析多行文本的宽度分布 (不创建真实 DOM).
  */
 function estimateCharWidths(text: string, fontSize: number, fontFamily: string): number[] {
-  const canvas = document.createElement('canvas')
-  const ctx = canvas.getContext('2d')
+  const ctx = getMeasureCanvas().getContext('2d')
   if (!ctx) return text.split('').map(() => fontSize * 0.5)
   ctx.font = `400 ${fontSize}px ${fontFamily}`
   return text.split('').map((ch) => {
@@ -129,8 +142,7 @@ export function useAdaptiveText(
   let rafId: number | null = null
 
   function measureTextWidth(text: string, fontSize: number): number {
-    const canvas = document.createElement('canvas')
-    const ctx = canvas.getContext('2d')
+    const ctx = getMeasureCanvas().getContext('2d')
     if (!ctx) return 0
     const weight = fontWeight
     const family = fontFamily || getComputedStyle(document.body).fontFamily

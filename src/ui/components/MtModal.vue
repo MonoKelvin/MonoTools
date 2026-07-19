@@ -48,7 +48,7 @@ const bodyMaxHeight = computed(() => {
   <Teleport to="body">
     <Transition :name="disableAnimation ? '' : 'mt-modal'">
       <div v-if="visible" class="mt-modal-overlay" @click="handleOverlayClick">
-        <div class="mt-modal" :style="modalStyle" @click.stop>
+        <div class="mt-modal glass-card" :style="modalStyle" @click.stop>
           <div v-if="title || closable || icon" class="mt-modal__header">
             <slot name="header">
               <component v-if="icon" :is="icon" :size="18" class="mt-modal__icon" />
@@ -84,18 +84,8 @@ const bodyMaxHeight = computed(() => {
 
 /* === Modal 容器 (高级玻璃 + 微高光) ===================================== */
 .mt-modal {
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
-  /* 顶部 1px 高光线, Raycast 微高光做法 */
-  background-image: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.05) 0%,
-    rgba(255, 255, 255, 0) 30%
-  );
   overflow: hidden;
   display: flex;
   flex-direction: column;

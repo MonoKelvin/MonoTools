@@ -183,7 +183,9 @@ impl SearchEngine {
         let mut unique = Vec::new();
 
         for r in results {
-            let key = (r.title.clone(), r.category.clone());
+            // 使用 (id, category) 作为去重 key, 避免同名不同应用被误删.
+            // 例如两个"设置"快捷方式可能有相同 title 但不同 id.
+            let key = (r.id.clone(), r.category.clone());
             if !seen.contains(&key) {
                 seen.insert(key);
                 unique.push(r);
