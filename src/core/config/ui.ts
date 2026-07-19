@@ -53,21 +53,24 @@ export const ACTION_BAR_TIMEOUTS = {
  * 搜索窗口尺寸 (像素).
  *
  * 关键约束 (来自 product spec):
- * - 宽固定 640px (光标定位 / 移动计算稳定)
- * - 高范围 320-580px (内容区最大 460px)
+ * - 宽固定 600px (紧凑布局)
+ * - 高范围 280-500px (内容区最大 380px)
  * - 拖动边界 8px (WebView 拖拽响应宽度)
+ *
+ * 注意: 此处的 fixedWidth/defaultWidth 必须与 tauri.conf.json 中的
+ * width 字段保持一致, 否则窗口初始大小和最终大小会不一致.
  */
 export const WINDOW_DIMENSIONS = {
   /** 主窗口固定宽度 */
-  fixedWidth: 640,
+  fixedWidth: 600,
   /** 内容区最大高度 */
-  contentAreaMax: 460,
+  contentAreaMax: 380,
   /** 默认宽度 (同 fixedWidth) */
-  defaultWidth: 640,
+  defaultWidth: 600,
   /** 最小高度 */
-  minHeight: 320,
+  minHeight: 280,
   /** 最大高度 */
-  maxHeight: 580,
+  maxHeight: 500,
   /** 头部输入框 + 底部状态栏 合计高度 (用于计算 contentHeight) */
   headerFooterHeight: 88,
 } as const

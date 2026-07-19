@@ -20,6 +20,7 @@ import ActionBar from '@/modules/search/components/ActionBar.vue'
 import ContextMenu from '@/modules/search/components/ContextMenu.vue'
 import HotkeyModal from '@/ui/widgets/HotkeyModal.vue'
 import OverlayPage from '@/ui/pages/OverlayPage.vue'
+import LoadingState from '@/ui/components/LoadingState.vue'
 import { useCommandsStore, dispatchKeyEvent } from '@/core/command'
 import { useAppIcon } from '@/ui/widgets/appicon/useAppIcon'
 import { useSearchStatusBar } from '@/modules/search/composables/useSearchStatusBar'
@@ -29,6 +30,7 @@ const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuItem = ref<SearchResult | null>(null)
 const showHotkeyModal = ref(false)
+const showLoading = ref(true)
 
 const search = useSearchStore()
 const settings = useSettingsStore()
@@ -98,9 +100,12 @@ const onSelect = (item: SearchResult, globalIndex: number, event: MouseEvent) =>
     // 修饰键按下: 走多选管线, 同时把 selectedIndex 锁定到该项.
     search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
   } else {
-    // 普通单击: 单选 + 清空多选集, 同时同步 selectedIndex / selectedGlobalId.
-    search.selectByIndex(idx)
+    // 普通单击: 先清空多选集, 再设置单选.
+    // 注意: 必须先 clearSelection 再 selectByIndex, 否则 selectByIndex
+    // 设置的 selectedIndex 会被后续的 clearSelection 保留但 selectedIds 被清空,
+    // 导致视觉上高亮消失.
     search.clearSelection()
+    search.selectByIndex(idx)
   }
 }
 const onOpen = (item: SearchResult) => {
@@ -161,21 +166,12 @@ watch(
 
 const handleContextMenu = (e: MouseEvent, item?: SearchResult) => {
   e.preventDefault()
-  if (item) {
-    contextMenuX.value = e.clientX
-    contextMenuY.value = e.clientY
-    contextMenuItem.value = item
-    showContextMenu.value = true
-  } else if (
-    search.filteredResults.length > 0 &&
-    search.selectedIndex >= 0 &&
-    search.selectedIndex < search.filteredResults.length
-  ) {
-    contextMenuX.value = e.clientX
-    contextMenuY.value = e.clientY
-    contextMenuItem.value = search.filteredResults[search.selectedIndex]
-    showContextMenu.value = true
-  }
+  // 仅在右键点击具体列表项时弹出菜单, 空白区域不响应.
+  if (!item) return
+  contextMenuX.value = e.clientX
+  contextMenuY.value = e.clientY
+  contextMenuItem.value = item
+  showContextMenu.value = true
 }
 
 const closeContextMenu = () => {
@@ -415,6 +411,9 @@ onMounted(async () => {
   } catch {
     // 非 tauri 环境(浏览器 mock)忽略即可.
   }
+
+  // 后端已显示窗口, 淡出加载状态
+  showLoading.value = false
 })
 
 onUpdated(() => {
@@ -490,6 +489,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
             @hover="onHover"
             @contextmenu="handleContextMenu"
             @sort-change="(mode) => search.setGroupSortMode(group.id, mode)"
+            @layout-transition-end="syncWindowHeight"
           />
         </template>
         <template v-else>
@@ -507,6 +507,9 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
         @show-hotkeys="onShowHotkeys"
       />
     </div>
+
+    <!-- 加载状态: frontend_ready 调用前显示不透明背景, 避免透明窗口闪烁 -->
+    <LoadingState v-if="showLoading" message="正在初始化..." />
 
     <ContextMenu
       :visible="showContextMenu"

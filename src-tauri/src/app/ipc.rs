@@ -161,6 +161,11 @@ pub async fn frontend_ready(
     if !*shown {
         *shown = true;
         drop(shown);
+
+        // 标记前端已初始化, 允许托盘点击显示窗口
+        state.frontend_initialized.store(true, std::sync::atomic::Ordering::Release);
+        log::info!("[boot] frontend_initialized 标志已设置");
+
         if let Some(w) = app.get_webview_window("search") {
             let _ = w.show();
             let _ = w.set_focus();

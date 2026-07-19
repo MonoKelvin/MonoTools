@@ -12,6 +12,7 @@ use crate::services::window::WindowService;
 use crate::services::window_monitor::WindowMonitorService;
 use std::sync::Arc;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 use tauri::AppHandle;
 
 pub struct AppState {
@@ -31,4 +32,7 @@ pub struct AppState {
     pub window_monitor: Arc<Mutex<WindowMonitorService>>,
 
     pub is_dragging: Arc<Mutex<bool>>,
+
+    /// 前端 UI 渲染完成标志. 为 true 时表示 frontend_ready 已被调用, 窗口可以安全显示.
+    pub frontend_initialized: Arc<AtomicBool>,
 }

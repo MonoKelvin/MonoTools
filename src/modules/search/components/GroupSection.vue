@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, nextTick, onMounted } from 'vue'
+import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import type { SearchResult } from '@/modules/search'
 import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
@@ -37,6 +37,8 @@ const emit = defineEmits<{
   (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number, target: EventTarget | null): void
   (e: 'layout-change', mode: LayoutMode): void
   (e: 'sort-change', mode: SortMode): void
+  /** 布局切换动画完成后通知父级重新同步窗口高度 */
+  (e: 'layout-transition-end'): void
 }>()
 
 const DEFAULT_LAYOUT_BY_KIND: Record<string, LayoutMode> = {
@@ -142,18 +144,54 @@ const isInitialized = ref(false)
 // 组件挂载后初始化默认展开状态的内联高度
 onMounted(async () => {
   await nextTick()
+  isInitialized.value = true
+})
+
+// 使用 ResizeObserver 自动监听内容高度变化, 无需手动切换折叠触发刷新.
+// 布局切换、内容更新、字体加载等场景下都能自适应.
+let resizeObserver: ResizeObserver | null = null
+let isUpdatingHeight = false
+
+onMounted(() => {
   const wrapper = document.getElementById(`group-content-${props.id}`)
   if (!wrapper) return
 
-  // 如果 props.collapsed �?false（默认展开），读取真实高度并设置内联样�?
-  if (!props.collapsed) {
+  resizeObserver = new ResizeObserver(() => {
+    // 仅在展开状态下同步高度, 收缩时由动画控制.
+    if (props.collapsed || !wrapper || isUpdatingHeight) return
+    isUpdatingHeight = true
     wrapper.style.transition = 'none'
     wrapper.style.height = 'auto'
-    await nextTick()
-    const realH = wrapper.scrollHeight
-    wrapper.style.height = `${realH}px`
+    // 读取真实高度后固化为内联样式, 避免后续 ResizeObserver 循环.
+    const h = wrapper.scrollHeight
+    if (h > 0) {
+      wrapper.style.height = `${h}px`
+    }
+    // 下一帧解除锁定, 允许下次内容变化时再次更新.
+    requestAnimationFrame(() => { isUpdatingHeight = false })
+  })
+  resizeObserver.observe(wrapper)
+})
+
+onBeforeUnmount(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
   }
-  isInitialized.value = true
+})
+
+// 布局切换后强制刷新一次高度, 解决内容未立即更新的问题.
+watch(layoutMode, () => {
+  nextTick(() => {
+    const wrapper = document.getElementById(`group-content-${props.id}`)
+    if (!wrapper || props.collapsed) return
+    wrapper.style.transition = 'none'
+    wrapper.style.height = 'auto'
+    const h = wrapper.scrollHeight
+    if (h > 0) {
+      wrapper.style.height = `${h}px`
+    }
+  })
 })
 
 watch(
@@ -265,6 +303,12 @@ function onLayoutChange(key: string) {
   layoutMode.value = mode
   emit('layout-change', mode)
 }
+
+// 布局切换后, 等待过渡动画完成再通知父级重新同步窗口高度.
+// Transition 动画 180ms, 额外留 50ms 余量确保 DOM 已稳定.
+watch(layoutMode, () => {
+  setTimeout(() => emit('layout-transition-end'), 230)
+})
 
 function onSortChange(key: string) {
   const mode = key as SortMode

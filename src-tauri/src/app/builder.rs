@@ -146,7 +146,7 @@ pub fn run() {
                         }
                     }
                 })
-                .on_tray_icon_event(|tray, event| {
+                .on_tray_icon_event(move |tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
@@ -155,11 +155,19 @@ pub fn run() {
                     {
                         let app = tray.app_handle();
                         if let Some(w) = app.get_webview_window("search") {
+                            // 检查前端是否已初始化完成. 未完成时不显示窗口, 避免透明窗口闪烁.
+                            let is_ready = app
+                                .try_state::<Arc<AppState>>()
+                                .map(|s| s.frontend_initialized.load(std::sync::atomic::Ordering::Acquire))
+                                .unwrap_or(false);
                             if w.is_visible().unwrap_or(false) {
                                 let _ = w.hide();
-                            } else {
+                            } else if is_ready {
                                 let _ = w.show();
                                 let _ = w.set_focus();
+                            } else {
+                                // 前端未就绪, 记录日志但不显示窗口
+                                log::debug!("[tray] 前端未初始化完成, 忽略托盘点击");
                             }
                         }
                     }
@@ -229,6 +237,7 @@ pub fn run() {
                 window,
                 window_monitor,
                 is_dragging: Arc::new(Mutex::new(false)),
+                frontend_initialized: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             });
             #[cfg(debug_assertions)]
             log::info!("[boot] setup: AppState 就绪");

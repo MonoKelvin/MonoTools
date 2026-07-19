@@ -553,6 +553,9 @@ impl FileSearchEngine {
         {
             let mut conn = self.db.lock();
             self.finalize_batch_insert(&mut conn)?;
+            // 全量构建完成后, 将每个卷当前的 USN journal next_usn 写入 index_state,
+            // 让后续 update_index_usn 有起点, 避免每次都触发"last_usn=0 需要全量重建".
+            self.seed_usn_state(&mut conn)?;
         }
         log::info!("[idx] 索引构建结束: {} 条记录", total_inserted);
 
@@ -613,6 +616,40 @@ impl FileSearchEngine {
             PRAGMA incremental_vacuum;
             "#,
         )?;
+        Ok(())
+    }
+
+    /// 全量索引构建完成后, 将每个卷的 USN journal next_usn 写入 `index_state`.
+    /// 这是增量更新的前提: 如果 `index_state` 里没有某卷的记录, 下次 `update_index_usn`
+    /// 会认为"首次启动"并触发全量重建. 在 `build_index_ntfs_internal` 末尾调用一次,
+    /// 让后续 120s 周期的 USN 增量更新能正常工作.
+    fn seed_usn_state(&self, conn: &Connection) -> Result<()> {
+        let Some(indexer) = &self.ntfs_indexer else {
+            return Ok(());
+        };
+        let volumes = indexer.get_volumes();
+        let now = chrono::Utc::now().timestamp();
+        for volume in &volumes {
+            let next_usn = indexer
+                .get_usn_journal_state(volume)
+                .map(|s| s.next_usn as i64)
+                .unwrap_or(0);
+            if next_usn == 0 {
+                log::warn!("[usn] 卷={} 无法获取 journal next_usn, 跳过 seeding", volume);
+                continue;
+            }
+            conn.execute(
+                "INSERT INTO index_state(volume, last_usn, updated_at) \
+                 VALUES (?1, ?2, ?3) \
+                 ON CONFLICT(volume) DO UPDATE SET last_usn = ?2, updated_at = ?3",
+                rusqlite::params![volume, next_usn, now],
+            )?;
+            log::info!(
+                "[usn] 卷={} 已记录 last_usn={} (全量构建完成)",
+                volume,
+                next_usn
+            );
+        }
         Ok(())
     }
 
