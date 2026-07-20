@@ -8,6 +8,112 @@ import MtComboBox from '@/ui/components/MtComboBox.vue'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder } from '@lucide/vue'
+import { ICON_CONFIG } from '@/core/config/icon'
+
+interface TooltipData {
+  title: string
+  subtitle?: string
+  path?: string
+}
+
+function getItemTooltipData(item: SearchResult): TooltipData | undefined {
+  const data: TooltipData = { title: item.title }
+  let hasExtra = false
+
+  if (item.subtitle && item.subtitle !== item.title) {
+    data.subtitle = item.subtitle
+    hasExtra = true
+  }
+
+  if (item.action?.type === 'launch' || item.action?.type === 'open') {
+    if (item.action.data && item.action.data !== item.subtitle && item.action.data !== item.title) {
+      data.path = item.action.data
+      hasExtra = true
+    }
+  }
+
+  if (!hasExtra) return undefined
+  return data
+}
+
+const tooltipVisible = ref(false)
+const tooltipData = ref<TooltipData | null>(null)
+const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
+const tooltipPlacement = ref<'top' | 'bottom'>('top')
+let tooltipShowTimer: ReturnType<typeof setTimeout> | null = null
+let tooltipCurrentItem: SearchResult | null = null
+
+function clearTooltipTimer() {
+  if (tooltipShowTimer) {
+    clearTimeout(tooltipShowTimer)
+    tooltipShowTimer = null
+  }
+}
+
+function updateTooltipPosition(target: HTMLElement) {
+  const rect = target.getBoundingClientRect()
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const sidePadding = 16
+  const topBottomPadding = 12
+  const tooltipMaxWidth = Math.min(560, vw - sidePadding * 2)
+  const gap = 8
+
+  let left = rect.left + rect.width / 2
+
+  if (left - tooltipMaxWidth / 2 < sidePadding) {
+    left = sidePadding + tooltipMaxWidth / 2
+  }
+  if (left + tooltipMaxWidth / 2 > vw - sidePadding) {
+    left = vw - sidePadding - tooltipMaxWidth / 2
+  }
+
+  const spaceTop = rect.top
+  const spaceBottom = vh - rect.bottom
+
+  let top: number
+  if (spaceBottom > spaceTop && spaceBottom > 60) {
+    top = rect.bottom + gap
+    tooltipPlacement.value = 'bottom'
+  } else if (spaceTop > 60) {
+    top = rect.top - gap
+    tooltipPlacement.value = 'top'
+  } else {
+    top = rect.bottom + gap
+    tooltipPlacement.value = 'bottom'
+  }
+
+  tooltipStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`,
+  }
+}
+
+function onItemEnter(item: SearchResult, event: MouseEvent) {
+  tooltipCurrentItem = item
+  const data = getItemTooltipData(item)
+  if (!data) return
+
+  const target = event.currentTarget as HTMLElement
+  clearTooltipTimer()
+  tooltipShowTimer = setTimeout(() => {
+    if (tooltipCurrentItem === item) {
+      tooltipData.value = data
+      if (target) {
+        updateTooltipPosition(target)
+      }
+      tooltipVisible.value = true
+      tooltipShowTimer = null
+    }
+  }, ICON_CONFIG.tooltipDelayMs)
+}
+
+function onTooltipItemLeave() {
+  tooltipCurrentItem = null
+  tooltipData.value = null
+  tooltipVisible.value = false
+  clearTooltipTimer()
+}
 
 export type LayoutMode = 'list' | 'grid-fixed' | 'grid-auto' | 'icon'
 
@@ -393,12 +499,12 @@ function isItemSelected(localIndex: number): boolean {
                   }"
                   @click="(e) => onItemClick(item, idx, e)"
                   @dblclick="onItemDblClick(item)"
-                  @mouseenter="onItemHover(idx)"
-                  @mouseleave="onItemLeave"
+                  @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
+                  @mouseleave="() => { onItemLeave(); onTooltipItemLeave() }"
                   @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                 >
-                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" />
-                  <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
+                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-tooltip="true" />
+                  <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-tooltip="true" />
                 </div>
               </template>
 
@@ -416,12 +522,12 @@ function isItemSelected(localIndex: number): boolean {
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
-                    @mouseenter="onItemHover(idx)"
-                    @mouseleave="onItemLeave"
+                    @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
+                    @mouseleave="() => { onItemLeave(); onTooltipItemLeave() }"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
-                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" />
-                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-font-shrink="layoutMode === 'grid-auto'" />
+                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
+                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
                   </div>
                 </div>
               </template>
@@ -440,13 +546,13 @@ function isItemSelected(localIndex: number): boolean {
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
-                    @mouseenter="onItemHover(idx)"
-                    @mouseleave="onItemLeave"
+                    @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
+                    @mouseleave="() => { onItemLeave(); onTooltipItemLeave() }"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
                     <div class="gs-icon-mode-icon">
-                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="xs" />
-                      <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
+                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="xs" :no-tooltip="true" />
+                      <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-tooltip="true" />
                     </div>
                     <GsIconTitle :text="item.title" />
                   </div>
@@ -457,6 +563,21 @@ function isItemSelected(localIndex: number): boolean {
         </div>
       </div>
   </div>
+
+  <Teleport to="body">
+    <Transition name="tooltip-fade">
+      <div
+        v-if="tooltipVisible && tooltipData"
+        class="gs-tooltip"
+        :class="`gs-tooltip--${tooltipPlacement}`"
+        :style="tooltipStyle"
+      >
+        <div class="gs-tooltip__title">{{ tooltipData.title }}</div>
+        <div v-if="tooltipData.subtitle" class="gs-tooltip__subtitle">{{ tooltipData.subtitle }}</div>
+        <div v-if="tooltipData.path" class="gs-tooltip__path">{{ tooltipData.path }}</div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
@@ -839,5 +960,75 @@ function isItemSelected(localIndex: number): boolean {
 .gs-icon-mode-icon :deep(.result-item__content),
 .gs-icon-mode-icon :deep(.result-item__meta) {
   display: none;
+}
+
+/* === 自定义 tooltip === */
+.gs-tooltip {
+  position: fixed;
+  z-index: 9999;
+  transform: translateX(-50%);
+  pointer-events: none;
+  user-select: none;
+  min-width: 120px;
+  max-width: min(560px, calc(100vw - 32px));
+  width: max-content;
+  padding: 8px 12px;
+  background: var(--glass-bg-soft);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-md);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 12px 32px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.35);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  text-align: left;
+}
+
+.gs-tooltip__title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+  margin-bottom: 4px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.gs-tooltip__subtitle {
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  margin-bottom: 3px;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.gs-tooltip__path {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+.gs-tooltip__subtitle:last-child,
+.gs-tooltip__path:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-fade-enter-active,
+.tooltip-fade-leave-active {
+  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
+}
+
+.tooltip-fade-enter-from,
+.tooltip-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
 }
 </style>

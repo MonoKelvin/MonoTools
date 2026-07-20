@@ -35,6 +35,8 @@ const props = defineProps<{
   titleWrap?: boolean
   /** 是否禁止字体缩小: 默认 false (可缩小), true 时始终使用最大字号 */
   noFontShrink?: boolean
+  /** 是否禁用 tooltip: 由父容器统一处理时设为 true, 避免重复 */
+  noTooltip?: boolean
 }>()
 
 // 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
@@ -104,17 +106,18 @@ function updateTooltipPosition() {
   if (!itemRef.value) return
   const rect = itemRef.value.getBoundingClientRect()
   const vw = window.innerWidth
-  const tooltipMaxWidth = 360
+  const sidePadding = 24
+  const tooltipMaxWidth = Math.min(400, vw - sidePadding * 2)
   const gap = 6
 
   let left = rect.left + rect.width / 2
   let top = rect.bottom + gap
 
-  if (left - tooltipMaxWidth / 2 < 8) {
-    left = 8 + tooltipMaxWidth / 2
+  if (left - tooltipMaxWidth / 2 < sidePadding) {
+    left = sidePadding + tooltipMaxWidth / 2
   }
-  if (left + tooltipMaxWidth / 2 > vw - 8) {
-    left = vw - 8 - tooltipMaxWidth / 2
+  if (left + tooltipMaxWidth / 2 > vw - sidePadding) {
+    left = vw - sidePadding - tooltipMaxWidth / 2
   }
 
   tooltipStyle.value = {
@@ -132,6 +135,7 @@ function clearShowTimer() {
 
 function onItemEnter() {
   isHovered.value = true
+  if (props.noTooltip) return
   if (props.active) return
   if (!absolutePath.value) return
   clearShowTimer()
@@ -266,7 +270,7 @@ watch(
       :class="{ 'app-result-item__title--wrap': titleWrap }"
       ref="titleContainerRef"
       :style="{ fontSize: titleFontSize + 'px' }"
-      :title="titleIsTruncated && !noFontShrink ? (result?.title || '') : ''"
+      :title="!noTooltip && titleIsTruncated && !noFontShrink ? (result?.title || '') : ''"
     >
       <template v-if="noFontShrink">
         {{ result?.title || '' }}
@@ -521,7 +525,7 @@ watch(
   top: 0;
   transform: translateX(-50%);
   z-index: 9999;
-  max-width: 360px;
+  max-width: min(400px, calc(100vw - 48px));
   width: max-content;
   padding: 5px 9px;
   font-size: 11.5px;
@@ -529,6 +533,7 @@ watch(
   line-height: 1.4;
   letter-spacing: 0.01em;
   color: var(--text-primary);
+  text-align: left;
   background: var(--glass-bg-soft);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
@@ -540,7 +545,6 @@ watch(
   word-break: break-all;
   pointer-events: none;
   user-select: none;
-  text-align: center;
   font-family: var(--font-mono);
 }
 

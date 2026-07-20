@@ -40,6 +40,8 @@ const props = defineProps<{
   titleWrap?: boolean
   /** 是否禁止字体缩小: 默认 false (可缩小), true 时始终使用最大字号 */
   noFontShrink?: boolean
+  /** 是否禁用 tooltip: 由父容器统一处理时设为 true, 避免重复 */
+  noTooltip?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -287,7 +289,7 @@ onBeforeUnmount(() => {
         :class="{ 'result-item__title--wrap': titleWrap }"
         ref="titleContainerRef"
         :style="{ fontSize: titleFontSize + 'px' }"
-        :title="titleIsTruncated && !noFontShrink ? (result.title || '') : ''"
+        :title="!noTooltip && titleIsTruncated && !noFontShrink ? (result.title || '') : ''"
       >
         <template v-if="noFontShrink">
           {{ result.title || '' }}
@@ -305,7 +307,7 @@ onBeforeUnmount(() => {
         :class="{ 'result-item__subtitle--wrap': titleWrap }"
         ref="subtitleContainerRef"
         :style="{ fontSize: subtitleFontSize + 'px' }"
-        :title="subtitleIsTruncated && !noFontShrink ? (result.subtitle || '') : ''"
+        :title="!noTooltip && subtitleIsTruncated && !noFontShrink ? (result.subtitle || '') : ''"
       >
         <template v-if="noFontShrink">
           {{ result.subtitle || '' }}
