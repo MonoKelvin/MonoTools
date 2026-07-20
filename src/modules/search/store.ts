@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref, watch } from 'vue'
-import type { SearchResult, SearchOptions } from '@/modules/search'
+import type { SearchResult, SearchOptions } from './types'
 import { searchApi } from '@/services/api'
 import { pinApi, pinTopApi, windowMonitorApi } from '@/services/api'
 import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE, SEARCH_LIMITS } from '@/core/config'
@@ -82,17 +82,22 @@ export const useSearchStore = defineStore('search', () => {
     const alwaysOnTop = ref(false)
 
     /**
-     * 多选模式下选中的项目ID集合.
+     * 多选模式的当前激活分组 ID.
+     * 每个分组的选中状态独立且互斥: 切换到新分组时清空旧分组的选中.
+     */
+    const activeSelectionGroupId = ref<string | null>(null)
+    /**
+     * 当前激活分组的选中索引集合 (本地索引, 即分组内的索引).
      * - 单击: 清空其他选中, 选中当前
      * - Ctrl+单击: 切换当前项目的选中状态
-     * - Shift+单击: 选中从 lastSelectedIndex 到当前的所有项目
-     * - Ctrl+Shift+单击: 反选从 lastSelectedIndex 到当前的所有项目
+     * - Shift+单击: 选中从 lastSelectedLocalIndex 到当前的所有项目
+     * - Ctrl+Shift+单击: 反选从 lastSelectedLocalIndex 到当前的所有项目
      */
-    const selectedIds = ref<Set<string>>(new Set())
+    const selectedIndexes = ref<Set<number>>(new Set())
     /**
-     * 上一次选中的索引, 用于 Shift 范围选择.
+     * 上一次选中的本地索引, 用于 Shift 范围选择.
      */
-    const lastSelectedIndex = ref(0)
+    const lastSelectedLocalIndex = ref(0)
 
     const indexStatus = ref<IndexStatus>('idle')
     const indexMessage = ref('初始化...')
@@ -882,25 +887,35 @@ export const useSearchStore = defineStore('search', () => {
 
     /**
      * 多选模式下的选择方法.
-     * @param idx 目标索引
+     * @param groupId 分组 ID
+     * @param localIndex 分组内的本地索引
      * @param ctrl 是否按住 Ctrl
      * @param shift 是否按住 Shift
      */
-    function selectWithModifiers(idx: number, ctrl: boolean, shift: boolean) {
-        if (displayMax.value === 0) {
-            selectedIndex.value = 0
-            selectedGlobalId.value = null
-            return
-        }
-        const clamped = Math.max(0, Math.min(idx, displayMax.value - 1))
-        selectedIndex.value = clamped
-        const item = displayList.value[clamped]
+    function selectWithModifiers(groupId: string, localIndex: number, ctrl: boolean, shift: boolean) {
+        const group = displayGroups.value.find(g => g.id === groupId)
+        if (!group || group.items.length === 0) return
+
+        // 计算全局索引用于 selectedIndex (键盘焦点)
+        const groupStartIdx = getGroupStartIndex(groupId)
+        const globalIdx = groupStartIdx + localIndex
+        const clampedGlobal = Math.max(0, Math.min(globalIdx, displayMax.value - 1))
+        selectedIndex.value = clampedGlobal
+        const item = displayList.value[clampedGlobal]
         selectedGlobalId.value = item?.id ?? null
 
+        // 切换分组时清空旧选中 (互斥)
+        if (activeSelectionGroupId.value !== groupId) {
+            activeSelectionGroupId.value = groupId
+            selectedIndexes.value = new Set()
+        }
+
+        const clamped = Math.max(0, Math.min(localIndex, group.visibleItems.length - 1))
+
         if (ctrl && shift) {
-            selectRangeToggle(lastSelectedIndex.value, clamped)
+            selectRangeToggle(lastSelectedLocalIndex.value, clamped)
         } else if (shift) {
-            selectRange(lastSelectedIndex.value, clamped)
+            selectRange(lastSelectedLocalIndex.value, clamped)
         } else if (ctrl) {
             toggleSelect(clamped)
         } else {
@@ -908,11 +923,23 @@ export const useSearchStore = defineStore('search', () => {
             addToSelection(clamped)
         }
 
-        lastSelectedIndex.value = clamped
+        lastSelectedLocalIndex.value = clamped
     }
 
     /**
-     * 选中指定范围的项目.
+     * 获取分组的起始全局索引.
+     */
+    function getGroupStartIndex(groupId: string): number {
+        let idx = 0
+        for (const g of displayGroups.value) {
+            if (g.id === groupId) return idx
+            idx += g.visibleItems.length
+        }
+        return 0
+    }
+
+    /**
+     * 选中指定范围的项目 (当前激活分组内的本地索引).
      */
     function selectRange(from: number, to: number) {
         clearSelection()
@@ -924,7 +951,7 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     /**
-     * 反选指定范围的项目.
+     * 反选指定范围的项目 (当前激活分组内的本地索引).
      */
     function selectRangeToggle(from: number, to: number) {
         const start = Math.min(from, to)
@@ -935,67 +962,70 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     /**
-     * 切换指定项目的选中状态.
+     * 切换指定项目的选中状态 (当前激活分组内的本地索引).
      */
-    function toggleSelect(idx: number) {
-        if (idx < 0 || idx >= displayMax.value) return
-        const item = displayList.value[idx]
-        if (!item) return
+    function toggleSelect(localIndex: number) {
+        const group = displayGroups.value.find(g => g.id === activeSelectionGroupId.value)
+        if (!group || localIndex < 0 || localIndex >= group.visibleItems.length) return
 
-        const ids = selectedIds.value
-        if (ids.has(item.id)) {
-            ids.delete(item.id)
+        const indexes = selectedIndexes.value
+        if (indexes.has(localIndex)) {
+            indexes.delete(localIndex)
         } else {
-            ids.add(item.id)
+            indexes.add(localIndex)
         }
-        selectedIds.value = new Set(ids)
+        selectedIndexes.value = new Set(indexes)
     }
 
     /**
-     * 添加项目到选中集合.
+     * 添加项目到选中集合 (当前激活分组内的本地索引).
      */
-    function addToSelection(idx: number) {
-        if (idx < 0 || idx >= displayMax.value) return
-        const item = displayList.value[idx]
-        if (!item) return
+    function addToSelection(localIndex: number) {
+        const group = displayGroups.value.find(g => g.id === activeSelectionGroupId.value)
+        if (!group || localIndex < 0 || localIndex >= group.visibleItems.length) return
 
-        const ids = selectedIds.value
-        ids.add(item.id)
-        selectedIds.value = new Set(ids)
+        const indexes = selectedIndexes.value
+        indexes.add(localIndex)
+        selectedIndexes.value = new Set(indexes)
     }
 
     /**
-     * 从选中集合中移除项目.
+     * 从选中集合中移除项目 (当前激活分组内的本地索引).
      */
-    function removeFromSelection(idx: number) {
-        if (idx < 0 || idx >= displayMax.value) return
-        const item = displayList.value[idx]
-        if (!item) return
-
-        const ids = selectedIds.value
-        ids.delete(item.id)
-        selectedIds.value = new Set(ids)
+    function removeFromSelection(localIndex: number) {
+        const indexes = selectedIndexes.value
+        indexes.delete(localIndex)
+        selectedIndexes.value = new Set(indexes)
     }
 
     /**
      * 清空所有选中.
      */
     function clearSelection() {
-        selectedIds.value = new Set()
+        selectedIndexes.value = new Set()
     }
 
     /**
-     * 判断项目是否被选中.
+     * 判断指定分组内的指定索引是否被选中.
      */
-    function isSelected(id: string): boolean {
-        return selectedIds.value.has(id)
+    function isSelectedInGroup(groupId: string, localIndex: number): boolean {
+        if (activeSelectionGroupId.value !== groupId) return false
+        return selectedIndexes.value.has(localIndex)
     }
 
     /**
-     * 获取所有选中的项目.
+     * 获取当前激活分组中所有选中的项目.
      */
     const selectedItems = computed(() => {
-        return displayList.value.filter(item => selectedIds.value.has(item.id))
+        if (!activeSelectionGroupId.value) return []
+        const group = displayGroups.value.find(g => g.id === activeSelectionGroupId.value)
+        if (!group) return []
+        const result: SearchResult[] = []
+        for (const idx of selectedIndexes.value) {
+            const item = group.items[idx]
+            if (item) result.push(item)
+        }
+        return result
     })
 
     /**
@@ -1150,9 +1180,10 @@ export const useSearchStore = defineStore('search', () => {
         setGroupSortMode,
         groupSortModes,
         // 多选相关 API
-        selectedIds,
+        activeSelectionGroupId,
+        selectedIndexes,
         selectedItems,
-        isSelected,
+        isSelectedInGroup,
         selectWithModifiers,
         toggleSelect,
         clearSelection,

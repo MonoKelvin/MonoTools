@@ -92,17 +92,9 @@ const syncWindowHeight = () => {
  *   - Shift     → 范围选中
  *   - Ctrl+Shift→ 范围反选
  */
-const onSelect = (item: SearchResult, globalIndex: number, event: MouseEvent) => {
-  // 优先通过 gid 查找索引 (dedupe / 排序变化后稳定)
-  const byId = search.displayList.findIndex((r) => r.id === item.id)
-  const idx = byId >= 0 ? byId : globalIndex
-
-  // 统一走 selectWithModifiers:
-  // - 无修饰键: 清空并选中当前项 (单选)
-  // - Ctrl: 切换当前项
-  // - Shift: 范围选中
-  // - Ctrl+Shift: 范围反选
-  search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
+const onSelect = (groupId: string, localIndex: number, event: MouseEvent) => {
+  // 每个分组独立且互斥, 直接调用 store 的分组选择方法
+  search.selectWithModifiers(groupId, localIndex, event.ctrlKey || event.metaKey, event.shiftKey)
 }
 const onOpen = (item: SearchResult) => {
   search.executeItem(item)
@@ -478,7 +470,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
             :selected-global-index="search.selectedIndex"
             :hovered-global-index="hoveredGlobalIndex"
             :start-index="groupStartIndices.get(group.id) ?? 0"
-            :selected-ids="search.selectedIds"
+            :selected-indexes="search.activeSelectionGroupId === group.id ? search.selectedIndexes : undefined"
             @toggle-collapse="onToggleGroup"
             @select="onSelect"
             @open="onOpen"

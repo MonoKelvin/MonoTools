@@ -28,12 +28,12 @@ const props = defineProps<{
   sortMode?: SortMode
   sortOptions?: MtComboBoxOption[]
   collapsedItems?: SearchResult[]
-  selectedIds?: Set<string>
+  selectedIndexes?: Set<number>
 }>()
 
 const emit = defineEmits<{
   (e: 'toggle-collapse', id: string): void
-  (e: 'select', item: SearchResult, globalIndex: number, event: MouseEvent): void
+  (e: 'select', groupId: string, localIndex: number, event: MouseEvent): void
   (e: 'open', item: SearchResult): void
   (e: 'hover', globalIndex: number): void
   (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number, target: EventTarget | null): void
@@ -282,8 +282,7 @@ function globalIndexOf(localIndex: number): number {
 }
 
 function onItemClick(item: SearchResult, localIndex: number, event: MouseEvent) {
-  const globalIndex = globalIndexOf(localIndex)
-  emit('select', item, globalIndex, event)
+  emit('select', props.id, localIndex, event)
 }
 
 function onItemDblClick(item: SearchResult) {
@@ -341,8 +340,8 @@ function isItemHovered(localIndex: number): boolean {
   return hoveredLocalIndex.value === localIndex
 }
 
-function isItemSelected(item: SearchResult): boolean {
-  return props.selectedIds?.has(item.id) ?? false
+function isItemSelected(localIndex: number): boolean {
+  return props.selectedIndexes?.has(localIndex) ?? false
 }
 </script>
 
@@ -390,7 +389,7 @@ function isItemSelected(item: SearchResult): boolean {
                   :class="{
                     'gs-item--active': isItemActive(idx),
                     'gs-item--hover': isItemHovered(idx),
-                    'gs-item--selected': isItemSelected(item),
+                    'gs-item--selected': isItemSelected(idx),
                   }"
                   @click="(e) => onItemClick(item, idx, e)"
                   @dblclick="onItemDblClick(item)"
@@ -413,7 +412,7 @@ function isItemSelected(item: SearchResult): boolean {
                     :class="{
                       'gs-item--active': isItemActive(idx),
                       'gs-item--hover': isItemHovered(idx),
-                      'gs-item--selected': isItemSelected(item),
+                      'gs-item--selected': isItemSelected(idx),
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
@@ -437,7 +436,7 @@ function isItemSelected(item: SearchResult): boolean {
                     :class="{
                       'gs-item--active': isItemActive(idx),
                       'gs-item--hover': isItemHovered(idx),
-                      'gs-item--selected': isItemSelected(item),
+                      'gs-item--selected': isItemSelected(idx),
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
