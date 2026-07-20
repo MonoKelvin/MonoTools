@@ -3,6 +3,7 @@ import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import type { SearchResult } from '@/modules/search'
 import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
+import GsIconTitle from './GsIconTitle.vue'
 import MtComboBox from '@/ui/components/MtComboBox.vue'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
@@ -27,6 +28,7 @@ const props = defineProps<{
   sortMode?: SortMode
   sortOptions?: MtComboBoxOption[]
   collapsedItems?: SearchResult[]
+  selectedIds?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -69,7 +71,9 @@ const sortIconMap: Record<string, any> = {
   path: Folder,
 }
 
-const sortOptions = computed<MtComboBoxOption[]>(() => props.sortOptions || [])
+const EMPTY_OPTIONS: MtComboBoxOption[] = []
+
+const sortOptions = computed<MtComboBoxOption[]>(() => props.sortOptions || EMPTY_OPTIONS)
 
 /** 排序 combobox 的显示值（优先使用传入�?sortMode，否则使用默认值） */
 const displaySortMode = computed(() => props.sortMode || DEFAULT_SORT_BY_KIND[props.kind] || 'name')
@@ -141,36 +145,51 @@ const isAnimating = ref(false)
 /** 是否已完成首次初始化 */
 const isInitialized = ref(false)
 
-// 组件挂载后初始化默认展开状态的内联高度
-onMounted(async () => {
-  await nextTick()
-  isInitialized.value = true
-})
+const DURATION = 300
+const EASE = 'cubic-bezier(0.25, 0, 0.15, 1)'
+const LAYOUT_TRANSITION_MS = 180
 
-// 使用 ResizeObserver 自动监听内容高度变化, 无需手动切换折叠触发刷新.
-// 布局切换、内容更新、字体加载等场景下都能自适应.
 let resizeObserver: ResizeObserver | null = null
-let isUpdatingHeight = false
+let rafId: number | null = null
 
-onMounted(() => {
-  const wrapper = document.getElementById(`group-content-${props.id}`)
-  if (!wrapper) return
+function updateContentHeight() {
+  if (rafId !== null) return
+  rafId = requestAnimationFrame(() => {
+    rafId = null
+    const wrapper = document.getElementById(`group-content-${props.id}`)
+    if (!wrapper) return
+    if (props.collapsed) return
 
-  resizeObserver = new ResizeObserver(() => {
-    // 仅在展开状态下同步高度, 收缩时由动画控制.
-    if (props.collapsed || !wrapper || isUpdatingHeight) return
-    isUpdatingHeight = true
     wrapper.style.transition = 'none'
     wrapper.style.height = 'auto'
-    // 读取真实高度后固化为内联样式, 避免后续 ResizeObserver 循环.
     const h = wrapper.scrollHeight
     if (h > 0) {
       wrapper.style.height = `${h}px`
     }
-    // 下一帧解除锁定, 允许下次内容变化时再次更新.
-    requestAnimationFrame(() => { isUpdatingHeight = false })
   })
-  resizeObserver.observe(wrapper)
+}
+
+onMounted(async () => {
+  await nextTick()
+  isInitialized.value = true
+
+  const wrapper = document.getElementById(`group-content-${props.id}`)
+  if (!wrapper) return
+
+  resizeObserver = new ResizeObserver(() => {
+    if (!props.collapsed) {
+      updateContentHeight()
+    }
+  })
+
+  const inner = wrapper.querySelector('.group-content-inner')
+  if (inner) {
+    resizeObserver.observe(inner)
+  }
+
+  if (!props.collapsed) {
+    updateContentHeight()
+  }
 })
 
 onBeforeUnmount(() => {
@@ -178,20 +197,10 @@ onBeforeUnmount(() => {
     resizeObserver.disconnect()
     resizeObserver = null
   }
-})
-
-// 布局切换后强制刷新一次高度, 解决内容未立即更新的问题.
-watch(layoutMode, () => {
-  nextTick(() => {
-    const wrapper = document.getElementById(`group-content-${props.id}`)
-    if (!wrapper || props.collapsed) return
-    wrapper.style.transition = 'none'
-    wrapper.style.height = 'auto'
-    const h = wrapper.scrollHeight
-    if (h > 0) {
-      wrapper.style.height = `${h}px`
-    }
-  })
+  if (rafId !== null) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
 })
 
 watch(
@@ -295,19 +304,28 @@ function onItemContextMenu(event: MouseEvent, item: SearchResult, localIndex: nu
   emit('contextmenu', event, item, globalIndexOf(localIndex), event.target)
 }
 
-const DURATION = 300
-const EASE = 'cubic-bezier(0.25, 0, 0.15, 1)'
-
 function onLayoutChange(key: string) {
   const mode = key as LayoutMode
   layoutMode.value = mode
   emit('layout-change', mode)
 }
 
-// 布局切换后, 等待过渡动画完成再通知父级重新同步窗口高度.
-// Transition 动画 180ms, 额外留 50ms 余量确保 DOM 已稳定.
 watch(layoutMode, () => {
-  setTimeout(() => emit('layout-transition-end'), 230)
+  nextTick(() => {
+    const wrapper = document.getElementById(`group-content-${props.id}`)
+    if (!wrapper || props.collapsed) {
+      emit('layout-transition-end')
+      return
+    }
+    wrapper.style.transition = 'none'
+    wrapper.style.height = 'auto'
+    setTimeout(() => {
+      updateContentHeight()
+      requestAnimationFrame(() => {
+        emit('layout-transition-end')
+      })
+    }, LAYOUT_TRANSITION_MS + 20)
+  })
 })
 
 function onSortChange(key: string) {
@@ -321,6 +339,10 @@ function isItemActive(localIndex: number): boolean {
 
 function isItemHovered(localIndex: number): boolean {
   return hoveredLocalIndex.value === localIndex
+}
+
+function isItemSelected(item: SearchResult): boolean {
+  return props.selectedIds?.has(item.id) ?? false
 }
 </script>
 
@@ -368,6 +390,7 @@ function isItemHovered(localIndex: number): boolean {
                   :class="{
                     'gs-item--active': isItemActive(idx),
                     'gs-item--hover': isItemHovered(idx),
+                    'gs-item--selected': isItemSelected(item),
                   }"
                   @click="(e) => onItemClick(item, idx, e)"
                   @dblclick="onItemDblClick(item)"
@@ -390,6 +413,7 @@ function isItemHovered(localIndex: number): boolean {
                     :class="{
                       'gs-item--active': isItemActive(idx),
                       'gs-item--hover': isItemHovered(idx),
+                      'gs-item--selected': isItemSelected(item),
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
@@ -397,8 +421,8 @@ function isItemHovered(localIndex: number): boolean {
                     @mouseleave="onItemLeave"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
-                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" />
-                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
+                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" />
+                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-font-shrink="layoutMode === 'grid-auto'" />
                   </div>
                 </div>
               </template>
@@ -413,6 +437,7 @@ function isItemHovered(localIndex: number): boolean {
                     :class="{
                       'gs-item--active': isItemActive(idx),
                       'gs-item--hover': isItemHovered(idx),
+                      'gs-item--selected': isItemSelected(item),
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
@@ -424,7 +449,7 @@ function isItemHovered(localIndex: number): boolean {
                       <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="xs" />
                       <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" />
                     </div>
-                    <div class="gs-icon-mode-title">{{ item.title }}</div>
+                    <GsIconTitle :text="item.title" />
                   </div>
                 </div>
               </template>
@@ -596,8 +621,24 @@ function isItemHovered(localIndex: number): boolean {
   background: var(--list-hover-bg);
 }
 
+.gs-item--selected.gs-item--list {
+  background: color-mix(in srgb, var(--list-hover-bg) 70%, var(--list-selected-bg) 30%);
+}
+
+.gs-item--selected.gs-item--list:hover,
+.gs-item--selected.gs-item--hover.gs-item--list {
+  background: color-mix(in srgb, var(--list-hover-bg) 30%, var(--list-selected-bg) 70%);
+}
+
 .gs-item--active.gs-item--list {
   background: var(--list-selected-bg);
+}
+
+.gs-item--list :deep(.app-result-item),
+.gs-item--list :deep(.result-item) {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
 }
 
 /* === grid mode (fixed / auto) === */
@@ -616,17 +657,25 @@ function isItemHovered(localIndex: number): boolean {
   padding: 4px 2px 8px;
 }
 
-/* flex 布局�?gs-item--grid 用内容自然宽度，不强制拉�?*/
+/* flex 布局下的 gs-item--grid 用内容自然宽度，长项可占满整行 */
 .group-content--grid-auto .gs-item--grid {
   flex: 0 0 auto;
   width: auto;
-  min-width: 140px;
-  max-width: 280px;
+  min-width: 120px;
+  max-width: 100%;
+  display: inline-block;
 }
 
 .group-content--grid-auto .gs-item--grid :deep(.app-result-item),
 .group-content--grid-auto .gs-item--grid :deep(.result-item) {
   width: auto;
+  display: inline-flex;
+  max-width: 100%;
+}
+
+.group-content--grid-auto .gs-item--grid :deep(.result-item__content) {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .group-content--grid-auto .gs-item--grid :deep(.app-result-item__title),
@@ -635,6 +684,7 @@ function isItemHovered(localIndex: number): boolean {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .gs-item--grid {
@@ -654,6 +704,15 @@ function isItemHovered(localIndex: number): boolean {
   background: var(--list-hover-bg);
 }
 
+.gs-item--selected.gs-item--grid {
+  background: color-mix(in srgb, var(--list-hover-bg) 70%, var(--list-selected-bg) 30%);
+}
+
+.gs-item--selected.gs-item--grid:hover,
+.gs-item--selected.gs-item--hover.gs-item--grid {
+  background: color-mix(in srgb, var(--list-hover-bg) 30%, var(--list-selected-bg) 70%);
+}
+
 .gs-item--active.gs-item--grid {
   background: var(--list-selected-bg);
 }
@@ -661,9 +720,9 @@ function isItemHovered(localIndex: number): boolean {
 /* 网格模式下的内层样式：保持与列表模式类似的间距和高度 */
 .gs-item--grid :deep(.app-result-item),
 .gs-item--grid :deep(.result-item) {
-  background: transparent;
-  border: none;
-  border-radius: 0;
+  background: transparent !important;
+  border: none !important;
+  border-radius: 0 !important;
   padding: 4px 12px;
   gap: var(--sp-4);
   height: 100%;
@@ -703,6 +762,15 @@ function isItemHovered(localIndex: number): boolean {
   background: var(--list-hover-bg);
 }
 
+.gs-item--selected.gs-item--icon {
+  background: color-mix(in srgb, var(--list-hover-bg) 70%, var(--list-selected-bg) 30%);
+}
+
+.gs-item--selected.gs-item--icon:hover,
+.gs-item--selected.gs-item--hover.gs-item--icon {
+  background: color-mix(in srgb, var(--list-hover-bg) 30%, var(--list-selected-bg) 70%);
+}
+
 .gs-item--active.gs-item--icon {
   background: var(--list-selected-bg);
 }
@@ -721,9 +789,9 @@ function isItemHovered(localIndex: number): boolean {
 
 .gs-icon-mode-icon :deep(.app-result-item) {
   padding: 0;
-  border: none;
-  background: transparent;
-  border-radius: 0;
+  border: none !important;
+  background: transparent !important;
+  border-radius: 0 !important;
   gap: 0;
 }
 
@@ -772,20 +840,5 @@ function isItemHovered(localIndex: number): boolean {
 .gs-icon-mode-icon :deep(.result-item__content),
 .gs-icon-mode-icon :deep(.result-item__meta) {
   display: none;
-}
-
-.gs-icon-mode-title {
-  font-size: 11px;
-  text-align: center;
-  line-height: 1.3;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  white-space: normal;
-  color: var(--text-primary);
-  font-weight: 500;
-  overflow: hidden;
-  max-width: 86px;
-  margin-top: 8px;
 }
 </style>

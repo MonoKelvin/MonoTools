@@ -31,6 +31,10 @@ const props = defineProps<{
   index: number
   /** 徽章尺寸: sm 用于列表/网格, xs 用于图标模式 */
   badgeSize?: 'sm' | 'xs'
+  /** 标题是否允许换行: 默认 false (单行省略号), true 时可换行显示完整内容 */
+  titleWrap?: boolean
+  /** 是否禁止字体缩小: 默认 false (可缩小), true 时始终使用最大字号 */
+  noFontShrink?: boolean
 }>()
 
 // 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
@@ -177,13 +181,17 @@ const badgeInfo = computed(() => {
 
 /**
  * 自适应标题文字: 优先缩小字体, 超出则省略号, hover 显示 tooltip.
+ * titleWrap=true 时允许多行显示, 尽量展示完整内容.
+ * noFontShrink=true 时始终使用最大字号, 不缩小字体.
  */
 const {
   containerRef: titleContainerRef,
   displayText: adaptiveTitle,
   displayLines: adaptiveTitleLines,
-  currentFontSize: titleFontSize,
+  currentFontSize: _titleFontSize,
   isTruncated: titleIsTruncated,
+  whiteSpaceMode,
+  update: updateAdaptiveText,
 } = useAdaptiveText(() => props.result?.title || '', {
   maxFontSize: 14,
   minFontSize: 10,
@@ -192,6 +200,17 @@ const {
   whiteSpace: 'nowrap',
   maxLines: undefined,
 })
+
+const titleFontSize = computed(() => props.noFontShrink ? 14 : _titleFontSize.value)
+
+watch(
+  () => props.titleWrap,
+  (wrap) => {
+    whiteSpaceMode.value = wrap ? 'normal' : 'nowrap'
+    nextTick(() => updateAdaptiveText())
+  },
+  { immediate: true }
+)
 </script>
 
 <template>
@@ -244,11 +263,20 @@ const {
 
     <div
       class="app-result-item__title"
+      :class="{ 'app-result-item__title--wrap': titleWrap }"
       ref="titleContainerRef"
       :style="{ fontSize: titleFontSize + 'px' }"
-      :title="titleIsTruncated ? (result?.title || '') : ''"
+      :title="titleIsTruncated && !noFontShrink ? (result?.title || '') : ''"
     >
-      {{ adaptiveTitle }}
+      <template v-if="noFontShrink">
+        {{ result?.title || '' }}
+      </template>
+      <template v-else-if="titleWrap && adaptiveTitleLines.length > 1">
+        <span v-for="(line, idx) in adaptiveTitleLines" :key="idx" class="app-title-line">{{ line }}</span>
+      </template>
+      <template v-else>
+        {{ adaptiveTitle }}
+      </template>
     </div>
 
     <div class="app-result-item__meta">
@@ -433,6 +461,13 @@ const {
   letter-spacing: -0.005em;
   text-rendering: optimizeLegibility;
   transition: color var(--dur-fast) var(--ease-out);
+}
+
+.app-result-item__title--wrap {
+  white-space: normal;
+  text-overflow: clip;
+  overflow: visible;
+  line-height: 1.45;
 }
 
 .app-title-line {

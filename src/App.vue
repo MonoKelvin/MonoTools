@@ -5,14 +5,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { onMounted } from 'vue'
 import { useThemeStore } from '@/core/stores/theme'
 
 const themeStore = useThemeStore()
-
-const themeClass = computed(() => 'theme-dark')
-
-const _ = themeStore
 
 /**
  * 全局屏蔽 webview 右键菜单.

@@ -36,6 +36,10 @@ const props = defineProps<{
   result: SearchResult
   active?: boolean
   index: number
+  /** 标题是否允许换行: 默认 false (单行省略号), true 时可换行显示完整内容 */
+  titleWrap?: boolean
+  /** 是否禁止字体缩小: 默认 false (可缩小), true 时始终使用最大字号 */
+  noFontShrink?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -48,13 +52,17 @@ void emit
 
 /**
  * 自适应标题文字: 优先缩小字体, 超出则省略号.
+ * titleWrap=true 时允许多行显示.
+ * noFontShrink=true 时始终使用最大字号, 不缩小字体.
  */
 const {
   containerRef: titleContainerRef,
   displayText: adaptiveTitle,
   displayLines: adaptiveTitleLines,
-  currentFontSize: titleFontSize,
+  currentFontSize: _titleFontSize,
   isTruncated: titleIsTruncated,
+  whiteSpaceMode: titleWhiteSpaceMode,
+  update: updateTitleAdaptive,
 } = useAdaptiveText(() => props.result?.title || '', {
   maxFontSize: 13.5,
   minFontSize: 9,
@@ -64,15 +72,30 @@ const {
   maxLines: undefined,
 })
 
+const titleFontSize = computed(() => props.noFontShrink ? 13.5 : _titleFontSize.value)
+
+watch(
+  () => props.titleWrap,
+  (wrap) => {
+    titleWhiteSpaceMode.value = wrap ? 'normal' : 'nowrap'
+    nextTick(() => updateTitleAdaptive())
+  },
+  { immediate: true }
+)
+
 /**
  * 自适应副标题 (路径) 文字.
+ * titleWrap=true 时允许多行显示.
+ * noFontShrink=true 时始终使用最大字号, 不缩小字体.
  */
 const {
   containerRef: subtitleContainerRef,
   displayText: adaptiveSubtitle,
   displayLines: adaptiveSubtitleLines,
-  currentFontSize: subtitleFontSize,
+  currentFontSize: _subtitleFontSize,
   isTruncated: subtitleIsTruncated,
+  whiteSpaceMode: subtitleWhiteSpaceMode,
+  update: updateSubtitleAdaptive,
 } = useAdaptiveText(() => props.result?.subtitle || '', {
   maxFontSize: 11.5,
   minFontSize: 9,
@@ -82,6 +105,17 @@ const {
   whiteSpace: 'nowrap',
   maxLines: undefined,
 })
+
+const subtitleFontSize = computed(() => props.noFontShrink ? 11.5 : _subtitleFontSize.value)
+
+watch(
+  () => props.titleWrap,
+  (wrap) => {
+    subtitleWhiteSpaceMode.value = wrap ? 'normal' : 'nowrap'
+    nextTick(() => updateSubtitleAdaptive())
+  },
+  { immediate: false }
+)
 
 const contentRef = ref<HTMLElement | null>(null)
 const titleRef = ref<HTMLElement | null>(null)
@@ -250,20 +284,38 @@ onBeforeUnmount(() => {
     <div class="result-item__content" ref="contentRef">
       <div
         class="result-item__title"
+        :class="{ 'result-item__title--wrap': titleWrap }"
         ref="titleContainerRef"
         :style="{ fontSize: titleFontSize + 'px' }"
-        :title="titleIsTruncated ? (result.title || '') : ''"
+        :title="titleIsTruncated && !noFontShrink ? (result.title || '') : ''"
       >
-        {{ adaptiveTitle }}
+        <template v-if="noFontShrink">
+          {{ result.title || '' }}
+        </template>
+        <template v-else-if="titleWrap && adaptiveTitleLines.length > 1">
+          <span v-for="(line, idx) in adaptiveTitleLines" :key="idx" class="result-title-line">{{ line }}</span>
+        </template>
+        <template v-else>
+          {{ adaptiveTitle }}
+        </template>
       </div>
       <div
         v-if="result.subtitle"
         class="result-item__subtitle"
+        :class="{ 'result-item__subtitle--wrap': titleWrap }"
         ref="subtitleContainerRef"
         :style="{ fontSize: subtitleFontSize + 'px' }"
-        :title="subtitleIsTruncated ? (result.subtitle || '') : ''"
+        :title="subtitleIsTruncated && !noFontShrink ? (result.subtitle || '') : ''"
       >
-        {{ adaptiveSubtitle }}
+        <template v-if="noFontShrink">
+          {{ result.subtitle || '' }}
+        </template>
+        <template v-else-if="titleWrap && adaptiveSubtitleLines.length > 1">
+          <span v-for="(line, idx) in adaptiveSubtitleLines" :key="idx" class="result-subtitle-line">{{ line }}</span>
+        </template>
+        <template v-else>
+          {{ adaptiveSubtitle }}
+        </template>
       </div>
     </div>
 
@@ -364,6 +416,12 @@ onBeforeUnmount(() => {
   transition: color var(--dur-fast) var(--ease-out);
 }
 
+.result-item__title--wrap {
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.45;
+}
+
 .result-title-line {
   display: block;
   line-height: 1.35;
@@ -378,6 +436,13 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   text-rendering: optimizeLegibility;
   transition: color var(--dur-fast) var(--ease-out);
+}
+
+.result-item__subtitle--wrap {
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.45;
+  word-break: break-all;
 }
 
 .result-item--active .result-item__subtitle {

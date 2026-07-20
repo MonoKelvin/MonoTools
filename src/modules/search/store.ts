@@ -7,10 +7,10 @@ import { SEARCH_DEBOUNCE_MS, SEARCH_LIMITS_VISIBLE, SEARCH_LIMITS } from '@/core
 import { getFileKind } from './utils/fileKinds'
 import type { SortMode } from '@/core/config/sorting'
 import {
-  SMART_WEIGHTS,
-  APP_CATEGORIES,
-  RECOMMENDATION_MAP,
-  DEFAULT_SORT_BY_GROUP,
+    SMART_WEIGHTS,
+    APP_CATEGORIES,
+    RECOMMENDATION_MAP,
+    DEFAULT_SORT_BY_GROUP,
 } from '@/core/config/sorting'
 import { isTauri } from '@/services/env'
 
@@ -364,6 +364,8 @@ export const useSearchStore = defineStore('search', () => {
     let incrementalRefreshTimer: ReturnType<typeof setTimeout> | null = null
     /** 增量刷新间隔（毫秒）: 索引过程中每 200ms 最多刷新一次列表 */
     const INCREMENTAL_REFRESH_INTERVAL = 200
+    /** 搜索请求序号，用于竞态处理，确保旧请求不会覆盖新结果 */
+    let searchRequestSeq = 0
 
     const filteredResults = computed(() => {
         if (activeCategory.value === 'all') return results.value
@@ -448,6 +450,7 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     async function runSearch(options?: Partial<SearchOptions>) {
+        const currentSeq = ++searchRequestSeq
         loading.value = true
         try {
             const effectiveLimit = query.value === ''
@@ -457,11 +460,19 @@ export const useSearchStore = defineStore('search', () => {
                 limit: effectiveLimit,
                 ...options,
             }
-            results.value = await searchApi.search(query.value, mergedOptions)
+            const newResults = await searchApi.search(query.value, mergedOptions)
+            // 竞态检查: 只在当前请求是最新的才更新结果
+            if (currentSeq === searchRequestSeq) {
+                results.value = newResults
+            }
         } catch {
-            results.value = []
+            if (currentSeq === searchRequestSeq) {
+                results.value = []
+            }
         } finally {
-            loading.value = false
+            if (currentSeq === searchRequestSeq) {
+                loading.value = false
+            }
         }
     }
 
@@ -543,11 +554,11 @@ export const useSearchStore = defineStore('search', () => {
      * 返回 unlisten, 调用方应在组件卸载时清理.
      */
     async function listenWindowMonitor(): Promise<() => void> {
-        if (!isTauri) return () => {}
+        if (!isTauri) return () => { }
         try {
             return await windowMonitorApi.listenChanged(applyWindowChanged)
         } catch {
-            return () => {}
+            return () => { }
         }
     }
 

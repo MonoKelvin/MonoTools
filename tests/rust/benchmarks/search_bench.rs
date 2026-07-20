@@ -161,12 +161,14 @@ fn build_app_engine(n_apps: usize) -> AppSearchEngine {
     {
         let mut cache = engine.cache.write();
         for (i, name) in synthetic_app_names(n_apps).into_iter().enumerate() {
+            let name_lower = name.to_lowercase();
             let launch_count = ((n_apps - i) % 50) as u32;
             cache.insert(
                 format!("C:\\apps\\app_{}.exe", i),
                 monotools_lib::search_engine::models::AppEntry {
                     id: format!("app_{}", i),
                     name,
+                    name_lower,
                     path: PathBuf::from(format!("C:\\apps\\app_{}.exe", i)),
                     icon_path: None,
                     category: "Applications".to_string(),

@@ -31,6 +31,7 @@ const contextMenuY = ref(0)
 const contextMenuItem = ref<SearchResult | null>(null)
 const showHotkeyModal = ref(false)
 const showLoading = ref(true)
+const hoveredGlobalIndex = ref(-1)
 
 const search = useSearchStore()
 const settings = useSettingsStore()
@@ -96,17 +97,12 @@ const onSelect = (item: SearchResult, globalIndex: number, event: MouseEvent) =>
   const byId = search.displayList.findIndex((r) => r.id === item.id)
   const idx = byId >= 0 ? byId : globalIndex
 
-  if (event.ctrlKey || event.metaKey || event.shiftKey) {
-    // 修饰键按下: 走多选管线, 同时把 selectedIndex 锁定到该项.
-    search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
-  } else {
-    // 普通单击: 先清空多选集, 再设置单选.
-    // 注意: 必须先 clearSelection 再 selectByIndex, 否则 selectByIndex
-    // 设置的 selectedIndex 会被后续的 clearSelection 保留但 selectedIds 被清空,
-    // 导致视觉上高亮消失.
-    search.clearSelection()
-    search.selectByIndex(idx)
-  }
+  // 统一走 selectWithModifiers:
+  // - 无修饰键: 清空并选中当前项 (单选)
+  // - Ctrl: 切换当前项
+  // - Shift: 范围选中
+  // - Ctrl+Shift: 范围反选
+  search.selectWithModifiers(idx, event.ctrlKey || event.metaKey, event.shiftKey)
 }
 const onOpen = (item: SearchResult) => {
   search.executeItem(item)
@@ -115,10 +111,7 @@ const onShowHotkeys = () => {
   showHotkeyModal.value = true
 }
 const onHover = (globalIndex: number) => {
-  // hover 也用 selectByIndex 同步 ID 锚点, 保持状态一致.
-  if (globalIndex >= 0) {
-    search.selectByIndex(globalIndex)
-  }
+  hoveredGlobalIndex.value = globalIndex
 }
 const onQueryChange = (val: string) => search.setQuery(val)
 
@@ -387,14 +380,16 @@ onMounted(async () => {
       }, 60_000)
   }
 
-  // 先完成数据加载和布局, 再通知后端显示窗口.
-  // 这样窗口一出现就是完整的主界面, 避免透明窗口闪烁.
-  await search.initialLoad().catch(() => undefined)
-  await search.loadPinned().catch(() => undefined)
-  await settings.load().catch(() => undefined)
-  await tryRegisterHotkey().catch(() => undefined)
-  await fixWindowWidth().catch(() => undefined)
-  await search.loadIndexStatus().catch(() => undefined)
+  // 并行执行独立的启动任务，提升启动速度
+  // 这些任务之间没有依赖关系，可以同时进行
+  await Promise.all([
+    search.initialLoad().catch(() => undefined),
+    search.loadPinned().catch(() => undefined),
+    settings.load().catch(() => undefined),
+    tryRegisterHotkey().catch(() => undefined),
+    fixWindowWidth().catch(() => undefined),
+    search.loadIndexStatus().catch(() => undefined),
+  ])
 
   if (containerRef.value && typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(syncWindowHeight)
@@ -481,8 +476,9 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
             :sort-mode="search.groupSortModes[group.id] || DEFAULT_SORT_BY_KIND[group.kind]"
             :sort-options="sortOptionsByKind[group.kind]"
             :selected-global-index="search.selectedIndex"
-            :hovered-global-index="search.selectedIndex"
+            :hovered-global-index="hoveredGlobalIndex"
             :start-index="groupStartIndices.get(group.id) ?? 0"
+            :selected-ids="search.selectedIds"
             @toggle-collapse="onToggleGroup"
             @select="onSelect"
             @open="onOpen"
