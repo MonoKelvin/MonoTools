@@ -1,4 +1,4 @@
-﻿//! 全局快捷键服务
+//! 全局快捷键服务
 //!
 //! 注册策略:
 //! 1. 优先使用 tauri-plugin-global-shortcut (底层 RegisterHotKey)
@@ -6,6 +6,7 @@
 use crate::core::error::Result;
 use crate::platform::windows::hotkey::{hotkey_to_vk, LowLevelHotkeyHook};
 use parking_lot::Mutex;
+use std::sync::Arc;
 use tauri::{AppHandle, Runtime, WebviewWindow};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
@@ -130,4 +131,79 @@ fn toggle_search_window<R: Runtime>(app: &AppHandle<R>) {
 fn get_webview_window_clone<R: Runtime>(app: &AppHandle<R>, label: &str) -> Option<WebviewWindow<R>> {
     use tauri::Manager;
     Manager::get_webview_window(app, label)
+}
+
+/// 热键服务 IPC 命令
+///
+/// 独立模块设计：热键相关的 IPC 命令定义在此模块中，
+/// 通过 core_ipc_commands! 宏注册到全局。
+pub mod ipc {
+    use crate::app::state::AppState;
+    use std::sync::Arc;
+    use tauri::{AppHandle, State};
+
+    #[tauri::command]
+    pub async fn register_hotkey_cmd(
+        app: AppHandle,
+        state: State<'_, Arc<AppState>>,
+        hotkey: String,
+    ) -> Result<String, String> {
+        state
+            .hotkey
+            .register(&hotkey, &app)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(hotkey)
+    }
+
+    #[tauri::command]
+    pub async fn unregister_hotkey(
+        app: AppHandle,
+        state: State<'_, Arc<AppState>>,
+        hotkey: String,
+    ) -> Result<(), String> {
+        state
+            .hotkey
+            .unregister(&hotkey, &app)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn get_current_hotkey(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+        Ok(state.hotkey.current().unwrap_or_default())
+    }
+}
+
+/// 热键服务初始化
+///
+/// 从设置中读取快捷键并注册。
+/// 原本在 builder.rs 的 setup 中，现在抽离到 hotkey 模块。
+pub fn init_hotkey_service(
+    app: &AppHandle,
+    hotkey: Arc<HotkeyService>,
+    initial_hotkey: String,
+) {
+    let app_handle = app.clone();
+    let hotkey_clone = hotkey.clone();
+
+    tauri::async_runtime::spawn(async move {
+        #[cfg(debug_assertions)]
+        log::info!("[hotkey] 后台注册 hotkey: {}", initial_hotkey);
+
+        if let Err(e) = hotkey_clone
+            .register(&initial_hotkey, &app_handle)
+            .await
+        {
+            log::warn!("注册默认快捷键失败: {}，请检查是否被其他程序占用", e);
+            log::info!("尝试重新注册...");
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            let _ = hotkey_clone
+                .register(&initial_hotkey, &app_handle)
+                .await;
+        } else {
+            #[cfg(debug_assertions)]
+            log::info!("[hotkey] hotkey 注册成功: {}", initial_hotkey);
+        }
+    });
 }

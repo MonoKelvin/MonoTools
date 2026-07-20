@@ -89,6 +89,16 @@ windows-sys = { version = "0.61", features = [
 # DO NOT REMOVE!!
 custom-protocol = ["tauri/custom-protocol"]
 
+# === 独立模块 Feature Flags ===
+# 说明：
+#   - recommend: 启用智能推荐模块（规则引擎保底，纯 Rust 实现）
+#   - recommend-py: 启用 Python 推荐引擎（依赖 pybridge + Python 环境）
+#   - pybridge: 启用通用 Rust-Python 桥接模块
+# 删除模块：移除对应 feature + 对应 src/ 目录 + lib.rs 中的 mod 声明即可
+recommend = []
+recommend-py = ["pybridge", "recommend"]
+pybridge = []
+
 # Integration tests live at the repo root under `tests/`. The single `[[test]]`
 # target runs `tests/run.rs` which orchestrates the in-tree test modules; the
 # Rust default `#[test]` harness is reused (do *not* set `harness = false`,

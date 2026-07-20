@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod hotkey;
 pub mod icon;
+pub mod ipc;
 pub mod mica;
 pub mod shell;
 pub mod special_shortcuts;

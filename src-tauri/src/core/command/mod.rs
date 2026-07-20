@@ -23,6 +23,7 @@ pub mod command_custom;
 pub mod command_registry;
 pub mod command_repo;
 pub mod command_trait;
+pub mod ipc;
 
 pub mod cmd_help;
 pub mod cmd_version;

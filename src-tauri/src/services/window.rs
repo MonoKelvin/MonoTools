@@ -1,4 +1,4 @@
-﻿//! 窗口管理 - 显示/隐藏/居中等
+//! 窗口管理 - 显示/隐藏/居中等
 use crate::core::error::Result;
 use parking_lot::Mutex;
 use std::sync::Arc;
@@ -202,5 +202,81 @@ impl WindowService {
     pub fn set_app<R: Runtime>(&self, app: tauri::AppHandle<R>) {
         let wrapper = RuntimeAppHandle::<R>::new(app);
         *self.app.lock() = Some(Arc::new(wrapper));
+    }
+}
+
+/// 窗口服务 IPC 命令
+///
+/// 独立模块设计：窗口相关的 IPC 命令定义在此模块中，
+/// 通过 core_ipc_commands! 宏注册到全局。
+pub mod ipc {
+    use crate::app::state::AppState;
+    use crate::core::config::window;
+    use std::sync::Arc;
+    use tauri::{AppHandle, LogicalSize, Manager, State, WebviewWindow};
+
+    #[tauri::command]
+    pub async fn show_window(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+        state.window.show().await.map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn hide_window(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+        state.window.hide().await.map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn toggle_window(
+        app: AppHandle,
+        state: State<'_, Arc<AppState>>,
+    ) -> Result<(), String> {
+        state.window.toggle(&app).await.map_err(|e| e.to_string())
+    }
+
+    #[tauri::command]
+    pub async fn set_window_height(app: AppHandle, height: u32) -> Result<(), String> {
+        let Some(w) = app.get_webview_window("search") else {
+            return Ok(());
+        };
+        let height = height.clamp(window::MIN_HEIGHT, window::MAX_HEIGHT);
+        let _ = w.set_size(LogicalSize::new(window::DEFAULT_WIDTH, height as f64));
+        Ok(())
+    }
+
+    /// 应用层提供的"开始拖拽窗口"命令。
+    #[tauri::command]
+    pub async fn start_dragging(
+        state: State<'_, Arc<AppState>>,
+        window: WebviewWindow,
+    ) -> Result<(), String> {
+        if let Ok(mut dragging) = state.is_dragging.lock() {
+            *dragging = true;
+        }
+
+        window.start_dragging().map_err(|e| {
+            println!("[ERROR] Failed to start dragging: {}", e);
+            format!("Failed to start dragging: {e}")
+        })?;
+
+        Ok(())
+    }
+
+    /// 设置拖拽状态
+    #[tauri::command]
+    pub async fn set_dragging(
+        state: State<'_, Arc<AppState>>,
+        dragging: bool,
+    ) -> Result<(), String> {
+        if let Ok(mut is_dragging) = state.is_dragging.lock() {
+            *is_dragging = dragging;
+        }
+        Ok(())
+    }
+
+    /// 退出整个应用。
+    #[tauri::command]
+    pub async fn quit_app(app: AppHandle) -> Result<(), String> {
+        app.exit(0);
+        Ok(())
     }
 }

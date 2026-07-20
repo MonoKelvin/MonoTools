@@ -1,6 +1,11 @@
 //! GUI 应用状态 - 由 tauri::Builder.manage 注入
 //!
 //! 仅在 GUI 模式下使用，CLI 模式使用 CommandContext::new_headless()。
+//!
+//! # 模块组织原则
+//! - AppState 只存放核心的、被多个模块共享的状态
+//! - 独立模块自己管理状态，通过 app.manage() 注册
+//! - 独立模块的 IPC 命令通过 State<'_, Arc<ModuleService>> 访问自己的状态
 
 use crate::repositories::*;
 use crate::search_engine::app_search::AppSearchEngine;

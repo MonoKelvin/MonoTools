@@ -268,3 +268,30 @@ fn get_foreground_window_info() -> (String, String) {
     // 非 Windows 平台返回空
     (String::new(), String::new())
 }
+
+/// 窗口监控服务 IPC 命令
+///
+/// 独立模块设计：窗口监控相关的 IPC 命令定义在此模块中，
+/// 通过 core_ipc_commands! 宏注册到全局。
+pub mod ipc {
+    use crate::app::state::AppState;
+    use std::sync::Arc;
+    use tauri::State;
+
+    /// 获取窗口监控状态 (当前激活应用 + 最近应用历史).
+    #[tauri::command]
+    pub async fn get_window_monitor_state(
+        state: State<'_, Arc<AppState>>,
+    ) -> Result<serde_json::Value, String> {
+        let monitor = state.window_monitor.lock().map_err(|e| e.to_string())?;
+        let snapshot = monitor.snapshot();
+        Ok(serde_json::json!({
+            "activeAppPath": snapshot.active_app_path,
+            "activeAppTitle": snapshot.active_app_title,
+            "recentApps": snapshot.recent_apps.iter().map(|a| serde_json::json!({
+                "path": &a.path,
+                "title": &a.title,
+            })).collect::<Vec<_>>(),
+        }))
+    }
+}

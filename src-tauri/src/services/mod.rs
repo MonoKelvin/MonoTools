@@ -6,11 +6,13 @@
 
 pub mod hotkey;
 pub mod storage;
+pub mod tray;
 pub mod window;
 pub mod window_monitor;
 
 pub use hotkey::HotkeyService;
 pub use storage::StorageService;
+pub use tray::TrayService;
 pub use window::WindowService;
 pub use window_monitor::WindowMonitorService;
 

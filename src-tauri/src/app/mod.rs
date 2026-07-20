@@ -6,6 +6,7 @@
 pub mod builder;
 pub mod ipc;
 pub mod state;
+pub mod modules;
 
 pub use state::AppState;
 

@@ -16,7 +16,7 @@ import { computed, ref, watch } from 'vue'
 import * as tauriSvc from '@/services/tauri'
 import { hotkeyManager } from '@/services/hotkeyManager'
 import { normalizeShortcut } from './bindings'
-import { builtinCommandSpecs as builtinSpecs } from './specs'
+import { commandSpecRegistry } from './registry'
 import type { CommandCategory, CommandExecutionResult, CommandSpec } from './types'
 
 const invokeCmd: <T>(cmd: string, args: Record<string, unknown>) => Promise<T> =
@@ -82,8 +82,7 @@ export const useCommandsStore = defineStore('commands', () => {
   async function loadFromBackend(force = false): Promise<void> {
     if (isLoaded.value && !force) return
     if (!isTauriEnv()) {
-      // 不是真 Tauri 环境 —— 浏览器开发 / 测试 mock：填充 builtin specs（不再发 mock IPC 拉取）。
-      specs.value = builtinSpecs.map((s) => ({ ...s }))
+      specs.value = commandSpecRegistry.getAll().map((s) => ({ ...s }))
       isLoaded.value = true
       return
     }
@@ -102,19 +101,17 @@ export const useCommandsStore = defineStore('commands', () => {
         })
         map.set(id, spec)
       }
-      // 补充 UI-only specs（如 search.cmd.*）—— 这些后端不知道
-      for (const ui of builtinSpecs) {
+      for (const ui of commandSpecRegistry.getAll()) {
         if (!map.has(ui.id)) map.set(ui.id, ui)
       }
       specs.value = Array.from(map.values())
       isLoaded.value = true
       lastError.value = null
     } catch (err) {
-      specs.value = builtinSpecs.map((s) => ({ ...s }))
+      specs.value = commandSpecRegistry.getAll().map((s) => ({ ...s }))
       isLoaded.value = true
       const msg = err instanceof Error ? err.message : String(err)
       lastError.value = msg || 'unknown'
-      // 后端拉取失败已经在 lastError 中记录，UI 层（CommandsPanel 等）会展示；控制台不再重复 warn
     }
   }
 

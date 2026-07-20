@@ -1,9 +1,10 @@
-﻿//! 数据仓库层
+//! 数据仓库层
 //!
 //! 注：CommandRepo 已迁移至 `crate::core::command::command_repo`，
 //! 这里重新导出以保持向后兼容。
 
 pub mod commands;
+pub mod ipc;
 pub mod pin_repo;
 pub mod settings_repo;
 pub mod stats_repo;
