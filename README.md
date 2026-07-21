@@ -2,7 +2,7 @@
 
 # <img src="public/logo/logo_256x256.png" alt="MonoTools" width="120"/>
 
-**MonoTools** 是一款面向 Windows 平台的轻量级桌面启动器与效率工具，采用 Raycast/Linear 设计语言。采用 **静默驻留** 模式运行，通过全局快捷键唤出 Spotlight 式搜索框，提供应用启动、NTFS USN Journal 文件搜索、自定义命令执行等核心能力。
+**MonoTools** 是一款面向 Windows 平台的轻量级桌面启动器与效率工具，采用 Raycast/Linear 设计语言。静默驻留系统托盘，通过 `Alt + Space` 全局快捷键唤出 Spotlight 式搜索框，提供应用启动、文件搜索、自定义命令、智能推荐等核心能力。
 
 [![Platform](https://img.shields.io/badge/平台-Windows-blue)](https://github.com/MonoKelvin/MonoTools)
 [![Version](https://img.shields.io/badge/版本-0.1.0-green)](https://github.com/MonoKelvin/MonoTools)
@@ -15,52 +15,38 @@
 
 ---
 
-## ✨ 核心特性
+## ✨ 核心功能
 
-- 🚀 **静默驻留**: 开机自启，托盘运行，无主窗口常驻
-- ⌨️ **全局唤出**: `Alt + Space` 快捷键捕获，屏幕中央弹出搜索框
-- 🔍 **全局搜索**: 应用启动、文件搜索、自定义命令聚合搜索
-- 📁 **文件搜索**: 基于 NTFS USN Journal 和 MFT 的高性能文件索引
-- 🔧 **自定义命令**: 用户可配置快捷命令，扩展启动能力
-- 🎨 **主题系统**: Raycast 风格毛玻璃暗色主题，支持亮/暗切换
-- 💻 **CLI 支持**: 命令行接口与 GUI 功能同源
-- 🧪 **测试框架**: 完善的后端测试体系，包含测试报告生成和路径验证
-- 🔒 **单例模式**: 确保应用只运行一个实例，重复启动会激活已有窗口
+- 🚀 **全局搜索** — 应用、文件、自定义命令聚合搜索，毫秒级响应
+- 📁 **文件搜索** — 基于 NTFS USN Journal 和 MFT 的高性能文件索引，支持全文搜索
+- 🤖 **智能推荐** — 基于使用频率、最近访问和前台窗口上下文的混合推荐算法
+- � **自定义命令** — 可配置快捷命令，扩展启动能力
+- 🎨 **精美 UI** — Raycast 风格毛玻璃主题，支持亮/暗模式切换
+- ⌨️ **全局快捷键** — `Alt + Space` 一键唤出，开机自启静默驻留
+- 💻 **CLI 支持** — 命令行接口与 GUI 功能同源
+- 🔒 **单例模式** — 确保只运行一个实例，重复启动自动激活已有窗口
 
 ---
 
 ## 🛠️ 技术栈
 
-### 前端
-
-- **Vue 3** (3.5+) - Composition API + `<script setup>`
-- **TypeScript** (5.7+) - 严格模式
-- **PrimeVue** (4.x) - UI 组件库
-- **Pinia** (3.x) - 状态管理
-- **Vite** (6.x) - 构建工具
-- **Tailwind CSS** (4.x) - 原子化 CSS
-- **SCSS** - 全局样式与主题变量
-- **Lucide Vue** - 图标库
-
-### 后端
-
-- **Rust** (1.77+) - 2021 Edition
-- **Tauri** (2.11+) - 应用框架
-- **Tauri Plugins**: single-instance (单例模式), global-shortcut, shell, fs
-- **Tokio** (1.x) - 异步运行时
-- **SQLite** (0.40) - 配置与数据存储，FTS5 全文搜索
-- **windows-rs** (0.62) - Win32 API 绑定（USN Journal、注册表、热键等）
+- **前端**：Vue 3 + TypeScript + Vite + Pinia + PrimeVue + Tailwind CSS + SCSS
+- **后端**：Rust + Tauri 2 + Tokio + SQLite (FTS5)
+- **搜索**：NTFS USN Journal + MFT 索引 + 模糊匹配 + Trie
+- **推荐**：规则引擎 + Python 混合推荐 (JSON-RPC)
+- **Windows**：windows-rs (Win32 API) + 全局热键 + 注册表
 
 ---
 
 ## 🚀 快速开始
 
-### 前置要求
+### 环境要求
 
 - **Node.js** >= 18.0.0
 - **Rust** >= 1.77.0
+- **pnpm** >= 8
 - **Windows 10/11** (x86_64)
-- **pnpm** >= 8 (推荐)
+- **Python** >= 3.10（可选，用于 AI 推荐）
 
 ### 安装
 
@@ -69,7 +55,7 @@
 git clone https://github.com/MonoKelvin/MonoTools.git
 cd MTools
 
-# 安装前端依赖
+# 安装依赖
 pnpm install
 ```
 
@@ -78,223 +64,52 @@ pnpm install
 ```bash
 # 启动开发模式（前端热重载 + Tauri 应用）
 pnpm dev
-
-# 或分别启动
-pnpm dev:frontend     # 前端开发服务器 (http://localhost:1420)
-pnpm tauri dev        # Tauri 开发窗口
 ```
 
 ### 构建
 
-```shell
-# 构建前端 + 打包 Tauri 桌面应用
+```bash
+# 构建桌面应用
 pnpm tauri build
 ```
 
-构建产物位于 `src-tauri/target/release/bundle/` 目录。
+构建产物位于 `src-tauri/target/release/bundle/`。
 
-### CLI
+### CLI 使用
 
 ```bash
-# 运行 CLI 命令
-pnpm cli search "chrome"
-pnpm cli launch "C:\Program Files\..."
-pnpm cli --help
-
-# 或直接使用 cargo
-cargo run --manifest-path src-tauri/Cargo.toml --bin monotools-cli -- search "chrome"
+pnpm cli search "chrome"    # 搜索应用
+pnpm cli launch <路径>       # 启动应用/文件
+pnpm cli --help              # 查看帮助
 ```
 
 ---
 
-## 📖 使用指南
+## 📖 使用说明
 
-### 全局快捷键
+### 基础操作
 
-| 快捷键 | 功能 |
-|--------|------|
-| `Alt + Space` | 唤出/隐藏搜索框 |
-
-### 搜索模式
-
-| 模式 | 说明 |
+| 操作 | 说明 |
 |------|------|
-| 全局搜索 | 应用、文件、自定义命令聚合搜索 |
-| 应用搜索 | 索引开始菜单、注册表、桌面快捷方式 |
-| 文件搜索 | NTFS USN Journal 高速索引 |
+| `Alt + Space` | 唤出/隐藏搜索框 |
+| 输入关键词 | 实时搜索应用、文件、命令 |
+| `Enter` | 执行选中项 |
+| `Esc` | 关闭搜索框 |
 
-### CLI 命令
-
-```bash
-# 搜索应用
-pnpm cli search "chrome"
-
-# 启动应用或文件
-pnpm cli launch "C:\Program Files\..."
-
-# 查看帮助
-pnpm cli --help
-
-# 查看版本
-pnpm cli version
-
-# 重建文件索引
-pnpm cli index rebuild
-
-# 查看统计信息
-pnpm cli stats
-```
+> 每个分组独立管理选中状态，切换分组自动清空。
 
 ---
 
-## 📁 项目结构
-
-```
-MTools/
-├── docs/                         # 设计文档
-│   └── V1.1重构计划.md          # V1.1 模块化重构计划
-├── src/                          # Vue 3 前端 (V1.1 模块化架构)
-│   ├── main.ts                   # 入口
-│   ├── App.vue                   # 根组件
-│   ├── assets/                   # 字体、全局样式
-│   ├── core/                     # 核心基础设施 (无业务逻辑)
-│   │   ├── command/               # 命令系统框架
-│   │   ├── router/              # 路由配置
-│   │   ├── stores/              # 通用 store (theme, settings)
-│   │   ├── config/              # 全局配置
-│   │   └── types/               # 通用类型定义
-│   ├── ui/                       # UI 组件库 (纯展示，无业务逻辑)
-│   │   └── components/          # MtButton, MtCard, MtInput, MtMenu, MtModal 等
-│   ├── modules/                  # 业务模块 (内聚，删除模块时一起删)
-│   │   ├── search/              # 搜索模块
-│   │   │   ├── components/
-│   │   │   ├── composables/
-│   │   │   ├── store.ts
-│   │   │   └── types.ts
-│   │   ├── commands/            # 命令模块
-│   │   │   └── components/
-│   │   └── settings/            # 设置模块
-│   │       └── components/
-│   ├── common/                   # 通用业务组件 (跨模块有业务逻辑)
-│   │   ├── components/           # HotkeyModal, ThemeToggle
-│   │   └── composables/        # useAppIcon, useIconRenderer, iconSources/
-│   ├── pages/                    # 页面
-│   │   └── SearchPage.vue        # 搜索页 (单页应用，面板通过路由切换)
-│   ├── services/                 # Tauri IPC 封装 (api.ts 是唯一入口)
-│   ├── utils/                    # 工具函数
-│   └── ...
-├── src-tauri/                    # Rust 后端
-│   ├── Cargo.toml                # Rust 依赖
-│   ├── tauri.conf.json           # Tauri 配置
-│   └── src/
-│       ├── main.rs               # GUI 入口
-│       ├── cli_main.rs             # CLI 入口
-│       ├── lib.rs                # 库入口
-│       ├── app.rs                # Tauri App 构建
-│       ├── commands.rs           # Tauri IPC 命令
-│       ├── core/                  # 核心模块
-│       │   └── command/            # Command 模式（CLI + IPC 统一）
-│       ├── search_engine/        # 搜索引擎
-│       │   ├── app_search/       # 应用搜索
-│       │   ├── file_search.rs    # 文件搜索 (USN Journal + MFT)
-│       │   ├── command_search.rs # 命令搜索
-│       │   ├── models/           # 搜索数据模型
-│       │   └── service.rs         # 搜索服务（编排器）
-│       ├── repositories/         # 数据访问层
-│       ├── services/             # 业务逻辑
-│       ├── models/                 # 数据模型
-│       └── platform/windows/     # Windows 平台特定
-├── tests/                        # 统一测试目录
-│   ├── ui/                        # 前端 Vitest 测试
-│   └── rust/                      # 后端 Rust 测试
-├── public/                       # 静态资源
-│   └── logo/                     # 应用图标
-├── scripts/                      # 构建辅助脚本
-├── package.json
-├── pnpm-workspace.yaml
-├── vite.config.ts
-└── tsconfig.json
-```
-
----
-
-## 🗺️ 开发路线图
-
-### ✅ Phase 0: 基础设施 (已完成)
-
-- [x] Tauri 2.x + Vue 3 项目初始化
-- [x] pnpm workspace 配置
-- [x] 开发环境搭建
-- [x] Rust 测试框架建立（report、table、paths 工具）
-- [x] 搜索引擎测试模块（含 USN Journal 监控）
-
-### ✅ Phase 1: MVP — 搜索面板 (已完成)
-
-- [x] 无边框窗口 + 居中定位
-- [x] 全局快捷键 `Alt+Space`
-- [x] Raycast 风格 UI 主题
-- [x] 应用搜索（开始菜单、注册表、桌面）
-- [x] 自定义 Mt* 组件系统（MtMenu, MtInput, MtButton 等）
-- [x] 背景异步索引构建
-- [x] 热键注册失败自动重试
-
-### ✅ Phase 2: 文件搜索 (已完成)
-
-- [x] USN Journal + MFT 索引基础
-- [x] SQLite FTS5 全文搜索
-- [x] 文件监控增量更新（USN Journal 监控）
-- [x] 搜索性能优化（索引构建 < 2分钟）
-- [x] 路径重建算法优化（动态根目录 FRN 检测）
-- [x] 单例模式（tauri-plugin-single-instance）
-- [x] 状态栏合并与动画效果
-
-### ⏳ Phase 3: 自定义命令 (待开发)
-
-- [ ] 命令注册与执行
-- [ ] 参数解析
-- [ ] 命令管理 UI
-
-### ⏳ Phase 4: 性能优化与插件 (规划中)
-
-- [ ] 虚拟滚动优化
-- [ ] 插件系统基础
-- [ ] 剪贴板历史
-
-详见 [docs/DESIGN.md](docs/DESIGN.md)。
-
----
-
-## 🤝 贡献
+## 🤝 参与贡献
 
 欢迎贡献代码！请遵循以下规范：
 
-### 开发规范
+- **Rust**：遵循 Rust API Guidelines
+- **Vue/TS**：Composition API + `<script setup>` + 严格 TypeScript
+- **Commit**：Conventional Commits 规范
+- **测试**：前端 Vitest + 后端 Cargo 测试，统一在 `tests/` 目录下
 
-- **Rust**: 遵循 [Rust API Guidelines](https://rust-lang.github.io/api-guidelines/)
-- **Vue/TS**: 使用 Composition API + `<script setup>`
-- **Commit**: 使用 [Conventional Commits](https://www.conventionalcommits.org/) 规范
-
-```bash
-feat: 新增功能
-fix: 修复 bug
-docs: 更新文档
-style: 代码格式化
-refactor: 重构
-perf: 性能优化
-test: 测试相关
-chore: 构建/工具链
-```
-
-### 测试
-
-- **后端测试**: `pnpm test:rust` 运行 cargo 集成测试，输出位于 `tests/rust/output/<module>/`
-- **前端测试**: `pnpm test` 运行 Vitest（`tests/ui/**/*.test.ts`）
-- **测试目录**: 全部统一在根 `tests/` 下，按语言 / 子项目分流。详见 [tests/README.md](tests/README.md)
-- **新增测试**: 参考 [tests/SKILL.md](tests/SKILL.md)（Rust + UI 双侧规范）
-
-### 命令总线
-
-所有 UI 动作（键盘 / 上下文菜单 / 全局快捷键）都通过 `commandRegistry.execute(id)` 分发，统一在 `src/commands/`。详见 [docs/COMMANDS.md](docs/COMMANDS.md)。
+更多开发规范详见 [CLAUDE.md](CLAUDE.md)。
 
 ---
 
@@ -306,14 +121,11 @@ MIT License © 2026
 
 ## 🙏 致谢
 
-本项目受到以下优秀项目的启发：
-
-- [Raycast](https://www.raycast.com/) - 产品理念与设计语言
-- [Linear](https://linear.app/) - 设计灵感
-- [Alfred](https://www.alfredapp.com/) - 交互模式
-- [Tauri](https://tauri.app/) - 应用框架
-- [Vue.js](https://vuejs.org/) - 前端框架
+- [Raycast](https://www.raycast.com/) — 产品理念与设计语言
+- [Linear](https://linear.app/) — 设计灵感
+- [Tauri](https://tauri.app/) — 应用框架
+- [Vue.js](https://vuejs.org/) — 前端框架
 
 ---
 
-> **注意**: 本项目目前处于早期开发阶段，功能尚未完整，不建议在生产环境使用。
+> ⚠️ 本项目处于早期开发阶段，功能尚不完整。
