@@ -1,5 +1,5 @@
 <template>
-  <div class="app-root" data-tauri-drag-region>
+  <div class="app-root">
     <router-view />
   </div>
 </template>

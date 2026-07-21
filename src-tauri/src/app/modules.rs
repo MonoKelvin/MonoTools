@@ -192,32 +192,82 @@ pub fn setup_tray(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::error
 
 /// 注册 IPC 命令到 builder
 ///
-/// 各业务模块自己负责提供 `register_ipc_commands` 函数，
-/// 本函数只负责按顺序调用各模块的注册函数。
+/// 统一注册所有模块的 IPC 命令，避免多次调用 invoke_handler 导致覆盖。
+/// Tauri 的 invoke_handler 只能设置一次，多次调用会被最后一次覆盖。
 ///
 /// # 架构原则
-/// - 新增模块只需在此添加一行调用
-/// - 各模块内部管理自己的 IPC 命令，内聚性强
-/// - app 层只做组装，不关心具体命令实现
+/// - 所有模块的命令统一在此列出，一次性注册
+/// - 新增模块命令时，在此处添加对应的命令函数
+/// - 各模块内部仍保留命令实现，内聚性不变
 pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
-    // core 层命令
-    let builder = crate::core::settings::ipc::register_ipc_commands(builder);
-    let builder = crate::core::command::ipc::register_ipc_commands(builder);
-
-    // 业务模块命令
-    let builder = crate::search_engine::ipc::register_ipc_commands(builder);
-    let builder = crate::services::window::ipc::register_ipc_commands(builder);
-    let builder = crate::services::hotkey::ipc::register_ipc_commands(builder);
-    let builder = crate::platform::windows::ipc::register_ipc_commands(builder);
-
-    // 框架级命令 (app 层)
-    let builder = crate::app::ipc::register_ipc_commands(builder);
-
-    // 可选模块: recommend
-    #[cfg(feature = "recommend")]
-    let builder = crate::recommend::ipc::register_ipc_commands(builder);
-
-    builder
+    builder.invoke_handler(tauri::generate_handler![
+        // core::settings
+        crate::core::settings::ipc::get_setting,
+        crate::core::settings::ipc::set_setting,
+        crate::core::settings::ipc::get_all_settings,
+        crate::core::settings::ipc::set_all_settings,
+        crate::core::settings::ipc::get_appearance,
+        crate::core::settings::ipc::set_appearance,
+        crate::core::settings::ipc::get_pin_top,
+        crate::core::settings::ipc::set_pin_top,
+        crate::core::settings::ipc::set_follow_system_theme,
+        // core::command
+        crate::core::command::ipc::list_commands,
+        crate::core::command::ipc::add_command,
+        crate::core::command::ipc::remove_command,
+        crate::core::command::ipc::run_command,
+        // search_engine
+        crate::search_engine::ipc::search_cmd,
+        crate::search_engine::ipc::search_more_cmd,
+        crate::search_engine::ipc::execute_result,
+        crate::search_engine::ipc::build_file_index,
+        crate::search_engine::ipc::get_index_status,
+        crate::search_engine::ipc::list_pinned,
+        crate::search_engine::ipc::pin_item,
+        crate::search_engine::ipc::unpin_item,
+        // services::window
+        crate::services::window::ipc::show_window,
+        crate::services::window::ipc::hide_window,
+        crate::services::window::ipc::toggle_window,
+        crate::services::window::ipc::set_window_height,
+        crate::services::window::ipc::start_dragging,
+        crate::services::window::ipc::set_dragging,
+        crate::services::window::ipc::quit_app,
+        // services::hotkey
+        crate::services::hotkey::ipc::register_hotkey_cmd,
+        crate::services::hotkey::ipc::unregister_hotkey,
+        crate::services::hotkey::ipc::get_current_hotkey,
+        // platform::windows
+        #[cfg(windows)]
+        crate::platform::windows::ipc::get_app_icon,
+        #[cfg(windows)]
+        crate::platform::windows::ipc::get_app_icons_batch,
+        #[cfg(windows)]
+        crate::platform::windows::ipc::open_file_location,
+        #[cfg(windows)]
+        crate::platform::windows::ipc::show_file_properties,
+        #[cfg(windows)]
+        crate::platform::windows::ipc::delete_file_to_recycle_bin,
+        #[cfg(windows)]
+        crate::platform::windows::ipc::get_system_theme,
+        // app (框架级)
+        crate::app::ipc::frontend_ready,
+        crate::app::ipc::list_command_specs,
+        crate::app::ipc::dispatch_command,
+        // recommend (可选模块)
+        #[cfg(feature = "recommend")]
+        crate::recommend::ipc::recommend_set_items,
+        #[cfg(feature = "recommend")]
+        crate::recommend::ipc::recommend_record_launch,
+        #[cfg(feature = "recommend")]
+        crate::recommend::ipc::recommend_get_scores,
+        #[cfg(feature = "recommend")]
+        crate::recommend::ipc::recommend_report_feedback,
+        #[cfg(feature = "recommend")]
+        crate::recommend::ipc::recommend_get_status,
+        #[cfg(feature = "recommend")]
+        crate::recommend::ipc::get_window_monitor_state,
+    ])
 }
 
 /// 构建包含所有已注册命令的 registry。

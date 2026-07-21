@@ -47,7 +47,10 @@ pub fn launch_as_admin(path: &str, _args: &[String]) -> Result<()> {
 
     let result_val = result.0 as usize;
     if result_val <= 32 {
-        return Err(AppError::Other(format!("以管理员启动失败，错误码: {}", result_val)));
+        return Err(AppError::Other(format!(
+            "以管理员启动失败，错误码: {}",
+            result_val
+        )));
     }
     Ok(())
 }
@@ -74,7 +77,7 @@ pub fn open_path(path: &PathBuf) -> Result<()> {
     // 例如: "C:\Some, App\app.exe" 直接传给 explorer /select, 会被逗号分隔.
     let ps_arg = format!(
         "Start-Process -FilePath 'explorer.exe' -ArgumentList '/select,\"{}\"'",
-        path_str.replace("'", "''")  // PowerShell 单引号转义
+        path_str.replace("'", "''") // PowerShell 单引号转义
     );
 
     std::process::Command::new("powershell")
@@ -265,7 +268,9 @@ pub fn launch_lnk(lnk_path: &Path) -> Result<()> {
 
 #[cfg(not(windows))]
 pub fn launch_lnk(_lnk_path: &Path) -> Result<()> {
-    Err(AppError::Other("非 Windows 平台不支持 .lnk 快捷方式".to_string()))
+    Err(AppError::Other(
+        "非 Windows 平台不支持 .lnk 快捷方式".to_string(),
+    ))
 }
 
 /// 从 SearchResult 派发
@@ -294,7 +299,37 @@ pub fn launch_str(item: &crate::search_engine::models::SearchResult) -> Result<(
             open_path(&PathBuf::from(path))?;
         }
         SearchAction::Run { command, args } => {
-            launch(command, args)?;
+            // 对于 shell: 协议 (如 UWP 应用的 shell:AppsFolder\...),
+            // 使用 ShellExecuteW 而不是 Command::new，因为 ShellExecuteW
+            // 能直接处理 shell: 协议。
+            if args.len() == 1 && args[0].starts_with("shell:") {
+                #[cfg(windows)]
+                {
+                    let wide_file: Vec<u16> =
+                        args[0].encode_utf16().chain(std::iter::once(0)).collect();
+                    let result = unsafe {
+                        ShellExecuteW(
+                            Some(HWND::default()),
+                            w!("open"),
+                            PCWSTR(wide_file.as_ptr()),
+                            PCWSTR::null(),
+                            PCWSTR::null(),
+                            SW_SHOW,
+                        )
+                    };
+                    let result_val = result.0 as usize;
+                    if result_val <= 32 {
+                        return Err(AppError::Other(format!(
+                            "启动 UWP 应用失败，错误码: {}",
+                            result_val
+                        )));
+                    }
+                }
+                #[cfg(not(windows))]
+                launch(command, args)?;
+            } else {
+                launch(command, args)?;
+            }
         }
         SearchAction::Navigate(path) => {
             open_path(&PathBuf::from(path))?;
@@ -318,8 +353,8 @@ pub fn get_file_associations() -> std::collections::HashMap<String, PathBuf> {
     use std::collections::HashMap;
     use windows::Win32::Foundation::ERROR_SUCCESS;
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW,
-        HKEY, HKEY_CLASSES_ROOT, KEY_READ, KEY_WOW64_64KEY,
+        RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, HKEY_CLASSES_ROOT, KEY_READ,
+        KEY_WOW64_64KEY,
     };
 
     let mut result: HashMap<String, PathBuf> = HashMap::new();
@@ -337,9 +372,7 @@ pub fn get_file_associations() -> std::collections::HashMap<String, PathBuf> {
     };
     if rc != ERROR_SUCCESS || hkcr.is_invalid() {
         // 尝试不带 WOW64 标志
-        let rc2 = unsafe {
-            RegOpenKeyExW(HKEY_CLASSES_ROOT, w!(""), None, KEY_READ, &mut hkcr)
-        };
+        let rc2 = unsafe { RegOpenKeyExW(HKEY_CLASSES_ROOT, w!(""), None, KEY_READ, &mut hkcr) };
         if rc2 != ERROR_SUCCESS || hkcr.is_invalid() {
             return result;
         }
@@ -395,16 +428,22 @@ pub fn get_file_associations() -> std::collections::HashMap<String, PathBuf> {
 /// 读取指定子键的默认值 ("") 为 UTF-16 字符串.
 #[cfg(windows)]
 fn read_default_value_wide(parent: HKEY, subkey: &str) -> Option<String> {
+    use windows::core::PCWSTR;
     use windows::Win32::Foundation::ERROR_SUCCESS;
     use windows::Win32::System::Registry::{
         RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, KEY_READ, REG_NONE, REG_SZ,
     };
-    use windows::core::PCWSTR;
 
     let subkey_wide: Vec<u16> = OsStr::new(subkey).encode_wide().chain(Some(0)).collect();
     let mut key = HKEY::default();
     let rc = unsafe {
-        RegOpenKeyExW(parent, PCWSTR::from_raw(subkey_wide.as_ptr()), None, KEY_READ, &mut key)
+        RegOpenKeyExW(
+            parent,
+            PCWSTR::from_raw(subkey_wide.as_ptr()),
+            None,
+            KEY_READ,
+            &mut key,
+        )
     };
     if rc != ERROR_SUCCESS || key.is_invalid() {
         return None;
@@ -438,11 +477,7 @@ fn read_default_value_wide(parent: HKEY, subkey: &str) -> Option<String> {
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect::<Vec<u16>>();
         // 去掉尾部 null
-        let trimmed: Vec<u16> = words
-            .split(|&w| w == 0)
-            .next()
-            .unwrap_or(&[])
-            .to_vec();
+        let trimmed: Vec<u16> = words.split(|&w| w == 0).next().unwrap_or(&[]).to_vec();
         Some(String::from_utf16_lossy(&trimmed))
     } else {
         None
@@ -452,16 +487,26 @@ fn read_default_value_wide(parent: HKEY, subkey: &str) -> Option<String> {
 /// 读取完整注册表路径的默认值 (用于 HKCR\ProgId\shell\open\command).
 #[cfg(windows)]
 fn read_default_value_full_path(subkey_full: &str) -> Option<String> {
+    use windows::core::PCWSTR;
     use windows::Win32::Foundation::ERROR_SUCCESS;
     use windows::Win32::System::Registry::{
-        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CLASSES_ROOT, KEY_READ, REG_NONE, REG_SZ,
+        RegCloseKey, RegOpenKeyExW, RegQueryValueExW, HKEY, HKEY_CLASSES_ROOT, KEY_READ, REG_NONE,
+        REG_SZ,
     };
-    use windows::core::PCWSTR;
 
-    let subkey_wide: Vec<u16> = OsStr::new(subkey_full).encode_wide().chain(Some(0)).collect();
+    let subkey_wide: Vec<u16> = OsStr::new(subkey_full)
+        .encode_wide()
+        .chain(Some(0))
+        .collect();
     let mut key = HKEY::default();
     let rc = unsafe {
-        RegOpenKeyExW(HKEY_CLASSES_ROOT, PCWSTR::from_raw(subkey_wide.as_ptr()), None, KEY_READ, &mut key)
+        RegOpenKeyExW(
+            HKEY_CLASSES_ROOT,
+            PCWSTR::from_raw(subkey_wide.as_ptr()),
+            None,
+            KEY_READ,
+            &mut key,
+        )
     };
     if rc != ERROR_SUCCESS || key.is_invalid() {
         return None;
@@ -493,11 +538,7 @@ fn read_default_value_full_path(subkey_full: &str) -> Option<String> {
             .chunks_exact(2)
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect::<Vec<u16>>();
-        let trimmed: Vec<u16> = words
-            .split(|&w| w == 0)
-            .next()
-            .unwrap_or(&[])
-            .to_vec();
+        let trimmed: Vec<u16> = words.split(|&w| w == 0).next().unwrap_or(&[]).to_vec();
         Some(String::from_utf16_lossy(&trimmed))
     } else {
         None

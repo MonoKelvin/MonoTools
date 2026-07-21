@@ -5,6 +5,7 @@ import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
 import GsIconTitle from './GsIconTitle.vue'
 import MtComboBox from '@/ui/components/MtComboBox.vue'
+import MtTooltip from '@/ui/components/MtTooltip.vue'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder } from '@lucide/vue'
@@ -38,8 +39,8 @@ function getItemTooltipData(item: SearchResult): TooltipData | undefined {
 
 const tooltipVisible = ref(false)
 const tooltipData = ref<TooltipData | null>(null)
-const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
-const tooltipPlacement = ref<'top' | 'bottom'>('top')
+const tooltipMouseX = ref(0)
+const tooltipMouseY = ref(0)
 let tooltipShowTimer: ReturnType<typeof setTimeout> | null = null
 let tooltipCurrentItem: SearchResult | null = null
 
@@ -50,69 +51,36 @@ function clearTooltipTimer() {
   }
 }
 
-function updateTooltipPosition(target: HTMLElement) {
-  const rect = target.getBoundingClientRect()
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const sidePadding = 16
-  const topBottomPadding = 12
-  const tooltipMaxWidth = Math.min(560, vw - sidePadding * 2)
-  const gap = 8
-
-  let left = rect.left + rect.width / 2
-
-  if (left - tooltipMaxWidth / 2 < sidePadding) {
-    left = sidePadding + tooltipMaxWidth / 2
-  }
-  if (left + tooltipMaxWidth / 2 > vw - sidePadding) {
-    left = vw - sidePadding - tooltipMaxWidth / 2
-  }
-
-  const spaceTop = rect.top
-  const spaceBottom = vh - rect.bottom
-
-  let top: number
-  if (spaceBottom > spaceTop && spaceBottom > 60) {
-    top = rect.bottom + gap
-    tooltipPlacement.value = 'bottom'
-  } else if (spaceTop > 60) {
-    top = rect.top - gap
-    tooltipPlacement.value = 'top'
-  } else {
-    top = rect.bottom + gap
-    tooltipPlacement.value = 'bottom'
-  }
-
-  tooltipStyle.value = {
-    left: `${left}px`,
-    top: `${top}px`,
-  }
-}
-
 function onItemEnter(item: SearchResult, event: MouseEvent) {
   tooltipCurrentItem = item
+  tooltipMouseX.value = event.clientX
+  tooltipMouseY.value = event.clientY
   const data = getItemTooltipData(item)
   if (!data) return
 
-  const target = event.currentTarget as HTMLElement
   clearTooltipTimer()
   tooltipShowTimer = setTimeout(() => {
     if (tooltipCurrentItem === item) {
       tooltipData.value = data
-      if (target) {
-        updateTooltipPosition(target)
-      }
       tooltipVisible.value = true
       tooltipShowTimer = null
     }
   }, ICON_CONFIG.tooltipDelayMs)
 }
 
-function onTooltipItemLeave() {
+function hideTooltip() {
   tooltipCurrentItem = null
   tooltipData.value = null
   tooltipVisible.value = false
   clearTooltipTimer()
+}
+
+function handleScroll() {
+  hideTooltip()
+}
+
+function handleClick() {
+  hideTooltip()
 }
 
 export type LayoutMode = 'list' | 'grid-fixed' | 'grid-auto' | 'icon'
@@ -296,6 +264,9 @@ onMounted(async () => {
   if (!props.collapsed) {
     updateContentHeight()
   }
+
+  window.addEventListener('scroll', handleScroll, true)
+  window.addEventListener('click', handleClick, true)
 })
 
 onBeforeUnmount(() => {
@@ -307,6 +278,8 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(rafId)
     rafId = null
   }
+  window.removeEventListener('scroll', handleScroll, true)
+  window.removeEventListener('click', handleClick, true)
 })
 
 watch(
@@ -388,6 +361,8 @@ function globalIndexOf(localIndex: number): number {
 }
 
 function onItemClick(item: SearchResult, localIndex: number, event: MouseEvent) {
+  // 点击时隐藏 tooltip
+  hideTooltip()
   emit('select', props.id, localIndex, event)
 }
 
@@ -500,7 +475,7 @@ function isItemSelected(localIndex: number): boolean {
                   @click="(e) => onItemClick(item, idx, e)"
                   @dblclick="onItemDblClick(item)"
                   @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
-                  @mouseleave="() => { onItemLeave(); onTooltipItemLeave() }"
+                  @mouseleave="() => { onItemLeave(); hideTooltip() }"
                   @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                 >
                   <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-tooltip="true" />
@@ -523,7 +498,7 @@ function isItemSelected(localIndex: number): boolean {
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
                     @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
-                    @mouseleave="() => { onItemLeave(); onTooltipItemLeave() }"
+                    @mouseleave="() => { onItemLeave(); hideTooltip() }"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
                     <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
@@ -547,7 +522,7 @@ function isItemSelected(localIndex: number): boolean {
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
                     @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
-                    @mouseleave="() => { onItemLeave(); onTooltipItemLeave() }"
+                    @mouseleave="() => { onItemLeave(); hideTooltip() }"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
                     <div class="gs-icon-mode-icon">
@@ -564,20 +539,17 @@ function isItemSelected(localIndex: number): boolean {
       </div>
   </div>
 
-  <Teleport to="body">
-    <Transition name="tooltip-fade">
-      <div
-        v-if="tooltipVisible && tooltipData"
-        class="gs-tooltip"
-        :class="`gs-tooltip--${tooltipPlacement}`"
-        :style="tooltipStyle"
-      >
-        <div class="gs-tooltip__title">{{ tooltipData.title }}</div>
-        <div v-if="tooltipData.subtitle" class="gs-tooltip__subtitle">{{ tooltipData.subtitle }}</div>
-        <div v-if="tooltipData.path" class="gs-tooltip__path">{{ tooltipData.path }}</div>
-      </div>
-    </Transition>
-  </Teleport>
+  <MtTooltip
+    :visible="tooltipVisible && !!tooltipData"
+    :title="tooltipData?.title"
+    :subtitle="tooltipData?.subtitle"
+    :path="tooltipData?.path"
+    :mouse-x="tooltipMouseX"
+    :mouse-y="tooltipMouseY"
+    placement="bottom"
+    :offset-y="6"
+    :side-padding="20"
+  />
 </template>
 
 <style scoped>
@@ -960,75 +932,5 @@ function isItemSelected(localIndex: number): boolean {
 .gs-icon-mode-icon :deep(.result-item__content),
 .gs-icon-mode-icon :deep(.result-item__meta) {
   display: none;
-}
-
-/* === 自定义 tooltip === */
-.gs-tooltip {
-  position: fixed;
-  z-index: 9999;
-  transform: translateX(-50%);
-  pointer-events: none;
-  user-select: none;
-  min-width: 120px;
-  max-width: min(560px, calc(100vw - 32px));
-  width: max-content;
-  padding: 8px 12px;
-  background: var(--glass-bg-soft);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.05) inset,
-    0 12px 32px rgba(0, 0, 0, 0.5),
-    0 4px 12px rgba(0, 0, 0, 0.35);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  text-align: left;
-}
-
-.gs-tooltip__title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.4;
-  color: var(--text-primary);
-  letter-spacing: 0.01em;
-  margin-bottom: 4px;
-  word-break: break-word;
-  overflow-wrap: break-word;
-}
-
-.gs-tooltip__subtitle {
-  font-size: 11.5px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--text-secondary);
-  margin-bottom: 3px;
-  word-break: break-word;
-  overflow-wrap: break-word;
-}
-
-.gs-tooltip__path {
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.4;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  word-break: break-all;
-  overflow-wrap: break-word;
-}
-
-.gs-tooltip__subtitle:last-child,
-.gs-tooltip__path:last-child {
-  margin-bottom: 0;
-}
-
-.tooltip-fade-enter-active,
-.tooltip-fade-leave-active {
-  transition: opacity 160ms var(--ease-out), transform 160ms var(--ease-out);
-}
-
-.tooltip-fade-enter-from,
-.tooltip-fade-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(4px);
 }
 </style>

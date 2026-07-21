@@ -66,7 +66,13 @@ impl IconExtractor for WindowsIconExtractor {
 
     fn supports(&self, path: &Path) -> bool {
         // 没扩展名的 PE 也算 (如 POSIX 子系统的裸 binary);
-        // .exe / .lnk / .url / .ico / .msi 是 Windows 上能 SHGetFileInfo 出图标的常见格式.
+        // .exe / .lnk / .url / .ico / .msi 是 Windows 上能 SHGetFileInfo 出图标的常见格式;
+        // shell: 开头的是 shell 命名空间路径 (如 UWP 应用的 shell:AppsFolder\...),
+        // 可以通过 IShellItemImageFactory 提取图标.
+        let path_str = path.to_string_lossy();
+        if path_str.starts_with("shell:") {
+            return true;
+        }
         match path.extension().and_then(|e| e.to_str()) {
             None => true,
             Some(ext) => {
@@ -454,38 +460,86 @@ fn extract_hicon_via_shil_jumbo(path: &Path) -> Option<HICON> {
 ///
 /// 不带 BIGGERSIZEOK 时, 系统返回"最接近请求尺寸的原生位图"; 实际尺寸若 != 请求
 /// 尺寸就放弃这一层 (return None), 避免 16x16 被强制放大. 这是修锯齿的关键.
+///
+/// 对于 shell: 开头的路径 (如 UWP 应用), 先通过 SHParseDisplayName 解析为 PIDL,
+/// 再用 SHCreateItemFromIDList 创建 IShellItem, 确保能正确解析 shell 命名空间路径.
+/// 同时允许 BIGGERSIZEOK, 因为这些图标通常不是 256x256 的原生尺寸.
 #[cfg(windows)]
 fn extract_rgba_via_shell_item_factory(path: &Path, size: i32) -> Option<Vec<u8>> {
     use windows::core::PCWSTR;
     use windows::Win32::Graphics::Gdi::DeleteObject;
+    use windows::Win32::System::Com::IBindCtx;
     use windows::Win32::UI::Shell::{
-        IShellItemImageFactory, SHCreateItemFromParsingName, SIIGBF_ICONONLY,
+        IShellItemImageFactory, SHCreateItemFromIDList, SHCreateItemFromParsingName,
+        SHParseDisplayName, SIIGBF_BIGGERSIZEOK, SIIGBF_ICONONLY,
     };
 
-    let wide_path: Vec<u16> = path
-        .to_string_lossy()
-        .encode_utf16()
-        .chain(std::iter::once(0))
-        .collect();
+    let path_str = path.to_string_lossy();
+    let is_shell_path = path_str.starts_with("shell:");
 
-    let shell_item: windows::core::Result<IShellItemImageFactory> =
-        unsafe { SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None) };
+    let wide_path: Vec<u16> = path_str.encode_utf16().chain(std::iter::once(0)).collect();
+
+    // 尝试获取 IShellItemImageFactory
+    let shell_item: windows::core::Result<IShellItemImageFactory> = if is_shell_path {
+        // shell 路径: 先用 SHParseDisplayName 解析为 PIDL, 再创建 IShellItem
+        let mut pidl = std::ptr::null_mut();
+        let mut attrs = 0u32;
+        let result = unsafe {
+            SHParseDisplayName(
+                PCWSTR(wide_path.as_ptr()),
+                None::<&IBindCtx>,
+                &mut pidl,
+                0,
+                Some(&mut attrs),
+            )
+        };
+        if result.is_err() || pidl.is_null() {
+            log_icon_debug(
+                "tier2-shparse-failed",
+                &path_str,
+                &format!("SHParseDisplayName failed: {:?}", result),
+            );
+            return None;
+        }
+
+        let item_result = unsafe { SHCreateItemFromIDList::<IShellItemImageFactory>(pidl) };
+
+        // 释放 PIDL
+        if !pidl.is_null() {
+            unsafe {
+                windows::Win32::UI::Shell::ILFree(Some(pidl as *const _));
+            }
+        }
+
+        item_result
+    } else {
+        // 普通文件路径: 直接用 SHCreateItemFromParsingName
+        unsafe { SHCreateItemFromParsingName(PCWSTR(wide_path.as_ptr()), None) }
+    };
+
     let shell_item = match shell_item {
         Ok(s) => s,
         Err(e) => {
             log_icon_debug(
                 "tier2-shcreate-failed",
-                &path.to_string_lossy(),
-                &format!("SHCreateItemFromParsingName failed: {}", e),
+                &path_str,
+                &format!("Create IShellItemImageFactory failed: {}", e),
             );
             return None;
         }
     };
 
+    let flags = if is_shell_path {
+        // shell 路径允许缩放，确保能拿到图标
+        SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK
+    } else {
+        SIIGBF_ICONONLY // 关键: 不带 BIGGERSIZEOK, 避免强制放大
+    };
+
     let hbitmap = unsafe {
         shell_item.GetImage(
             windows::Win32::Foundation::SIZE { cx: size, cy: size },
-            SIIGBF_ICONONLY, // 关键: 不带 BIGGERSIZEOK, 避免强制放大
+            flags,
         )
     };
     let hbitmap = match hbitmap {
@@ -493,16 +547,15 @@ fn extract_rgba_via_shell_item_factory(path: &Path, size: i32) -> Option<Vec<u8>
         _ => {
             log_icon_debug(
                 "tier2-getimage-failed",
-                &path.to_string_lossy(),
+                &path_str,
                 "IShellItemImageFactory::GetImage returned invalid hbitmap",
             );
             return None;
         }
     };
 
-    // 关键: 实际位图尺寸必须 == 请求尺寸, 否则视为这一层失败 (不强制放大).
-    // 此前使用 BIGGERSIZEOK 时, 系统会把 16x16 强制拉伸到 256x256 导致锯齿;
-    // 改用原生位图后, 小于 size 的位图直接放弃, 交给 Tier 3/4 处理.
+    // 对于 shell 路径，使用了 BIGGERSIZEOK，系统会自动缩放到请求尺寸
+    // 所以这里仍然可以用严格模式检查
     let rgba = extract_rgba_from_hbitmap_strict(&hbitmap, size);
     unsafe {
         let _ = DeleteObject(hbitmap.into());
@@ -1251,7 +1304,7 @@ mod tests {
         for y in offset..(offset + icon_size) {
             for x in offset..(offset + icon_size) {
                 let idx = ((y * size + x) * 4) as usize;
-                rgba[idx] = 255;     // R
+                rgba[idx] = 255; // R
                 rgba[idx + 3] = 255; // A
             }
         }
@@ -1343,8 +1396,8 @@ mod tests {
         for y in 0..src_h {
             for x in 0..src_w {
                 let idx = ((y * src_w + x) * 4) as usize;
-                src[idx] = x as u8;       // R = x
-                src[idx + 1] = y as u8;   // G = y
+                src[idx] = x as u8; // R = x
+                src[idx + 1] = y as u8; // G = y
                 src[idx + 3] = 255;
             }
         }
@@ -1368,8 +1421,7 @@ mod tests {
     fn resize_rgba_bilinear_scales_correctly() {
         // 2x2 源图像: 左上红, 右上绿, 左下蓝, 右下白
         let src = vec![
-            255, 0, 0, 255,   0, 255, 0, 255,
-            0, 0, 255, 255,   255, 255, 255, 255,
+            255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255,
         ];
 
         let dst = resize_rgba_bilinear(&src, 2, 2, 4, 4);

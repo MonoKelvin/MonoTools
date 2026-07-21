@@ -71,14 +71,15 @@ export const ICON_CONFIG = {
 
   /**
    * ResultItem tooltip showDelay (ms). 用于浮窗显示延迟.
+   * 适当增加延迟，避免鼠标滑过时过于频繁地触发。
    */
-  tooltipDelayMs: 280,
+  tooltipDelayMs: 500,
 
   /**
    * AppResultItem tooltip showDelay (ms).
    * 略长于 ResultItem, 避免与列表抖动重叠.
    */
-  appTooltipDelayMs: 360,
+  appTooltipDelayMs: 600,
 } as const
 
 export type IconConfig = typeof ICON_CONFIG

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick, onBeforeUnmount } from 'vue'
 import { commandApi } from '@/services'
 import { useCommandsStore } from '@/core/command'
 import { Zap, Trash2, Plus, Play } from '@lucide/vue'
@@ -7,6 +7,7 @@ import type { CustomCommand } from '@/core/types/command'
 import MtCard from '@/ui/components/MtCard.vue'
 import MtButton from '@/ui/components/MtButton.vue'
 import CheckButton from '@/ui/components/CheckButton.vue'
+import MtTooltip from '@/ui/components/MtTooltip.vue'
 
 const items = ref<CustomCommand[]>([])
 const showAdd = ref(false)
@@ -52,6 +53,38 @@ const remove = async (id: string) => {
   await load()
 }
 
+const deleteBtnMap = ref<Map<string, HTMLElement>>(new Map())
+const hoveredDeleteId = ref<string | null>(null)
+let deleteTooltipTimer: ReturnType<typeof setTimeout> | null = null
+
+function onDeleteBtnEnter(id: string, el: HTMLElement) {
+  deleteBtnMap.value.set(id, el)
+  clearDeleteTooltipTimer()
+  deleteTooltipTimer = setTimeout(() => {
+    hoveredDeleteId.value = id
+  }, 280)
+}
+
+function onDeleteBtnLeave() {
+  clearDeleteTooltipTimer()
+  hoveredDeleteId.value = null
+}
+
+function clearDeleteTooltipTimer() {
+  if (deleteTooltipTimer) {
+    clearTimeout(deleteTooltipTimer)
+    deleteTooltipTimer = null
+  }
+}
+
+function getDeleteBtnEl(id: string): HTMLElement | null {
+  return deleteBtnMap.value.get(id) || null
+}
+
+onBeforeUnmount(() => {
+  clearDeleteTooltipTimer()
+})
+
 onMounted(async () => {
   // 后端命令由 commands store 单独拉取，这里只管用户自定义命令
   await commandsStore.loadFromBackend().catch(() => undefined)
@@ -90,10 +123,18 @@ onMounted(async () => {
           <button
             class="commands-panel__delete-btn"
             @click="remove(cmd.id)"
-            v-tooltip="{ value: '删除此命令', showDelay: 280, position: 'top' }"
+            @mouseenter="onDeleteBtnEnter(cmd.id, $event.currentTarget as HTMLElement)"
+            @mouseleave="onDeleteBtnLeave"
           >
             <Trash2 :size="14" :stroke-width="2" />
           </button>
+          <MtTooltip
+            :visible="hoveredDeleteId === cmd.id"
+            title="删除此命令"
+            :anchor="getDeleteBtnEl(cmd.id)"
+            placement="top"
+            :offset-y="4"
+          />
         </div>
       </MtCard>
     </div>

@@ -8,9 +8,10 @@
  * - 鼠标悬停时显示一个微弱的光晕, 表明可点击
  * - 内部用两个图标堆叠, 各自带 rotate 进入, 形成"翻牌"质感
  */
-import { computed } from 'vue'
+import { computed, ref, onBeforeUnmount } from 'vue'
 import { useThemeStore } from '@/core/stores/theme'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
+import MtTooltip from '@/ui/components/MtTooltip.vue'
 
 const themeStore = useThemeStore()
 
@@ -19,6 +20,33 @@ const isLight = computed(() => themeStore.mode === 'light')
 const tooltipText = computed(() =>
   `当前主题：${isLight.value ? '浅色' : '深色'}（点击切换）`,
 )
+
+const tooltipVisible = ref(false)
+const btnEl = ref<HTMLElement | null>(null)
+let tooltipTimer: ReturnType<typeof setTimeout> | null = null
+
+function onBtnEnter() {
+  clearTooltipTimer()
+  tooltipTimer = setTimeout(() => {
+    tooltipVisible.value = true
+  }, ICON_CONFIG.tooltipDelayMs)
+}
+
+function onBtnLeave() {
+  clearTooltipTimer()
+  tooltipVisible.value = false
+}
+
+function clearTooltipTimer() {
+  if (tooltipTimer) {
+    clearTimeout(tooltipTimer)
+    tooltipTimer = null
+  }
+}
+
+onBeforeUnmount(() => {
+  clearTooltipTimer()
+})
 
 async function toggle() {
   // 二态切换; 'auto' 视作 dark 的下一步回到 light
@@ -29,14 +57,12 @@ async function toggle() {
 
 <template>
   <button
+    ref="btnEl"
     class="theme-toggle"
     type="button"
     @click="toggle"
-    v-tooltip="{
-      value: tooltipText,
-      showDelay: ICON_CONFIG.tooltipDelayMs,
-      position: 'bottom',
-    }"
+    @mouseenter="onBtnEnter"
+    @mouseleave="onBtnLeave"
     :aria-label="tooltipText"
   >
     <span class="theme-toggle__track" :data-mode="themeStore.mode">
@@ -83,6 +109,13 @@ async function toggle() {
       {{ isLight ? '浅色' : '深色' }}
     </span>
   </button>
+  <MtTooltip
+    :visible="tooltipVisible"
+    :title="tooltipText"
+    :anchor="btnEl"
+    placement="bottom"
+    :offset-y="4"
+  />
 </template>
 
 <style scoped>

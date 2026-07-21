@@ -17,13 +17,14 @@
  * 外部可覆盖以自定义.
  */
 
-import { computed, onUnmounted, ref, watch, type Component } from 'vue'
+import { computed, onUnmounted, ref, watch, type Component, onBeforeUnmount } from 'vue'
 import {
   ChevronUp, ChevronDown, CornerDownLeft, Keyboard,
   Loader2, CheckCircle, AlertCircle, Info, AlertTriangle, Bug,
 } from '@lucide/vue'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
 import type { StatusBarMessage, StatusBarType } from '@/core/types/statusBar'
+import MtTooltip from '@/ui/components/MtTooltip.vue'
 
 const props = defineProps<{
   /** 外部构建好的通用消息. null 时不渲染状态区. */
@@ -81,7 +82,31 @@ watch(
 
 onUnmounted(() => {
   if (dotsTimer) clearInterval(dotsTimer)
+  clearHotkeyTooltipTimer()
 })
+
+const hotkeyTooltipVisible = ref(false)
+const hotkeyBtnEl = ref<HTMLElement | null>(null)
+let hotkeyTooltipTimer: ReturnType<typeof setTimeout> | null = null
+
+function onHotkeyBtnEnter() {
+  clearHotkeyTooltipTimer()
+  hotkeyTooltipTimer = setTimeout(() => {
+    hotkeyTooltipVisible.value = true
+  }, ICON_CONFIG.tooltipDelayMs)
+}
+
+function onHotkeyBtnLeave() {
+  clearHotkeyTooltipTimer()
+  hotkeyTooltipVisible.value = false
+}
+
+function clearHotkeyTooltipTimer() {
+  if (hotkeyTooltipTimer) {
+    clearTimeout(hotkeyTooltipTimer)
+    hotkeyTooltipTimer = null
+  }
+}
 </script>
 
 <template>
@@ -124,12 +149,21 @@ onUnmounted(() => {
           <span class="action-bar__label">打开</span>
         </span>
         <button
+          ref="hotkeyBtnEl"
           class="action-bar__hotkey-btn"
           @click="emit('showHotkeys')"
-          v-tooltip="{ value: '查看快捷键', showDelay: ICON_CONFIG.tooltipDelayMs, position: 'top' }"
+          @mouseenter="onHotkeyBtnEnter"
+          @mouseleave="onHotkeyBtnLeave"
         >
           <Keyboard :size="14" :stroke-width="2" />
         </button>
+        <MtTooltip
+          :visible="hotkeyTooltipVisible"
+          title="查看快捷键"
+          :anchor="hotkeyBtnEl"
+          placement="top"
+          :offset-y="4"
+        />
       </slot>
     </div>
   </div>

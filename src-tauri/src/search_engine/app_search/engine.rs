@@ -5,7 +5,7 @@ use crate::core::settings::SettingsRepo;
 use crate::platform::windows::shell::resolve_shortcut;
 use crate::platform::windows::special_shortcuts::get_special_shortcut;
 use crate::search_engine::models::{AppEntry, ResultType, SearchAction, SearchResult};
-use crate::utils::path::is_executable;
+use crate::utils::path::{is_executable, is_true_executable};
 use crate::utils::pinyin::to_pinyin;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -101,6 +101,11 @@ impl AppSearchEngine {
         on_progress(count, "registry");
         tokio::task::yield_now().await;
 
+        // 扫描 UWP 应用 (Microsoft Store 应用)
+        let count = Self::scan_uwp_apps(&self.cache);
+        on_progress(count, "uwp");
+        tokio::task::yield_now().await;
+
         // 额外添加常用系统应用（白名单）
         let count = Self::add_system_apps(&self.cache);
         on_progress(count, "system_apps");
@@ -186,6 +191,12 @@ impl AppSearchEngine {
                 continue;
             }
             if is_system_executable(&target) {
+                continue;
+            }
+
+            // 对于 LNK 快捷方式，确保其目标是真正的可执行程序
+            // 排除指向文档、图片、文件夹、网址等非应用程序的快捷方式
+            if is_lnk && !is_true_executable(&target) {
                 continue;
             }
 
@@ -946,6 +957,151 @@ impl AppSearchEngine {
             }
         }
 
+        cache.read().len()
+    }
+
+    /// 扫描 UWP 应用 (Microsoft Store 应用)
+    ///
+    /// 通过 shell:AppsFolder 获取所有已安装的应用（包括 UWP），
+    /// 这样能直接获取用户看到的显示名称，比 Get-AppxPackage 更准确。
+    /// 使用 explorer.exe shell:AppsFolder\<AppUserModelId> 启动。
+    #[cfg(windows)]
+    fn scan_uwp_apps(cache: &RwLock<HashMap<String, AppEntry>>) -> usize {
+        let mut batch: Vec<AppEntry> = Vec::new();
+
+        // PowerShell 脚本：通过 shell:AppsFolder 获取所有应用的显示名称和 AUMID
+        // 这种方式获取的名称就是用户在开始菜单中看到的名称，更准确
+        // 强制使用 UTF-8 编码输出，避免中文乱码
+        let script = r#"
+            [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+            $OutputEncoding = [System.Text.Encoding]::UTF8
+            $shell = New-Object -ComObject Shell.Application
+            $appsFolder = $shell.NameSpace('shell:AppsFolder')
+            $apps = @()
+            foreach ($item in $appsFolder.Items()) {
+                $aumid = $item.Path
+                # 只处理 UWP 应用 (AUMID 格式: PackageFamilyName!AppId)
+                if ($aumid -match '^[^!]+!.+$') {
+                    $name = $item.Name
+                    if ($name -and $aumid) {
+                        $apps += [PSCustomObject]@{
+                            Name = $name
+                            AppUserModelId = $aumid
+                        }
+                    }
+                }
+            }
+            $apps | ConvertTo-Json -Depth 2
+        "#;
+
+        let output = match std::process::Command::new("powershell")
+            .arg("-Command")
+            .arg(script)
+            .output()
+        {
+            Ok(o) => o,
+            Err(e) => {
+                log::warn!("获取 UWP 应用失败: {}", e);
+                return cache.read().len();
+            }
+        };
+
+        if !output.status.success() {
+            log::warn!("获取 UWP 应用命令执行失败");
+            return cache.read().len();
+        }
+
+        let json_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if json_str.is_empty() {
+            return cache.read().len();
+        }
+
+        // 解析 JSON
+        #[derive(serde::Deserialize)]
+        struct UwpApp {
+            #[serde(rename = "Name")]
+            name: String,
+            #[serde(rename = "AppUserModelId")]
+            app_user_model_id: String,
+        }
+
+        let apps: Vec<UwpApp> = match serde_json::from_str(&json_str) {
+            Ok(a) => a,
+            Err(e) => {
+                log::warn!("解析 UWP 应用 JSON 失败: {}", e);
+                return cache.read().len();
+            }
+        };
+
+        for app in apps {
+            let display_name = app.name.trim().to_string();
+            if display_name.is_empty() {
+                continue;
+            }
+
+            // 过滤掉一些系统组件和无意义的应用
+            let lower_name = display_name.to_lowercase();
+            if lower_name.contains("windowscode")
+                || lower_name.contains("default")
+                || lower_name.contains("host")
+                || lower_name.contains("runtime")
+                || lower_name.contains("framework")
+                || lower_name.contains("sdk")
+                || lower_name.contains("debug")
+            {
+                continue;
+            }
+
+            // 构造启动命令: shell:AppsFolder\<AppUserModelId>
+            let launch_command = format!("shell:AppsFolder\\{}", app.app_user_model_id);
+
+            let (pinyin_initials, pinyin_full) = pinyin_of(&display_name);
+
+            let entry = AppEntry {
+                id: uuid::Uuid::new_v4().to_string(),
+                name: display_name.clone(),
+                name_lower: display_name.to_lowercase(),
+                path: PathBuf::from(&launch_command), // 用启动命令作为 path 标识
+                icon_path: None,
+                category: "UWP Apps".to_string(),
+                last_launched: None,
+                launch_count: 0,
+                alias: None,
+                is_special_shortcut: true, // 标记为特殊快捷方式，使用特殊命令启动
+                special_command: Some("explorer.exe".to_string()),
+                special_args: Some(vec![launch_command.clone()]),
+                pinyin_initials,
+                pinyin_full,
+                version: None,
+                file_types: Vec::new(),
+            };
+            batch.push(entry);
+        }
+
+        if !batch.is_empty() {
+            let mut cache_write = cache.write();
+            for entry in batch {
+                // 用 special_command + args 作为 key，避免重复
+                let key = format!(
+                    "{}:{}",
+                    entry.special_command.as_deref().unwrap_or(""),
+                    entry
+                        .special_args
+                        .as_deref()
+                        .unwrap_or(&Vec::new())
+                        .join(" ")
+                );
+                // 避免覆盖已有的同名应用
+                cache_write.entry(key).or_insert(entry);
+            }
+        }
+
+        cache.read().len()
+    }
+
+    /// 非 Windows 平台下的占位实现
+    #[cfg(not(windows))]
+    fn scan_uwp_apps(cache: &RwLock<HashMap<String, AppEntry>>) -> usize {
         cache.read().len()
     }
 }

@@ -4,13 +4,12 @@
  * 加载顺序:
  * 1. theme.scss  —— 设计 tokens / reset / transitions / utilities
  * 2. fonts.scss  —— 自定义字体
- * 3. tooltip.scss—— 自定义 tooltip 样式
- * 4. tailwindcss —— 工具类
+ * 3. tailwindcss —— 工具类
  *
  * 注意: 组件级 utility class (.card, .btn, .input, .kbd) 已迁移到
  * 各自组件 (MtCard, MtButton, MtInput) 中, 不再散落在此.
+ * tooltip 样式已封装到 MtTooltip.vue 组件中.
  */
 @use './theme.scss';
 @use './fonts.scss';
-@use './tooltip.scss';
 @use 'tailwindcss';

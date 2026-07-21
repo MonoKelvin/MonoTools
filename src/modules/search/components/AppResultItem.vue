@@ -24,6 +24,7 @@ import type { SearchResult } from '@/modules/search'
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { useAdaptiveText } from '@/utils/adaptiveText'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
+import MtTooltip from '@/ui/components/MtTooltip.vue'
 
 const props = defineProps<{
   result: SearchResult
@@ -183,6 +184,34 @@ const badgeInfo = computed(() => {
   return null
 })
 
+const badgeTooltipVisible = ref(false)
+const badgeEl = ref<HTMLElement | null>(null)
+let badgeTooltipTimer: ReturnType<typeof setTimeout> | null = null
+
+function onBadgeEnter() {
+  clearBadgeTooltipTimer()
+  badgeTooltipTimer = setTimeout(() => {
+    badgeTooltipVisible.value = true
+  }, 400)
+}
+
+function onBadgeLeave() {
+  clearBadgeTooltipTimer()
+  badgeTooltipVisible.value = false
+}
+
+function clearBadgeTooltipTimer() {
+  if (badgeTooltipTimer) {
+    clearTimeout(badgeTooltipTimer)
+    badgeTooltipTimer = null
+  }
+}
+
+onBeforeUnmount(() => {
+  clearBadgeTooltipTimer()
+  clearTitleTooltipTimer()
+})
+
 /**
  * 自适应标题文字: 优先缩小字体, 超出则省略号, hover 显示 tooltip.
  * titleWrap=true 时允许多行显示, 尽量展示完整内容.
@@ -254,15 +283,24 @@ watch(
       />
       <div
         v-if="badgeInfo"
+        ref="badgeEl"
         class="app-result-item__badge"
         :class="[
           `app-result-item__badge--${badgeInfo.type}`,
           `app-result-item__badge--${badgeSize ?? 'sm'}`
         ]"
-        v-tooltip="{ value: badgeInfo.label, showDelay: 400, position: 'top' }"
+        @mouseenter="onBadgeEnter"
+        @mouseleave="onBadgeLeave"
       >
         <component :is="badgeInfo.icon" :size="badgeSize === 'xs' ? 12 : 10" :stroke-width="2" />
       </div>
+      <MtTooltip
+        :visible="badgeTooltipVisible"
+        :title="badgeInfo?.label"
+        :anchor="badgeEl"
+        placement="top"
+        :offset-y="4"
+      />
     </div>
 
     <div

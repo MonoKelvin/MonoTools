@@ -141,14 +141,14 @@ async function handleSearchBarMousedown(event: MouseEvent) {
 
   if (isTauri) {
     try {
-      await invoke('set_dragging', { dragging: true })
+      invoke('set_dragging', { dragging: true }).catch(() => {})
       await invoke('start_dragging')
-      setTimeout(async () => {
-        try {
-          await invoke('set_dragging', { dragging: false })
-        } catch {}
+    } catch {
+    } finally {
+      setTimeout(() => {
+        invoke('set_dragging', { dragging: false }).catch(() => {})
       }, 500)
-    } catch {}
+    }
   }
 }
 
@@ -209,6 +209,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   <div
     class="search-bar"
     :class="{ 'search-bar--focused': focused }"
+    data-tauri-drag-region
     @mousedown="handleSearchBarMousedown"
     @mousemove="handleSearchBarMousemove"
     @mouseleave="handleSearchBarMouseleave"
@@ -218,7 +219,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
         <Search :size="22" :stroke-width="1.5" />
       </div>
 
-      <div class="search-bar__input-wrapper">
+      <div class="search-bar__input-wrapper" data-tauri-no-drag>
         <input
           ref="inputRef"
           type="text"
@@ -239,6 +240,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
           v-if="modelValue"
           class="search-bar__clear"
           type="button"
+          data-tauri-no-drag
           @mousedown.stop.prevent
           @click.stop="emit('update:modelValue', '')"
           aria-label="清空"
@@ -249,6 +251,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 
       <div
         class="search-bar__logo"
+        data-tauri-no-drag
         @mousedown.stop
         @click.stop="onLogoClick"
         @contextmenu.stop="onLogoContextMenu"
@@ -292,6 +295,8 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   background: transparent;
   border-bottom: 1px solid var(--border-subtle);
   transition: all var(--dur-normal) var(--ease-out);
+  -webkit-app-region: drag;
+  app-region: drag;
 }
 
 .search-bar--focused {
@@ -331,6 +336,8 @@ defineExpose({ focus: () => inputRef.value?.focus() })
 .search-bar__input-wrapper {
   flex: 1;
   min-width: 0;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .search-bar__input {
@@ -372,6 +379,8 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   color: var(--text-tertiary);
   cursor: pointer;
   transition: all var(--dur-fast) var(--ease-out);
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .search-bar__clear:hover {
@@ -390,6 +399,7 @@ defineExpose({ focus: () => inputRef.value?.focus() })
   border-radius: var(--radius-sm);
   transition: all var(--dur-fast) var(--ease-out);
   -webkit-app-region: no-drag;
+  app-region: no-drag;
 }
 
 .search-bar__logo:hover {
