@@ -23,7 +23,6 @@ use crate::search_engine::SearchEngine;
 use crate::services::hotkey::HotkeyService;
 use crate::services::tray::{TrayMenuItem, TrayService};
 use crate::services::window::WindowService;
-use crate::services::window_monitor::WindowMonitorService;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, WindowEvent};
@@ -106,10 +105,6 @@ pub fn build_app_state(app_handle: &AppHandle) -> Arc<AppState> {
     let window_inner = WindowService::new(app_handle.clone());
     let window = Arc::new(window_inner);
 
-    let mut window_monitor = WindowMonitorService::new();
-    window_monitor.start(app_handle.clone());
-    let window_monitor = Arc::new(Mutex::new(window_monitor));
-
     Arc::new(AppState {
         app: app_handle.clone(),
         settings_repo,
@@ -122,7 +117,6 @@ pub fn build_app_state(app_handle: &AppHandle) -> Arc<AppState> {
         search_engine,
         hotkey,
         window,
-        window_monitor,
         is_dragging: Arc::new(Mutex::new(false)),
         frontend_initialized: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     })
@@ -131,6 +125,11 @@ pub fn build_app_state(app_handle: &AppHandle) -> Arc<AppState> {
 /// 初始化所有业务模块
 ///
 /// 在 setup 阶段调用，按顺序初始化各模块。
+///
+/// # 架构原则
+/// - 本函数是 app 层唯一知道业务模块存在的地方
+/// - 各模块自己负责初始化逻辑，这里只调用入口函数
+/// - 模块所需依赖通过参数注入（依赖倒置）
 pub fn init_all_modules(app: &AppHandle, state: &Arc<AppState>) {
     // 搜索模块
     crate::search_engine::init::init(
@@ -144,19 +143,15 @@ pub fn init_all_modules(app: &AppHandle, state: &Arc<AppState>) {
 
     // 热键模块
     let initial_hotkey = state.settings_repo.get().hotkey.clone();
-    crate::services::hotkey::init_hotkey_service(
-        app,
-        state.hotkey.clone(),
-        initial_hotkey,
-    );
+    crate::services::hotkey::init_hotkey_service(app, state.hotkey.clone(), initial_hotkey);
 
     // 独立模块: Recommend (智能推荐)
     #[cfg(feature = "recommend")]
     {
-        crate::recommend::init(app);
+        crate::recommend::init_full(app, crate::recommend::RecommendInitConfig::default());
     }
 
-    // 独立模块: PyBridge (Rust-Python 桥接)
+    // 仅 pybridge，不带 recommend（通用基础设施）
     #[cfg(feature = "pybridge")]
     {
         use crate::pybridge::{self, PyBridgeConfig};
@@ -167,15 +162,8 @@ pub fn init_all_modules(app: &AppHandle, state: &Arc<AppState>) {
 
 /// 应用窗口后置初始化（pin_to_top 等）
 pub fn post_window_init(app: &AppHandle, state: &Arc<AppState>) {
-    // 确保窗口在 frontend_ready 之前保持隐藏
-    if let Some(w) = app.get_webview_window("search") {
-        let _ = w.hide();
-    }
-
-    // 同步 pin_to_top 设置到窗口
-    if let Some(w) = app.get_webview_window("search") {
-        let _ = w.set_always_on_top(state.settings_repo.get().pin_to_top);
-    }
+    let pin_to_top = state.settings_repo.get().pin_to_top;
+    crate::services::window::post_init(app, pin_to_top);
 }
 
 /// 核心 IPC 命令列表宏
@@ -204,8 +192,6 @@ macro_rules! core_ipc_commands {
             $crate::services::hotkey::ipc::register_hotkey_cmd,
             $crate::services::hotkey::ipc::unregister_hotkey,
             $crate::services::hotkey::ipc::get_current_hotkey,
-            // 窗口监控
-            $crate::services::window_monitor::ipc::get_window_monitor_state,
             // 仓库层 (设置/命令/Pin)
             $crate::repositories::ipc::get_setting,
             $crate::repositories::ipc::set_setting,
@@ -242,63 +228,18 @@ macro_rules! core_ipc_commands {
 
 /// 设置系统托盘
 ///
-/// 集中注册所有托盘菜单项和处理函数。
-/// 各模块的托盘菜单项在这里统一组装。
-/// 删除模块时，只需移除对应菜单项的注册代码。
+/// 各业务模块自己负责注册菜单项，这里只负责组装。
+/// 删除模块时，只需移除对应模块的注册调用。
 pub fn setup_tray(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::error::Error>> {
     let mut tray_service = TrayService::new();
 
-    // === 窗口相关菜单项 ===
-    tray_service.register_item(TrayMenuItem::normal(
-        "show",
-        "显示主窗口",
-        |app, _id| {
-            if let Some(w) = app.get_webview_window("search") {
-                let _ = w.show();
-                let _ = w.set_focus();
-            }
-        },
-    ));
-    tray_service.register_item(TrayMenuItem::normal(
-        "hide",
-        "隐藏窗口",
-        |app, _id| {
-            if let Some(w) = app.get_webview_window("search") {
-                let _ = w.hide();
-            }
-        },
-    ));
+    // 窗口模块菜单项
+    crate::services::window::register_tray_items(&mut tray_service);
 
-    // === 设置相关菜单项 ===
-    let state: tauri::State<Arc<AppState>> = app.state();
-    let initial_pin = state.settings_repo.get().pin_to_top;
-    tray_service.register_item(TrayMenuItem::check(
-        "toggle_pin_top",
-        "窗口置顶",
-        initial_pin,
-        |app, _id| {
-            let state: tauri::State<Arc<AppState>> = app.state();
-            if let Some(window) = app.get_webview_window("search") {
-                let cur = state.settings_repo.get().pin_to_top;
-                let next = !cur;
-                if let Err(e) = state.settings_repo.update(Box::new(move |s| {
-                    s.pin_to_top = next;
-                })) {
-                    log::warn!("更新 pin_to_top 失败: {e}");
-                }
-                if let Err(e) = window.set_always_on_top(next) {
-                    log::warn!("set_always_on_top 失败: {e}");
-                }
-                if next {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                } else {
-                    let _ = window.hide();
-                }
-            }
-        },
-    ));
+    // 设置模块菜单项
+    crate::repositories::settings_repo::register_tray_items(&mut tray_service, app);
 
+    // 通用菜单项
     tray_service.register_item(TrayMenuItem::separator());
     tray_service.register_item(TrayMenuItem::quit());
 
@@ -317,9 +258,12 @@ pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Buil
 
     #[cfg(feature = "recommend")]
     let builder = builder.invoke_handler(crate::core_ipc_commands![
+        crate::recommend::ipc::recommend_set_items,
+        crate::recommend::ipc::recommend_record_launch,
         crate::recommend::ipc::recommend_get_scores,
         crate::recommend::ipc::recommend_report_feedback,
         crate::recommend::ipc::recommend_get_status,
+        crate::recommend::ipc::get_window_monitor_state,
     ]);
 
     builder

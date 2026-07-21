@@ -87,6 +87,7 @@ windows-sys = { version = "0.61", features = [
 [features]
 # this feature is used for production builds or when `devUrl` points to the filesystem
 # DO NOT REMOVE!!
+default = ["custom-protocol", "recommend", "recommend-py"]
 custom-protocol = ["tauri/custom-protocol"]
 
 # === 独立模块 Feature Flags ===

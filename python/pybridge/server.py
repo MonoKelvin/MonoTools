@@ -21,7 +21,7 @@ from typing import Dict, Callable, Any, Optional
 
 # 配置日志到 stderr，避免污染 stdout (JSON-RPC 通道)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format="[%(levelname)s] %(message)s",
     stream=sys.stderr,
 )

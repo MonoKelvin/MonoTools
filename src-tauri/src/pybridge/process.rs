@@ -146,10 +146,10 @@ impl PythonProcess {
             loop {
                 match stderr_reader.next_line().await {
                     Ok(Some(line)) => {
-                        log::debug!("[pybridge:stderr] {}", line);
+                        log::info!("[py:stderr] {}", line);
                     }
                     Ok(None) => {
-                        log::debug!("[pybridge] Python stderr 已关闭");
+                        log::info!("[pybridge] Python stderr 已关闭");
                         break;
                     }
                     Err(e) => {

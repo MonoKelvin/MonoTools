@@ -1,4 +1,4 @@
-﻿//! MonoTools CLI 入口 - 在终端直接调用，无需 UI
+//! MonoTools CLI 入口 - 在终端直接调用，无需 UI
 //!
 //! 用法示例：
 //!   monotools-cli search "chrome"
@@ -85,7 +85,15 @@ async fn main() -> anyhow::Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info");
     }
-    env_logger::init();
+
+    // 自定义日志格式：时间 级别 消息（去掉模块路径）
+    env_logger::Builder::from_default_env()
+        .format(|buf, record| {
+            use std::io::Write;
+            let timestamp = buf.timestamp();
+            writeln!(buf, "[{} {}] {}", timestamp, record.level(), record.args())
+        })
+        .init();
 
     let cli = Cli::parse();
     let ctx = CommandContext::new_headless().await?;

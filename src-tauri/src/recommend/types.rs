@@ -8,50 +8,15 @@ pub struct RecommendConfig {
     /// 是否启用推荐功能
     pub enabled: bool,
 
-    /// 规则引擎权重配置
-    pub rule_weights: RuleWeights,
-
     /// 最多返回多少个推荐结果
     pub max_results: usize,
-
-    /// 多样性控制 (0.0-1.0, 越大越多样)
-    pub diversity_lambda: f32,
 }
 
 impl Default for RecommendConfig {
     fn default() -> Self {
         Self {
             enabled: true,
-            rule_weights: RuleWeights::default(),
             max_results: 20,
-            diversity_lambda: 0.7,
-        }
-    }
-}
-
-/// 规则引擎权重
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RuleWeights {
-    /// 启动次数权重
-    pub launch_count: f32,
-    /// 名称相似度权重
-    pub name_similarity: f32,
-    /// 类别匹配权重
-    pub category_match: f32,
-    /// 前台应用同类权重
-    pub foreground_category: f32,
-    /// 时间衰减因子 (每小时衰减比例)
-    pub time_decay_per_hour: f32,
-}
-
-impl Default for RuleWeights {
-    fn default() -> Self {
-        Self {
-            launch_count: 25.0,
-            name_similarity: 5.0,
-            category_match: 15.0,
-            foreground_category: 40.0,
-            time_decay_per_hour: 0.029,
         }
     }
 }
@@ -71,7 +36,7 @@ pub struct RecommendItem {
     pub launch_count: u32,
     /// 上次启动时间戳 (秒)
     pub last_launched: Option<i64>,
-    /// 应用/文件类别关键字 (用于匹配)
+    /// 标签/类别关键字
     pub tags: Vec<String>,
 }
 
@@ -82,30 +47,8 @@ pub struct RecommendContext {
     pub foreground_app_path: String,
     /// 当前前台应用标题
     pub foreground_app_title: String,
-    /// 当前前台应用类别
-    pub foreground_category: Option<String>,
     /// 查询词 (如果有的话)
     pub query: String,
-    /// 当前小时 (0-23)
-    pub hour: u8,
-    /// 星期几 (0=周一, 6=周日)
-    pub weekday: u8,
-    /// 是否周末
-    pub is_weekend: bool,
-    /// 最近使用的应用 ID 列表
-    pub recent_app_ids: Vec<String>,
-    /// 浏览器标签标题 (如果有)
-    pub browser_tabs: Vec<String>,
-    /// 编辑器打开的文件扩展名
-    pub editor_file_exts: Vec<String>,
-}
-
-/// 单个推荐结果
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecommendResult {
-    pub item_id: String,
-    pub score: f32,
-    pub reasons: Vec<String>,
 }
 
 /// 用户反馈事件
@@ -159,15 +102,6 @@ mod tests {
         let config = RecommendConfig::default();
         assert_eq!(config.enabled, true);
         assert_eq!(config.max_results, 20);
-        assert_eq!(config.diversity_lambda, 0.7);
-    }
-
-    #[test]
-    fn test_rule_weights_default() {
-        let weights = RuleWeights::default();
-        assert!(weights.launch_count > 0.0);
-        assert!(weights.foreground_category > 0.0);
-        assert!(weights.time_decay_per_hour >= 0.0);
     }
 
     #[test]
@@ -189,10 +123,7 @@ mod tests {
     fn test_context_default() {
         let ctx = RecommendContext::default();
         assert_eq!(ctx.query, "");
-        assert_eq!(ctx.hour, 0);
-        assert_eq!(ctx.weekday, 0);
-        assert_eq!(ctx.is_weekend, false);
-        assert!(ctx.recent_app_ids.is_empty());
+        assert!(ctx.foreground_app_path.is_empty());
     }
 
     #[test]
@@ -223,7 +154,7 @@ mod tests {
             feedback_type: FeedbackType::Click,
             position: Some(0),
             context: RecommendContext::default(),
-            timestamp: 1234567890,
+            timestamp: 12345,
         };
         assert_eq!(event.item_id, "app1");
         assert_eq!(event.feedback_type, FeedbackType::Click);

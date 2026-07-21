@@ -1,5 +1,6 @@
 //! 窗口管理 - 显示/隐藏/居中等
 use crate::core::error::Result;
+use crate::services::tray::TrayMenuItem;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use tauri::Manager;
@@ -202,6 +203,38 @@ impl WindowService {
     pub fn set_app<R: Runtime>(&self, app: tauri::AppHandle<R>) {
         let wrapper = RuntimeAppHandle::<R>::new(app);
         *self.app.lock() = Some(Arc::new(wrapper));
+    }
+}
+
+/// 注册窗口相关的托盘菜单项
+pub fn register_tray_items(tray_service: &mut crate::services::tray::TrayService) {
+    tray_service.register_item(TrayMenuItem::normal(
+        "show",
+        "显示主窗口",
+        |app, _id| {
+            if let Some(w) = app.get_webview_window("search") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        },
+    ));
+    tray_service.register_item(TrayMenuItem::normal("hide", "隐藏窗口", |app, _id| {
+        if let Some(w) = app.get_webview_window("search") {
+            let _ = w.hide();
+        }
+    }));
+}
+
+/// 窗口后置初始化（pin_to_top 等）
+pub fn post_init<R: tauri::Runtime>(app: &tauri::AppHandle<R>, pin_to_top: bool) {
+    // 确保窗口在 frontend_ready 之前保持隐藏
+    if let Some(w) = app.get_webview_window("search") {
+        let _ = w.hide();
+    }
+
+    // 同步 pin_to_top 设置到窗口
+    if let Some(w) = app.get_webview_window("search") {
+        let _ = w.set_always_on_top(pin_to_top);
     }
 }
 

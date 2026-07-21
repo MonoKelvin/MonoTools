@@ -21,7 +21,16 @@ pub fn run() {
     if std::env::var("RUST_LOG").is_err() {
         std::env::set_var("RUST_LOG", "info,monotools_lib=debug");
     }
-    let _ = env_logger::try_init();
+
+    // 自定义日志格式：时间 级别 消息（去掉模块路径）
+    env_logger::Builder::from_default_env()
+        .format(|buf, record| {
+            use std::io::Write;
+            let timestamp = buf.timestamp();
+            writeln!(buf, "[{} {}] {}", timestamp, record.level(), record.args())
+        })
+        .try_init()
+        .ok();
 
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())

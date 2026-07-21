@@ -55,8 +55,14 @@ class RecommendService:
     def initialize(self, params: dict) -> dict:
         """初始化推荐服务，传入所有候选应用"""
         items = params.get("items", [])
+        logger.info(f"initialize called, items count: {len(items)}")
         self._load_items(items)
+        logger.info(f"items loaded: {len(self.items)} items, {len(self.item_ids)} ids")
         self._build_content_index()
+        if HAS_SKLEARN:
+            logger.info(f"TF-IDF index built, matrix shape: {self._tfidf_matrix.shape if self._tfidf_matrix is not None else None}")
+        else:
+            logger.info("sklearn not available, using simple matching")
         self._load_state()
         self._initialized = True
         logger.info(f"Recommend initialized with {len(self.items)} items")
@@ -65,10 +71,13 @@ class RecommendService:
     def get_scores(self, params: dict) -> dict:
         """获取推荐分数"""
         if not self._initialized:
+            logger.warning("get_scores called but not initialized")
             return {"scores": []}
 
         items = params.get("items", [])
         context = params.get("context", {})
+
+        logger.debug(f"get_scores: {len(items)} items, context keys: {list(context.keys())}")
 
         scores = []
         for item in items:
@@ -79,6 +88,8 @@ class RecommendService:
         # 按分数降序
         scores.sort(key=lambda x: x["score"], reverse=True)
 
+        logger.debug(f"get_scores returning {len(scores)} results, top score: {scores[0]['score'] if scores else 0}")
+
         return {"scores": scores}
 
     def report_feedback(self, params: dict) -> dict:
@@ -86,6 +97,8 @@ class RecommendService:
         feedback = params.get("feedback", {})
         item_id = feedback.get("item_id", "")
         feedback_type = feedback.get("feedback_type", "")
+
+        logger.info(f"report_feedback: item={item_id}, type={feedback_type}")
 
         if feedback_type in ("click", "pin"):
             self._click_counts[item_id] = self._click_counts.get(item_id, 0) + 1
@@ -97,8 +110,10 @@ class RecommendService:
                 last = recent[-1]
                 key = (last, item_id)
                 self._transition_2gram[key] = self._transition_2gram.get(key, 0) + 1
+                logger.debug(f"transition updated: {last} -> {item_id} = {self._transition_2gram[key]}")
 
             self._save_state()
+            logger.info(f"feedback saved, click count for {item_id}: {self._click_counts.get(item_id, 0)}")
 
         return {"success": True}
 
