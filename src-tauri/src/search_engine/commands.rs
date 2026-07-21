@@ -1,8 +1,41 @@
-﻿//! 搜索相关命令
+//! 搜索相关命令
 //!
 //! 搜索、索引构建等命令实现。
 
-use crate::core::command::{Command, CommandContext, CommandOutput, CommandSpec};
+use crate::core::command::{
+    Command, CommandContext, CommandOutput, CommandRepo, CommandSpec, SettingsRepo,
+};
+use crate::search_engine::app_search::AppSearchEngine;
+use crate::search_engine::command_search::CommandSearchEngine;
+use crate::search_engine::file_search::FileSearchEngine;
+use std::sync::Arc;
+
+fn get_app_search(ctx: &CommandContext) -> crate::core::error::Result<&Arc<AppSearchEngine>> {
+    ctx.get::<Arc<AppSearchEngine>>()
+        .ok_or_else(|| "AppSearchEngine not found in context".into())
+}
+
+fn get_file_search(ctx: &CommandContext) -> crate::core::error::Result<&Arc<FileSearchEngine>> {
+    ctx.get::<Arc<FileSearchEngine>>()
+        .ok_or_else(|| "FileSearchEngine not found in context".into())
+}
+
+fn get_command_search(
+    ctx: &CommandContext,
+) -> crate::core::error::Result<&Arc<CommandSearchEngine>> {
+    ctx.get::<Arc<CommandSearchEngine>>()
+        .ok_or_else(|| "CommandSearchEngine not found in context".into())
+}
+
+fn get_command_repo(ctx: &CommandContext) -> crate::core::error::Result<&Arc<dyn CommandRepo>> {
+    ctx.get::<Arc<dyn CommandRepo>>()
+        .ok_or_else(|| "CommandRepo not found in context".into())
+}
+
+fn get_settings_repo(ctx: &CommandContext) -> crate::core::error::Result<&Arc<dyn SettingsRepo>> {
+    ctx.get::<Arc<dyn SettingsRepo>>()
+        .ok_or_else(|| "SettingsRepo not found in context".into())
+}
 
 // ==================== search 命令 ====================
 
@@ -47,46 +80,35 @@ impl Command for SearchCommand {
             return Ok(CommandOutput::err("用法：search <query>"));
         }
 
+        let app_search = get_app_search(ctx)?;
+        let file_search = get_file_search(ctx)?;
+        let command_search = get_command_search(ctx)?;
+
         let mut results: Vec<serde_json::Value> = Vec::new();
-        results.extend(
-            ctx.app_search
-                .search(&query, limit)
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "title": r.title,
-                        "subtitle": r.subtitle,
-                        "category": r.category,
-                        "score": r.score,
-                    })
-                }),
-        );
-        results.extend(
-            ctx.file_search
-                .search(&query, limit)
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "title": r.title,
-                        "subtitle": r.subtitle,
-                        "category": r.category,
-                        "score": r.score,
-                    })
-                }),
-        );
-        results.extend(
-            ctx.command_search
-                .search(&query, limit)
-                .into_iter()
-                .map(|r| {
-                    serde_json::json!({
-                        "title": r.title,
-                        "subtitle": r.subtitle,
-                        "category": r.category,
-                        "score": r.score,
-                    })
-                }),
-        );
+        results.extend(app_search.search(&query, limit).into_iter().map(|r| {
+            serde_json::json!({
+                "title": r.title,
+                "subtitle": r.subtitle,
+                "category": r.category,
+                "score": r.score,
+            })
+        }));
+        results.extend(file_search.search(&query, limit).into_iter().map(|r| {
+            serde_json::json!({
+                "title": r.title,
+                "subtitle": r.subtitle,
+                "category": r.category,
+                "score": r.score,
+            })
+        }));
+        results.extend(command_search.search(&query, limit).into_iter().map(|r| {
+            serde_json::json!({
+                "title": r.title,
+                "subtitle": r.subtitle,
+                "category": r.category,
+                "score": r.score,
+            })
+        }));
 
         let mut arr = results;
         arr.sort_by(|a, b| {
@@ -121,7 +143,9 @@ impl Command for IndexCommand {
         ctx: &CommandContext,
     ) -> crate::core::error::Result<CommandOutput> {
         if args.is_empty() {
-            return Ok(CommandOutput::err("用法：index <build|update|stats|add-root|remove-root>"));
+            return Ok(CommandOutput::err(
+                "用法：index <build|update|stats|add-root|remove-root>",
+            ));
         }
 
         match args[0].as_str() {
@@ -130,45 +154,68 @@ impl Command for IndexCommand {
             "stats" => self.stats(ctx).await,
             "add-root" => self.add_root(ctx, &args[1..]).await,
             "remove-root" => self.remove_root(ctx, &args[1..]).await,
-            _ => Ok(CommandOutput::err("未知子命令：build|update|stats|add-root|remove-root")),
+            _ => Ok(CommandOutput::err(
+                "未知子命令：build|update|stats|add-root|remove-root",
+            )),
         }
     }
 }
 
 impl IndexCommand {
     async fn build_index(&self, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
-        let roots = ctx.settings_repo.get().file_search_roots.clone();
+        let settings_repo = get_settings_repo(ctx)?;
+        let file_search = get_file_search(ctx)?;
+
+        let roots = settings_repo.get().file_search_roots.clone();
         if roots.is_empty() {
-            return Ok(CommandOutput::err("未配置搜索根目录，请先使用 index add-root 添加"));
+            return Ok(CommandOutput::err(
+                "未配置搜索根目录，请先使用 index add-root 添加",
+            ));
         }
 
-        match ctx.file_search.build_index().await {
+        match file_search.build_index().await {
             Ok(_) => {
-                let total = ctx.file_search.total();
-                Ok(CommandOutput::ok(format!("索引构建完成，共 {} 个文件", total)))
+                let total = file_search.total();
+                Ok(CommandOutput::ok(format!(
+                    "索引构建完成，共 {} 个文件",
+                    total
+                )))
             }
             Err(e) => Ok(CommandOutput::err(format!("索引构建失败: {}", e))),
         }
     }
 
-    async fn update_index(&self, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
-        match ctx.file_search.update_index() {
+    async fn update_index(
+        &self,
+        ctx: &CommandContext,
+    ) -> crate::core::error::Result<CommandOutput> {
+        let file_search = get_file_search(ctx)?;
+        match file_search.update_index() {
             Ok(_) => Ok(CommandOutput::ok("索引已更新")),
             Err(e) => Ok(CommandOutput::err(format!("索引更新失败: {}", e))),
         }
     }
 
     async fn stats(&self, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
+        let app_search = get_app_search(ctx)?;
+        let file_search = get_file_search(ctx)?;
+        let command_search = get_command_search(ctx)?;
+        let settings_repo = get_settings_repo(ctx)?;
+
         let stats = serde_json::json!({
-            "files": ctx.file_search.total(),
-            "apps": ctx.app_search.total(),
-            "commands": ctx.command_search.search("", 0).len(),
-            "roots": ctx.settings_repo.get().file_search_roots,
+            "files": file_search.total(),
+            "apps": app_search.total(),
+            "commands": command_search.search("", 0).len(),
+            "roots": settings_repo.get().file_search_roots,
         });
         Ok(CommandOutput::ok_with_data("索引统计", stats))
     }
 
-    async fn add_root(&self, ctx: &CommandContext, args: &[String]) -> crate::core::error::Result<CommandOutput> {
+    async fn add_root(
+        &self,
+        ctx: &CommandContext,
+        args: &[String],
+    ) -> crate::core::error::Result<CommandOutput> {
         if args.is_empty() {
             return Ok(CommandOutput::err("用法：index add-root <path>"));
         }
@@ -180,7 +227,8 @@ impl IndexCommand {
             return Ok(CommandOutput::err(format!("路径不存在: {}", path)));
         }
 
-        ctx.settings_repo.update(Box::new(move |s| {
+        let settings_repo = get_settings_repo(ctx)?;
+        settings_repo.update(Box::new(move |s| {
             if !s.file_search_roots.contains(&path_buf) {
                 s.file_search_roots.push(path_buf);
             }
@@ -189,7 +237,11 @@ impl IndexCommand {
         Ok(CommandOutput::ok(format!("已添加搜索根目录: {}", path)))
     }
 
-    async fn remove_root(&self, ctx: &CommandContext, args: &[String]) -> crate::core::error::Result<CommandOutput> {
+    async fn remove_root(
+        &self,
+        ctx: &CommandContext,
+        args: &[String],
+    ) -> crate::core::error::Result<CommandOutput> {
         if args.is_empty() {
             return Ok(CommandOutput::err("用法：index remove-root <path>"));
         }
@@ -197,7 +249,8 @@ impl IndexCommand {
         let path = args.join(" ");
         let path_buf = std::path::PathBuf::from(&path);
 
-        ctx.settings_repo.update(Box::new(move |s| {
+        let settings_repo = get_settings_repo(ctx)?;
+        settings_repo.update(Box::new(move |s| {
             s.file_search_roots.retain(|p| p != &path_buf);
         }))?;
 
@@ -205,8 +258,110 @@ impl IndexCommand {
     }
 }
 
+// ==================== stats 命令 ====================
+
+pub struct StatsCommand;
+
+#[async_trait::async_trait]
+impl Command for StatsCommand {
+    fn spec(&self) -> CommandSpec {
+        CommandSpec::new("stats", "查询应用统计信息").with_usage("stats [apps|commands|files]")
+    }
+
+    async fn execute(
+        &self,
+        args: &[String],
+        ctx: &CommandContext,
+    ) -> crate::core::error::Result<CommandOutput> {
+        if args.is_empty() {
+            return self.all_stats(ctx).await;
+        }
+
+        match args[0].as_str() {
+            "apps" => self.app_stats(ctx).await,
+            "commands" => self.command_stats(ctx).await,
+            "files" => self.file_stats(ctx).await,
+            "detail" => self.detail_stats(ctx).await,
+            _ => Ok(CommandOutput::err("未知子命令：apps|commands|files|detail")),
+        }
+    }
+}
+
+impl StatsCommand {
+    async fn detail_stats(
+        &self,
+        ctx: &CommandContext,
+    ) -> crate::core::error::Result<CommandOutput> {
+        let app_search = get_app_search(ctx)?;
+        let file_search = get_file_search(ctx)?;
+        let command_repo = get_command_repo(ctx)?;
+        let settings_repo = get_settings_repo(ctx)?;
+
+        let apps_total = app_search.total();
+        let files_total = file_search.total();
+        let cmds = command_repo.list();
+        let enabled_cmds = cmds.iter().filter(|c| c.enabled).count();
+        let settings = settings_repo.get();
+
+        let stats = serde_json::json!({
+            "apps": apps_total,
+            "files": files_total,
+            "commands": {
+                "total": cmds.len(),
+                "enabled": enabled_cmds,
+                "disabled": cmds.len() - enabled_cmds,
+            },
+            "file_search_roots": settings.file_search_roots,
+            "file_search_drives": settings.file_search_drives,
+        });
+        Ok(CommandOutput::ok_with_data("详细统计", stats))
+    }
+
+    async fn all_stats(&self, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
+        let app_search = get_app_search(ctx)?;
+        let file_search = get_file_search(ctx)?;
+        let command_repo = get_command_repo(ctx)?;
+
+        let stats = serde_json::json!({
+            "apps": app_search.total(),
+            "files": file_search.total(),
+            "commands": command_repo.list().len(),
+        });
+        Ok(CommandOutput::ok_with_data("系统统计", stats))
+    }
+
+    async fn app_stats(&self, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
+        let app_search = get_app_search(ctx)?;
+        let total = app_search.total();
+        Ok(CommandOutput::ok(format!("已索引 {} 个应用", total)))
+    }
+
+    async fn command_stats(
+        &self,
+        ctx: &CommandContext,
+    ) -> crate::core::error::Result<CommandOutput> {
+        let command_repo = get_command_repo(ctx)?;
+        let cmds = command_repo.list();
+        let enabled = cmds.iter().filter(|c| c.enabled).count();
+
+        let stats = serde_json::json!({
+            "total": cmds.len(),
+            "enabled": enabled,
+            "disabled": cmds.len() - enabled,
+        });
+        Ok(CommandOutput::ok_with_data("命令统计", stats))
+    }
+
+    async fn file_stats(&self, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
+        let file_search = get_file_search(ctx)?;
+        let total = file_search.total();
+        Ok(CommandOutput::ok(format!("已索引 {} 个文件", total)))
+    }
+}
+
 /// 注册所有搜索相关命令
 pub fn register_commands(reg: &mut crate::core::command::CommandRegistry) {
     reg.register(SearchCommand);
     reg.register(IndexCommand);
+    reg.register(StatsCommand);
 }

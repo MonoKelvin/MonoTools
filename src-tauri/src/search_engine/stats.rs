@@ -1,4 +1,8 @@
-﻿use parking_lot::RwLock;
+//! 应用统计 —— 启动次数、最近使用、评分排序
+//!
+//! 属于搜索业务模块，用于应用推荐和排序。
+
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -83,7 +87,11 @@ impl StatsRepo {
 
     pub fn top(&self, limit: usize) -> Vec<AppStat> {
         let mut v = self.list();
-        v.sort_by(|a, b| b.composite_score().partial_cmp(&a.composite_score()).unwrap_or(std::cmp::Ordering::Equal));
+        v.sort_by(|a, b| {
+            b.composite_score()
+                .partial_cmp(&a.composite_score())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         v.into_iter().take(limit).collect()
     }
 

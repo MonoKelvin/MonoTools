@@ -91,3 +91,16 @@ pub async fn get_window_monitor_state(
         })).collect::<Vec<_>>(),
     }))
 }
+
+/// 注册推荐模块的 IPC 命令到 Tauri builder
+#[cfg(feature = "recommend")]
+pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder.invoke_handler(tauri::generate_handler![
+        recommend_set_items,
+        recommend_record_launch,
+        recommend_get_scores,
+        recommend_report_feedback,
+        recommend_get_status,
+        get_window_monitor_state,
+    ])
+}

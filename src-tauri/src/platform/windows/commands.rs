@@ -5,6 +5,8 @@
 
 use crate::core::command::{Command, CommandContext, CommandOutput, CommandSpec};
 use crate::platform::windows::shell;
+use crate::search_engine::app_search::AppSearchEngine;
+use std::sync::Arc;
 
 /// open 命令 - 在文件管理器中打开
 pub struct OpenCommand;
@@ -122,7 +124,10 @@ impl Command for LaunchCommand {
             return Ok(CommandOutput::err("用法：launch <name-or-path>"));
         }
         let name = args.join(" ");
-        let results = ctx.app_search.search(&name, 1);
+        let app_search = ctx
+            .get::<Arc<AppSearchEngine>>()
+            .ok_or("AppSearchEngine not found in context")?;
+        let results = app_search.search(&name, 1);
         if let Some(r) = results.first() {
             let path = r.subtitle.clone();
             shell::launch(&path, &[])?;

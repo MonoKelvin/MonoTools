@@ -128,7 +128,10 @@ fn toggle_search_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-fn get_webview_window_clone<R: Runtime>(app: &AppHandle<R>, label: &str) -> Option<WebviewWindow<R>> {
+fn get_webview_window_clone<R: Runtime>(
+    app: &AppHandle<R>,
+    label: &str,
+) -> Option<WebviewWindow<R>> {
     use tauri::Manager;
     Manager::get_webview_window(app, label)
 }
@@ -173,17 +176,24 @@ pub mod ipc {
     pub async fn get_current_hotkey(state: State<'_, Arc<AppState>>) -> Result<String, String> {
         Ok(state.hotkey.current().unwrap_or_default())
     }
+
+    /// 注册热键服务的 IPC 命令到 Tauri builder
+    pub fn register_ipc_commands(
+        builder: tauri::Builder<tauri::Wry>,
+    ) -> tauri::Builder<tauri::Wry> {
+        builder.invoke_handler(tauri::generate_handler![
+            register_hotkey_cmd,
+            unregister_hotkey,
+            get_current_hotkey,
+        ])
+    }
 }
 
 /// 热键服务初始化
 ///
 /// 从设置中读取快捷键并注册。
 /// 原本在 builder.rs 的 setup 中，现在抽离到 hotkey 模块。
-pub fn init_hotkey_service(
-    app: &AppHandle,
-    hotkey: Arc<HotkeyService>,
-    initial_hotkey: String,
-) {
+pub fn init_hotkey_service(app: &AppHandle, hotkey: Arc<HotkeyService>, initial_hotkey: String) {
     let app_handle = app.clone();
     let hotkey_clone = hotkey.clone();
 
@@ -191,16 +201,11 @@ pub fn init_hotkey_service(
         #[cfg(debug_assertions)]
         log::info!("[hotkey] 后台注册 hotkey: {}", initial_hotkey);
 
-        if let Err(e) = hotkey_clone
-            .register(&initial_hotkey, &app_handle)
-            .await
-        {
+        if let Err(e) = hotkey_clone.register(&initial_hotkey, &app_handle).await {
             log::warn!("注册默认快捷键失败: {}，请检查是否被其他程序占用", e);
             log::info!("尝试重新注册...");
             std::thread::sleep(std::time::Duration::from_millis(500));
-            let _ = hotkey_clone
-                .register(&initial_hotkey, &app_handle)
-                .await;
+            let _ = hotkey_clone.register(&initial_hotkey, &app_handle).await;
         } else {
             #[cfg(debug_assertions)]
             log::info!("[hotkey] hotkey 注册成功: {}", initial_hotkey);

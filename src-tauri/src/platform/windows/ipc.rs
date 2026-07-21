@@ -202,3 +202,15 @@ pub fn get_system_theme() -> Result<String, String> {
         Ok("dark".to_string())
     }
 }
+
+/// 注册 Windows 平台的 IPC 命令到 Tauri builder
+pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder.invoke_handler(tauri::generate_handler![
+        get_app_icon,
+        get_app_icons_batch,
+        open_file_location,
+        show_file_properties,
+        delete_file_to_recycle_bin,
+        get_system_theme,
+    ])
+}

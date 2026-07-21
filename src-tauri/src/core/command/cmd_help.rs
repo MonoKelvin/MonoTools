@@ -1,4 +1,4 @@
-﻿//! help 命令
+//! help 命令
 use crate::core::command::command_trait::{Command, CommandSpec};
 use crate::core::command::{CommandContext, CommandOutput};
 
@@ -24,7 +24,8 @@ impl Command for HelpCommand {
             "可用命令：".to_string(),
         ];
 
-        let mut specs = ctx.command_specs.clone();
+        let command_specs = ctx.get::<Vec<CommandSpec>>().cloned().unwrap_or_default();
+        let mut specs = command_specs;
         specs.sort_by(|a, b| a.name.cmp(b.name));
 
         for spec in specs {

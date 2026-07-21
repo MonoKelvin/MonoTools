@@ -1,12 +1,13 @@
-﻿//! 命令注册表：每条命令以 `id` + 默认 `aliases` 注册；通过同名 id 直接派发或通过字符串输入解析派发。
+//! 命令注册表：每条命令以 `id` + 默认 `aliases` 注册；通过同名 id 直接派发或通过字符串输入解析派发。
 use crate::core::command::command_trait::{Command, CommandSpec};
 use crate::core::command::{CommandContext, CommandOutput};
 use std::collections::HashMap;
 
-/// 内置的 Command registry —— 通过 `build_default_registry()` 初始化。
+/// 命令注册表
 ///
-/// 注意：[`crate::core::command::command_registry::dispatch`] 仍保持为顶层便利入口，
-/// CLI 工具继续用它；前端 IPC 走 [`crate::core::command::command_registry::registry_dispatch`]。
+/// 纯机制，不包含任何业务命令注册逻辑。
+/// 业务模块通过自己的 `register_commands()` 函数注册命令，
+/// 组装点在 app 层或 CLI 入口。
 pub struct CommandRegistry {
     cmds: HashMap<String, Box<dyn Command>>,
     aliases: HashMap<String, String>,
@@ -154,39 +155,38 @@ impl Default for CommandRegistry {
     }
 }
 
-/// 注册 MonoTools 内置命令并返回初始化的 registry。
+/// 构建只包含 core 层命令的 registry（纯机制，无业务）。
 ///
-/// 各业务模块通过自己的 `register_commands()` 函数注册命令，
-/// 这里是统一的组装点。
-pub fn build_default_registry() -> CommandRegistry {
+/// 包含：HelpCommand、VersionCommand、CustomCommandHandler、ConfigCommand
+///
+/// 业务模块的命令由上层（app 层或 CLI 入口）组装。
+pub fn build_core_registry() -> CommandRegistry {
     let mut reg = CommandRegistry::new();
 
-    // 系统命令（命令模块内置）
     reg.register(crate::core::command::cmd_help::HelpCommand);
     reg.register(crate::core::command::cmd_version::VersionCommand);
+    reg.register(crate::core::command::cmd_custom::CustomCommandHandler);
 
-    // Windows 平台命令
-    crate::platform::windows::commands::register_commands(&mut reg);
-
-    // 搜索 & 索引命令
-    crate::search_engine::commands::register_commands(&mut reg);
-
-    // 仓库相关命令（设置、统计、自定义命令管理）
-    crate::repositories::commands::register_commands(&mut reg);
+    crate::core::settings::cmd_settings::register_commands(&mut reg);
 
     reg
 }
 
-/// 给 CLI 使用的便利入口：每次调用都构造一个新的默认 registry 后执行。
-pub async fn dispatch(input: &str, ctx: &CommandContext) -> crate::core::error::Result<CommandOutput> {
-    build_default_registry().dispatch_str(input, ctx).await
+/// 给 CLI 使用的便利入口：用指定 registry 解析并派发命令。
+pub async fn dispatch(
+    registry: &CommandRegistry,
+    input: &str,
+    ctx: &CommandContext,
+) -> crate::core::error::Result<CommandOutput> {
+    registry.dispatch_str(input, ctx).await
 }
 
 /// 供前端 Tauri IPC（`dispatch_command`）调用：按 id 精确派发。
 pub async fn registry_dispatch(
+    registry: &CommandRegistry,
     id: &str,
     args: &[String],
     ctx: &CommandContext,
 ) -> crate::core::error::Result<CommandOutput> {
-    build_default_registry().dispatch_id(id, args, ctx).await
+    registry.dispatch_id(id, args, ctx).await
 }

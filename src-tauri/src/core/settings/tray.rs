@@ -1,57 +1,18 @@
-//! 设置仓储（基于内存模式管理 Settings）
-//! 我们使用仓储模式（trait 抽象）便于测试和未来的实现替换
-use crate::core::error::Result;
-use crate::models::Settings;
+//! 设置模块托盘菜单项
+//!
+//! 注意：依赖 AppState（由上层组装），
+//! 但逻辑上属于设置模块，因此放在这里统一维护。
+
+use crate::app::state::AppState;
 use crate::services::tray::TrayMenuItem;
-use parking_lot::RwLock;
 use std::sync::Arc;
 use tauri::Manager;
 
-pub trait SettingsRepo: Send + Sync {
-    fn get(&self) -> Settings;
-    fn save(&self, settings: Settings) -> Result<()>;
-    fn update(&self, f: Box<dyn FnOnce(&mut Settings) + Send + '_>) -> Result<Settings>;
-}
-
-/// 简单的内存版实现（完整持久化在 StorageService 中）
-pub struct InMemorySettingsRepo {
-    inner: Arc<RwLock<Settings>>,
-}
-
-impl InMemorySettingsRepo {
-    pub fn new(initial: Settings) -> Self {
-        Self {
-            inner: Arc::new(RwLock::new(initial)),
-        }
-    }
-}
-
-impl SettingsRepo for InMemorySettingsRepo {
-    fn get(&self) -> Settings {
-        self.inner.read().clone()
-    }
-
-    fn save(&self, settings: Settings) -> Result<()> {
-        *self.inner.write() = settings;
-        Ok(())
-    }
-
-    fn update(&self, f: Box<dyn FnOnce(&mut Settings) + Send + '_>) -> Result<Settings> {
-        let mut g = self.inner.write();
-        f(&mut g);
-        Ok(g.clone())
-    }
-}
-
 /// 注册设置相关的托盘菜单项
-///
-/// 注意：需要 AppState 已注册才能使用。
 pub fn register_tray_items<R: tauri::Runtime>(
     tray_service: &mut crate::services::tray::TrayService,
     app: &tauri::App<R>,
 ) {
-    use crate::app::state::AppState;
-
     let state: tauri::State<Arc<AppState>> = app.state();
     let initial_pin = state.settings_repo.get().pin_to_top;
 

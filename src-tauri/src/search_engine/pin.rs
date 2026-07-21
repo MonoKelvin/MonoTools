@@ -1,9 +1,10 @@
-﻿//! 用户手动 pin 的 SearchResult.id 列表 (按用户添加顺序, 最新在前).
+//! Pin 项目仓储 —— 用户手动固定到首页的搜索结果
 //!
 //! 设计取舍:
-//! - 暂**不**落 SQLite, 进程内持久已够. 列表 ≤ 8 项, 重启重置代价低.
-//! - 保留 `hydrate()` 扩展位, 后续如要持久化, 只需在 `storage.rs` 增加
+//! - 暂不落 SQLite, 进程内持久已够. 列表 ≤ 8 项, 重启重置代价低.
+//! - 保留 `hydrate()` 扩展位, 后续如要持久化, 只需在 storage 增加
 //!   `pinned_items` 表, 启动时调一次 `hydrate()` 即可, API 表面不变.
+
 use parking_lot::RwLock;
 use std::sync::Arc;
 

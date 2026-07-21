@@ -1,20 +1,17 @@
-//! 仓库层 IPC 命令
+//! 设置模块 IPC 命令
 //!
-//! 独立模块设计：数据仓库相关的 IPC 命令定义在此模块中，
-//! 通过 core_ipc_commands! 宏注册到全局。
+//! 通用设置相关的 IPC 命令定义在此。
+//! 注意：这些命令依赖 AppState（由上层组装），
+//! 但逻辑上属于设置模块，因此放在这里统一维护。
 //!
-//! 包含：
-//! - 设置仓库 (settings_repo)
-//! - 命令仓库 (command_repo)
-//! - Pin 仓库 (pin_repo)
+//! 各业务模块的设置 IPC 由各模块自行提供。
 
 use crate::app::state::AppState;
-use crate::core::command::command_custom::CustomCommand;
-use crate::models::{Settings, ThemeMode};
+use crate::core::settings::{Settings, ThemeMode};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
 
-// ==================== 设置仓库 ====================
+// ==================== 通用设置 IPC ====================
 
 #[tauri::command]
 pub async fn get_setting(
@@ -55,9 +52,7 @@ pub async fn set_all_settings(
 }
 
 #[tauri::command]
-pub async fn get_appearance(
-    state: State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
+pub async fn get_appearance(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
     let s = state.settings_repo.get();
     Ok(serde_json::json!({
         "mode": s.theme,
@@ -134,70 +129,17 @@ pub async fn set_follow_system_theme(
     Ok(())
 }
 
-// ==================== 命令仓库 ====================
-
-#[tauri::command]
-pub async fn add_command(
-    state: State<'_, Arc<AppState>>,
-    cmd: CustomCommand,
-) -> Result<String, String> {
-    let id = cmd.id.clone();
-    state.command_repo.add(cmd).map_err(|e| e.to_string())?;
-    Ok(id)
-}
-
-#[tauri::command]
-pub async fn list_commands(
-    state: State<'_, Arc<AppState>>,
-) -> Result<Vec<CustomCommand>, String> {
-    Ok(state.command_repo.list())
-}
-
-#[tauri::command]
-pub async fn remove_command(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<(), String> {
-    state.command_repo.remove(&id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn run_command(
-    state: State<'_, Arc<AppState>>,
-    id: String,
-) -> Result<(), String> {
-    use crate::platform::windows;
-    let Some(cmd) = state.command_repo.get(&id) else {
-        return Err("Command not found".into());
-    };
-    let args = cmd.args.clone();
-    if cmd.run_as_admin {
-        windows::shell::launch_as_admin(&cmd.command, &args).map_err(|e| e.to_string())?;
-    } else {
-        windows::shell::launch(&cmd.command, &args).map_err(|e| e.to_string())?;
-    }
-    state
-        .command_repo
-        .record_used(&id, chrono::Utc::now().timestamp())
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-// ==================== Pin 仓库 ====================
-
-#[tauri::command]
-pub async fn list_pinned(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
-    Ok(state.pin_repo.list())
-}
-
-#[tauri::command]
-pub async fn pin_item(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
-    state.pin_repo.add(id);
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn unpin_item(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
-    state.pin_repo.remove(&id);
-    Ok(())
+/// 注册设置模块的 IPC 命令到 Tauri builder
+pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder.invoke_handler(tauri::generate_handler![
+        get_setting,
+        set_setting,
+        get_all_settings,
+        set_all_settings,
+        get_appearance,
+        set_appearance,
+        get_pin_top,
+        set_pin_top,
+        set_follow_system_theme,
+    ])
 }

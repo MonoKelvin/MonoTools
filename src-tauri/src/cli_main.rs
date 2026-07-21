@@ -9,7 +9,16 @@
 //!   monotools-cli --help
 
 use clap::{Parser, Subcommand};
-use monotools_lib::core::command::{dispatch, CommandContext, CommandOutput};
+use monotools_lib::core::command::{
+    build_core_registry, dispatch, CommandContext, CommandOutput, CommandRegistry, CommandRepo,
+    InMemoryCommandRepo,
+};
+use monotools_lib::core::settings::{InMemorySettingsRepo, Settings, SettingsRepo};
+use monotools_lib::search_engine::app_search::AppSearchEngine;
+use monotools_lib::search_engine::command_search::CommandSearchEngine;
+use monotools_lib::search_engine::file_search::FileSearchEngine;
+use monotools_lib::search_engine::{PinRepo, StatsRepo};
+use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(name = "monotools-cli")]
@@ -96,10 +105,11 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let ctx = CommandContext::new_headless().await?;
+    let ctx = build_cli_context().await?;
     let input = build_input_string(&cli);
+    let reg = build_cli_registry();
 
-    match dispatch(&input, &ctx).await {
+    match dispatch(&reg, &input, &ctx).await {
         Ok(output) => {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&output)?);
@@ -268,4 +278,43 @@ fn print_output(out: &CommandOutput) {
             _ => {}
         }
     }
+}
+
+async fn build_cli_context() -> anyhow::Result<CommandContext> {
+    let settings_repo = Arc::new(InMemorySettingsRepo::new(Settings::default()));
+    let command_repo: Arc<dyn CommandRepo> = Arc::new(InMemoryCommandRepo::new());
+    let stats_repo = Arc::new(StatsRepo::new());
+    let pin_repo = Arc::new(PinRepo::new());
+
+    let app_search = Arc::new(AppSearchEngine::new(settings_repo.clone()).await?);
+    let _ = app_search.refresh_index().await;
+
+    let command_search = Arc::new(CommandSearchEngine::new(command_repo.clone()));
+
+    let file_roots = settings_repo.get().file_search_roots.clone();
+    let file_search = Arc::new(FileSearchEngine::new(file_roots)?);
+
+    let mut ctx = CommandContext::new();
+    ctx.insert(settings_repo.clone());
+    ctx.insert(command_repo.clone());
+    ctx.insert(stats_repo.clone());
+    ctx.insert(pin_repo.clone());
+    ctx.insert(app_search.clone());
+    ctx.insert(command_search.clone());
+    ctx.insert(file_search.clone());
+
+    let command_specs = build_cli_registry().all_specs();
+    ctx.insert(command_specs);
+    Ok(ctx)
+}
+
+fn build_cli_registry() -> CommandRegistry {
+    let mut reg = build_core_registry();
+
+    #[cfg(windows)]
+    monotools_lib::platform::windows::commands::register_commands(&mut reg);
+
+    monotools_lib::search_engine::commands::register_commands(&mut reg);
+
+    reg
 }

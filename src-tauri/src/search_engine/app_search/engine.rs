@@ -1,10 +1,10 @@
 //! 应用搜索引擎 - 索引安装的应用 + 启动项 + 启动文件夹
 use crate::core::config::search as search_cfg;
 use crate::core::error::Result;
-use crate::search_engine::models::{AppEntry, ResultType, SearchAction, SearchResult};
+use crate::core::settings::SettingsRepo;
 use crate::platform::windows::shell::resolve_shortcut;
 use crate::platform::windows::special_shortcuts::get_special_shortcut;
-use crate::repositories::SettingsRepo;
+use crate::search_engine::models::{AppEntry, ResultType, SearchAction, SearchResult};
 use crate::utils::path::is_executable;
 use crate::utils::pinyin::to_pinyin;
 use parking_lot::RwLock;
@@ -34,9 +34,9 @@ impl AppSearchEngine {
 
     /// 仅供测试: 构造一个空 engine (不连真实 settings).
     pub fn new_empty_for_tests() -> Self {
-        use crate::repositories::settings_repo::InMemorySettingsRepo;
+        use crate::core::settings::InMemorySettingsRepo;
         Self::new_empty(Arc::new(InMemorySettingsRepo::new(
-            crate::models::Settings::default(),
+            crate::core::settings::Settings::default(),
         )))
     }
 
@@ -410,9 +410,9 @@ pub fn score_app_match(
     // 位置敏感加分: 匹配越靠前, 额外加分越多
     if best_match_pos != usize::MAX {
         let pos_bonus = match best_match_pos {
-            0 => 15.0,       // 开头匹配
-            1..=3 => 8.0,    // 前几个字符内
-            _ => 3.0,        // 其他位置
+            0 => 15.0,    // 开头匹配
+            1..=3 => 8.0, // 前几个字符内
+            _ => 3.0,     // 其他位置
         };
         s += pos_bonus;
     }
@@ -684,7 +684,7 @@ impl AppSearchEngine {
         use std::os::windows::ffi::OsStringExt;
         use windows::core::{PCWSTR, PWSTR};
         use windows::Win32::System::Registry::{
-            HKEY, KEY_READ, RegCloseKey, RegEnumKeyExW, RegOpenKeyExW,
+            RegCloseKey, RegEnumKeyExW, RegOpenKeyExW, HKEY, KEY_READ,
         };
 
         let hive_key = match hive {
@@ -760,7 +760,9 @@ impl AppSearchEngine {
             if open_result.is_ok() {
                 let display_icon = Self::read_registry_string(hsub, "DisplayIcon");
                 let display_name = Self::read_registry_string(hsub, "DisplayName");
-                unsafe { let _ = RegCloseKey(hsub); }
+                unsafe {
+                    let _ = RegCloseKey(hsub);
+                }
 
                 if let (Some(icon), Some(name)) = (display_icon, display_name) {
                     // DisplayIcon 可能包含逗号分隔的参数 (如 "path.exe,0"), 取第一部分
@@ -795,17 +797,24 @@ impl AppSearchEngine {
             idx += 1;
         }
 
-        unsafe { let _ = RegCloseKey(hkey); }
+        unsafe {
+            let _ = RegCloseKey(hkey);
+        }
         Ok(())
     }
 
     /// 读取注册表字符串值.
     #[cfg(windows)]
-    fn read_registry_string(hkey: windows::Win32::System::Registry::HKEY, name: &str) -> Option<String> {
+    fn read_registry_string(
+        hkey: windows::Win32::System::Registry::HKEY,
+        name: &str,
+    ) -> Option<String> {
         use std::ffi::OsString;
         use std::os::windows::ffi::OsStringExt;
         use windows::core::PCWSTR;
-        use windows::Win32::System::Registry::{REG_VALUE_TYPE, REG_SZ, REG_EXPAND_SZ, RegQueryValueExW};
+        use windows::Win32::System::Registry::{
+            RegQueryValueExW, REG_EXPAND_SZ, REG_SZ, REG_VALUE_TYPE,
+        };
 
         let wide_name: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
         let mut data_type: REG_VALUE_TYPE = REG_VALUE_TYPE::default();
@@ -858,10 +867,7 @@ impl AppSearchEngine {
 
     /// 非 Windows 平台: 注册表字符串读取返回 None.
     #[cfg(not(windows))]
-    fn read_registry_string(
-        _hkey: (),
-        _name: &str,
-    ) -> Option<String> {
+    fn read_registry_string(_hkey: (), _name: &str) -> Option<String> {
         None
     }
 
@@ -952,9 +958,23 @@ mod tests {
     #[test]
     fn score_exact_match_returns_full() {
         // exact: "chrome" == "chrome" (already lowercase) → APP_SCORE_EXACT
-        let exact = score_app_match("chrome", "chrome", r"c:\program files\chrome\chrome.exe", 0, "", "");
+        let exact = score_app_match(
+            "chrome",
+            "chrome",
+            r"c:\program files\chrome\chrome.exe",
+            0,
+            "",
+            "",
+        );
         // prefix: "chrome" 是 "chrome browser" 的前缀 → APP_SCORE_PREFIX
-        let prefix = score_app_match("chrome", "chrome browser", r"c:\apps\chrome\browser.exe", 0, "", "");
+        let prefix = score_app_match(
+            "chrome",
+            "chrome browser",
+            r"c:\apps\chrome\browser.exe",
+            0,
+            "",
+            "",
+        );
         // substr: "chrome" 是 "google chrome" 的子串 (但不是前缀) → APP_SCORE_SUBSTR
         let substr = score_app_match(
             "chrome",
@@ -1029,7 +1049,10 @@ mod tests {
         let s_0 = score_app_match("zzz", "chrome", r"c:\chrome\chrome.exe", 0, "", "");
         let s_100 = score_app_match("zzz", "chrome", r"c:\chrome\chrome.exe", 100, "", "");
         assert_eq!(s_0, 0.0, "无匹配时 launch_count=0 应返回 0");
-        assert_eq!(s_100, 0.0, "无匹配时 launch_count=100 也应返回 0 (不污染结果)");
+        assert_eq!(
+            s_100, 0.0,
+            "无匹配时 launch_count=100 也应返回 0 (不污染结果)"
+        );
 
         // 有名称匹配: launch_count 应额外加权
         let s_match_0 = score_app_match("chrome", "chrome", r"c:\chrome\chrome.exe", 0, "", "");

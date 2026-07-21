@@ -1,5 +1,5 @@
 ﻿//! 自定义命令搜索 - 与应用引擎并列
-use crate::repositories::CommandRepo;
+use crate::core::command::CommandRepo;
 use crate::search_engine::models::{ResultType, SearchAction, SearchCategory, SearchResult};
 use std::sync::Arc;
 

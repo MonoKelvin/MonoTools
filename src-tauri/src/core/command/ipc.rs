@@ -1,46 +1,62 @@
 //! 命令系统 IPC 命令
 //!
-//! 独立模块设计：命令系统相关的 IPC 命令定义在此模块中，
-//! 通过 core_ipc_commands! 宏注册到全局。
+//! 本模块只包含自定义命令 CRUD 相关的 IPC 命令。
+//!
+//! 命令列表查询和命令派发属于框架级组装逻辑，
+//! 因为需要汇总所有业务模块的命令，已移到 `crate::app::ipc`。
 
 use crate::app::state::AppState;
-use crate::core::command::{self, CommandContext};
+use crate::core::command::CustomCommand;
 use std::sync::Arc;
 use tauri::State;
 
-/// 前端命令面板使用：列出全部已注册命令（不含别名）。
+// ==================== 自定义命令 CRUD ====================
+
 #[tauri::command]
-pub async fn list_command_specs() -> Result<serde_json::Value, String> {
-    use command::build_default_registry;
-    let reg = build_default_registry();
-    let names = reg.main_names();
-    let mut specs: Vec<serde_json::Value> = Vec::with_capacity(names.len());
-    for name in names {
-        let Some(cmd) = reg.lookup(&name) else {
-            continue;
-        };
-        let spec = cmd.spec();
-        specs.push(serde_json::json!({
-            "name": spec.name,
-            "description": spec.description,
-            "aliases": spec.aliases,
-            "usage": spec.usage,
-        }));
-    }
-    Ok(serde_json::Value::Array(specs))
+pub async fn add_command(
+    state: State<'_, Arc<AppState>>,
+    cmd: CustomCommand,
+) -> Result<String, String> {
+    let id = cmd.id.clone();
+    state.command_repo.add(cmd).map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
-/// 前端命令面板使用：精确路由到后端命令。
 #[tauri::command]
-pub async fn dispatch_command(
-    state: State<'_, Arc<AppState>>,
-    command_id: String,
-    args: Option<Vec<String>>,
-) -> Result<command::CommandOutput, String> {
-    use command::registry_dispatch;
-    let ctx = CommandContext::from_app_state(&state);
-    let arg_list = args.unwrap_or_default();
-    registry_dispatch(&command_id, &arg_list, &ctx)
-        .await
-        .map_err(|e| e.to_string())
+pub async fn list_commands(state: State<'_, Arc<AppState>>) -> Result<Vec<CustomCommand>, String> {
+    Ok(state.command_repo.list())
+}
+
+#[tauri::command]
+pub async fn remove_command(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
+    state.command_repo.remove(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn run_command(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
+    use crate::platform::windows;
+    let Some(cmd) = state.command_repo.get(&id) else {
+        return Err("Command not found".into());
+    };
+    let args = cmd.args.clone();
+    if cmd.run_as_admin {
+        windows::shell::launch_as_admin(&cmd.command, &args).map_err(|e| e.to_string())?;
+    } else {
+        windows::shell::launch(&cmd.command, &args).map_err(|e| e.to_string())?;
+    }
+    state
+        .command_repo
+        .record_used(&id, chrono::Utc::now().timestamp())
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 注册命令模块的 IPC 命令到 Tauri builder
+pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder.invoke_handler(tauri::generate_handler![
+        list_commands,
+        add_command,
+        remove_command,
+        run_command,
+    ])
 }

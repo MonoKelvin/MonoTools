@@ -14,12 +14,14 @@
 //! 4. 删除 `Cargo.toml` 中对应依赖（如有）
 
 use crate::app::state::AppState;
-use crate::models::Settings;
-use crate::repositories::*;
+use crate::core::command::{
+    build_core_registry, CommandRegistry, CommandRepo, InMemoryCommandRepo,
+};
+use crate::core::settings::{InMemorySettingsRepo, Settings, SettingsRepo};
 use crate::search_engine::app_search::AppSearchEngine;
 use crate::search_engine::command_search::CommandSearchEngine;
 use crate::search_engine::file_search::FileSearchEngine;
-use crate::search_engine::SearchEngine;
+use crate::search_engine::{PinRepo, SearchEngine, StatsRepo};
 use crate::services::hotkey::HotkeyService;
 use crate::services::tray::{TrayMenuItem, TrayService};
 use crate::services::window::WindowService;
@@ -71,8 +73,7 @@ pub fn configure_builder(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
 /// 这是 app 层唯一直接引用业务模块的地方之一。
 pub fn build_app_state(app_handle: &AppHandle) -> Arc<AppState> {
     let settings_repo = Arc::new(InMemorySettingsRepo::new(Settings::default()));
-    let command_repo: Arc<dyn crate::repositories::CommandRepo> =
-        Arc::new(InMemoryCommandRepo::new());
+    let command_repo: Arc<dyn CommandRepo> = Arc::new(InMemoryCommandRepo::new());
     let stats_repo = Arc::new(StatsRepo::new());
     let pin_repo = Arc::new(PinRepo::new());
 
@@ -166,66 +167,6 @@ pub fn post_window_init(app: &AppHandle, state: &Arc<AppState>) {
     crate::services::window::post_init(app, pin_to_top);
 }
 
-/// 核心 IPC 命令列表宏
-///
-/// 所有业务模块的 IPC 命令都在这里统一汇总。
-/// 这是 app 层唯一直接引用业务模块 IPC 命令的地方。
-#[macro_export]
-macro_rules! core_ipc_commands {
-    ($($extra:path),* $(,)?) => {
-        tauri::generate_handler![
-            // 搜索模块
-            $crate::search_engine::ipc::search_cmd,
-            $crate::search_engine::ipc::search_more_cmd,
-            $crate::search_engine::ipc::execute_result,
-            $crate::search_engine::ipc::build_file_index,
-            $crate::search_engine::ipc::get_index_status,
-            // 窗口服务
-            $crate::services::window::ipc::show_window,
-            $crate::services::window::ipc::hide_window,
-            $crate::services::window::ipc::toggle_window,
-            $crate::services::window::ipc::set_window_height,
-            $crate::services::window::ipc::start_dragging,
-            $crate::services::window::ipc::set_dragging,
-            $crate::services::window::ipc::quit_app,
-            // 热键服务
-            $crate::services::hotkey::ipc::register_hotkey_cmd,
-            $crate::services::hotkey::ipc::unregister_hotkey,
-            $crate::services::hotkey::ipc::get_current_hotkey,
-            // 仓库层 (设置/命令/Pin)
-            $crate::repositories::ipc::get_setting,
-            $crate::repositories::ipc::set_setting,
-            $crate::repositories::ipc::get_all_settings,
-            $crate::repositories::ipc::set_all_settings,
-            $crate::repositories::ipc::get_appearance,
-            $crate::repositories::ipc::set_appearance,
-            $crate::repositories::ipc::get_pin_top,
-            $crate::repositories::ipc::set_pin_top,
-            $crate::repositories::ipc::set_follow_system_theme,
-            $crate::repositories::ipc::list_commands,
-            $crate::repositories::ipc::add_command,
-            $crate::repositories::ipc::remove_command,
-            $crate::repositories::ipc::run_command,
-            $crate::repositories::ipc::list_pinned,
-            $crate::repositories::ipc::pin_item,
-            $crate::repositories::ipc::unpin_item,
-            // 平台层 (图标/Shell/主题)
-            $crate::platform::windows::ipc::get_app_icon,
-            $crate::platform::windows::ipc::get_app_icons_batch,
-            $crate::platform::windows::ipc::open_file_location,
-            $crate::platform::windows::ipc::show_file_properties,
-            $crate::platform::windows::ipc::delete_file_to_recycle_bin,
-            $crate::platform::windows::ipc::get_system_theme,
-            // 命令系统
-            $crate::core::command::ipc::list_command_specs,
-            $crate::core::command::ipc::dispatch_command,
-            // 框架级 (app 层)
-            $crate::app::ipc::frontend_ready,
-            $($extra),*
-        ]
-    };
-}
-
 /// 设置系统托盘
 ///
 /// 各业务模块自己负责注册菜单项，这里只负责组装。
@@ -237,7 +178,7 @@ pub fn setup_tray(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::error
     crate::services::window::register_tray_items(&mut tray_service);
 
     // 设置模块菜单项
-    crate::repositories::settings_repo::register_tray_items(&mut tray_service, app);
+    crate::core::settings::tray::register_tray_items(&mut tray_service, app);
 
     // 通用菜单项
     tray_service.register_item(TrayMenuItem::separator());
@@ -251,20 +192,49 @@ pub fn setup_tray(app: &tauri::App<tauri::Wry>) -> Result<(), Box<dyn std::error
 
 /// 注册 IPC 命令到 builder
 ///
-/// 根据 feature flag 决定是否追加独立模块的命令。
+/// 各业务模块自己负责提供 `register_ipc_commands` 函数，
+/// 本函数只负责按顺序调用各模块的注册函数。
+///
+/// # 架构原则
+/// - 新增模块只需在此添加一行调用
+/// - 各模块内部管理自己的 IPC 命令，内聚性强
+/// - app 层只做组装，不关心具体命令实现
 pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
-    #[cfg(not(feature = "recommend"))]
-    let builder = builder.invoke_handler(crate::core_ipc_commands!());
+    // core 层命令
+    let builder = crate::core::settings::ipc::register_ipc_commands(builder);
+    let builder = crate::core::command::ipc::register_ipc_commands(builder);
 
+    // 业务模块命令
+    let builder = crate::search_engine::ipc::register_ipc_commands(builder);
+    let builder = crate::services::window::ipc::register_ipc_commands(builder);
+    let builder = crate::services::hotkey::ipc::register_ipc_commands(builder);
+    let builder = crate::platform::windows::ipc::register_ipc_commands(builder);
+
+    // 框架级命令 (app 层)
+    let builder = crate::app::ipc::register_ipc_commands(builder);
+
+    // 可选模块: recommend
     #[cfg(feature = "recommend")]
-    let builder = builder.invoke_handler(crate::core_ipc_commands![
-        crate::recommend::ipc::recommend_set_items,
-        crate::recommend::ipc::recommend_record_launch,
-        crate::recommend::ipc::recommend_get_scores,
-        crate::recommend::ipc::recommend_report_feedback,
-        crate::recommend::ipc::recommend_get_status,
-        crate::recommend::ipc::get_window_monitor_state,
-    ]);
+    let builder = crate::recommend::ipc::register_ipc_commands(builder);
 
     builder
+}
+
+/// 构建包含所有已注册命令的 registry。
+///
+/// 这是框架级的组装点，负责把 core 层命令 + 各业务模块命令组装在一起。
+///
+/// # 架构原则
+/// - core 层只提供 `build_core_registry()`，不含任何业务命令
+/// - 各业务模块提供 `register_commands(&mut registry)` 函数
+/// - 本函数是唯一的组装点，新增模块只需加一行调用
+pub fn build_command_registry() -> CommandRegistry {
+    let mut reg = build_core_registry();
+
+    #[cfg(windows)]
+    crate::platform::windows::commands::register_commands(&mut reg);
+
+    crate::search_engine::commands::register_commands(&mut reg);
+
+    reg
 }

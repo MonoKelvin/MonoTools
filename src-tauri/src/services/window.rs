@@ -312,4 +312,19 @@ pub mod ipc {
         app.exit(0);
         Ok(())
     }
+
+    /// 注册窗口服务的 IPC 命令到 Tauri builder
+    pub fn register_ipc_commands(
+        builder: tauri::Builder<tauri::Wry>,
+    ) -> tauri::Builder<tauri::Wry> {
+        builder.invoke_handler(tauri::generate_handler![
+            show_window,
+            hide_window,
+            toggle_window,
+            set_window_height,
+            start_dragging,
+            set_dragging,
+            quit_app,
+        ])
+    }
 }

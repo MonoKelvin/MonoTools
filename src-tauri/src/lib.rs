@@ -3,9 +3,7 @@
 
 pub mod app;
 pub mod core;
-pub mod models;
 pub mod platform;
-pub mod repositories;
 pub mod search_engine;
 pub mod services;
 pub mod utils;

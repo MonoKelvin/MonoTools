@@ -164,3 +164,36 @@ pub async fn execute_result(
     }
     Ok(())
 }
+
+// ==================== Pin 仓库 ====================
+
+#[tauri::command]
+pub async fn list_pinned(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
+    Ok(state.pin_repo.list())
+}
+
+#[tauri::command]
+pub async fn pin_item(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
+    state.pin_repo.add(id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn unpin_item(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
+    state.pin_repo.remove(&id);
+    Ok(())
+}
+
+/// 注册搜索模块的 IPC 命令到 Tauri builder
+pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
+    builder.invoke_handler(tauri::generate_handler![
+        search_cmd,
+        search_more_cmd,
+        execute_result,
+        build_file_index,
+        get_index_status,
+        list_pinned,
+        pin_item,
+        unpin_item,
+    ])
+}
