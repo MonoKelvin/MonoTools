@@ -204,8 +204,32 @@ export const useSearchStore = defineStore('search', () => {
     })
 
     /**
+     * 预计算: 缓存 APP_CATEGORIES 的关键词匹配结果.
+     * 避免每次排序时对每个 item 都遍历整个 APP_CATEGORIES 对象.
+     * key = 路径/标题的 lowercase, value = 匹配的类别.
+     */
+    const categoryCache = new Map<string, string | null>()
+
+    /**
+     * 带缓存的类别匹配. 同一路径多次查询只遍历一次 APP_CATEGORIES.
+     */
+    function matchAppCategoryByPathCached(path: string): string | null {
+        const key = path.toLowerCase()
+        // 先查缓存
+        if (categoryCache.has(key)) {
+            return categoryCache.get(key) ?? null
+        }
+        // 未命中, 执行匹配并缓存
+        const result = matchAppCategoryByPath(path)
+        categoryCache.set(key, result)
+        return result
+    }
+
+    /**
      * 根据用户已打开应用的类别, 计算推荐类别集合.
      * 返回: Map<resultId, bonusScore>
+     *
+     * 优化: 预构建"类别 → 关键词集合"的反向索引, 避免对每条结果遍历所有类别.
      */
     const recommendationScores = computed<Map<string, number>>(() => {
         const scores = new Map<string, number>()
@@ -228,24 +252,25 @@ export const useSearchStore = defineStore('search', () => {
 
         if (targetCats.size === 0) return scores
 
-        // 为属于推荐类别的应用加分
+        // 预构建: 目标类别 → 关键词集合 (小写)
+        const targetKeywords = new Map<string, Set<string>>()
+        for (const cat of targetCats) {
+            const keywords = APP_CATEGORIES[cat] || []
+            const kwSet = new Set(keywords.map((kw) => kw.toLowerCase()))
+            targetKeywords.set(cat, kwSet)
+        }
+
         const recBonus = SMART_WEIGHTS.recommendation
+
+        // 单次遍历 results, 用缓存的类别匹配
         for (const app of results.value) {
             if (app.category !== 'apps') continue
-            const titleLower = app.title.toLowerCase()
-            const pathLower = (app.subtitle || app.title).toLowerCase()
-            for (const cat of targetCats) {
-                const keywords = APP_CATEGORIES[cat] || []
-                if (
-                    keywords.some(
-                        (kw) =>
-                            titleLower.includes(kw.toLowerCase()) ||
-                            pathLower.includes(kw.toLowerCase()),
-                    )
-                ) {
-                    scores.set(app.id, (scores.get(app.id) || 0) + recBonus)
-                    break
-                }
+            const id = app.title.toLowerCase() + '|' + (app.subtitle || app.title).toLowerCase()
+
+            // 用缓存的类别匹配
+            const appCat = matchAppCategoryByPathCached(app.subtitle || app.title)
+            if (appCat && targetCats.has(appCat)) {
+                scores.set(app.id, (scores.get(app.id) || 0) + recBonus)
             }
         }
 
@@ -329,9 +354,9 @@ export const useSearchStore = defineStore('search', () => {
     function getForegroundCategoryBoost(item: SearchResult): number {
         const fgPath = activeAppPath.value
         if (!fgPath) return 0
-        const fgCat = matchAppCategoryByPath(fgPath)
+        const fgCat = matchAppCategoryByPathCached(fgPath)
         if (!fgCat) return 0
-        const itemCat = matchAppCategoryByPath(item.subtitle || item.title)
+        const itemCat = matchAppCategoryByPathCached(item.subtitle || item.title)
         if (itemCat === fgCat) return SMART_WEIGHTS.launchCount * 5
         // 弱推荐类别也轻微加分, 避免排序完全二元
         const recs = RECOMMENDATION_MAP[fgCat] || []

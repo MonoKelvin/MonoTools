@@ -77,23 +77,35 @@ impl SearchEngine {
     }
 
     /// 在 `query` 下搜索, 最多返回 `limit` 条.
-    /// 
+    ///
     /// 优化策略:
-    /// 1. 每个 source 使用独立的子限制, 避免单个 source 返回过多结果
-    /// 2. 子限制根据 category 权重分配, 重要类别获得更多配额
-    /// 3. 合并后再进行后处理, 确保整体结果数量可控
+    /// 1. **并行搜索**: 三个 source (Apps / Files / Commands) 并发执行,
+    ///    搜索延迟 = max(各 source 延迟) 而非 sum(各 source 延迟).
+    /// 2. 每个 source 使用独立的子限制, 避免单个 source 返回过多结果
+    /// 3. 子限制根据 category 权重分配, 重要类别获得更多配额
+    /// 4. 合并后再进行后处理, 确保整体结果数量可控
     pub fn search(&self, query: &str, limit: u32) -> Vec<SearchResult> {
-        let mut combined: Vec<SearchResult> = Vec::new();
         let sub_limit = std::cmp::max(10, limit / self.sources.len() as u32) + 20;
-        
-        for src in &self.sources {
+
+        // 构建每个 source 的搜索任务
+        let tasks: Vec<_> = self.sources.iter().map(|src| {
             let src_limit = match src.category() {
                 SearchCategory::Apps => std::cmp::min(sub_limit + 30, limit),
                 SearchCategory::Commands => std::cmp::min(sub_limit, limit),
                 SearchCategory::Files => std::cmp::min(sub_limit + 50, limit),
                 _ => sub_limit,
             };
-            combined.extend(src.search(query, src_limit));
+            let src = Arc::clone(src);
+            let q = query.to_string();
+            std::thread::spawn(move || src.search(&q, src_limit))
+        }).collect();
+
+        // 等待所有搜索完成并合并结果
+        let mut combined: Vec<SearchResult> = Vec::new();
+        for handle in tasks {
+            if let Ok(results) = handle.join() {
+                combined.extend(results);
+            }
         }
         self.post_process(query, combined, limit)
     }

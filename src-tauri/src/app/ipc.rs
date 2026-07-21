@@ -54,6 +54,12 @@ pub async fn frontend_ready(
         }
 
         let _ = app.emit(ipc_events::FRONTEND_READY, ());
+
+        #[cfg(feature = "recommend")]
+        {
+            let config = crate::recommend::RecommendInitConfig::default();
+            crate::recommend::start_deferred(&app, config);
+        }
     }
     Ok(())
 }

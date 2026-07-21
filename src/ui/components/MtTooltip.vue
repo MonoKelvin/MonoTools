@@ -34,24 +34,41 @@ const props = withDefaults(defineProps<TooltipProps>(), {
 })
 
 const tooltipRef = ref<HTMLElement | null>(null)
-const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '-9999px' })
+const tooltipStyle = ref<{ left: string; top: string; opacity: string; pointerEvents: string }>({
+  left: '0px',
+  top: '-9999px',
+  opacity: '0',
+  pointerEvents: 'none',
+})
 const actualPlacement = ref<TooltipPlacement>('bottom')
-const maxWidthStyle = ref('200px')
+const isPositioned = ref(false)
+const animationOrigin = ref<'left' | 'right' | 'top' | 'bottom' | 'default'>('default')
+let resizeObserver: ResizeObserver | null = null
+let rafId: number | null = null
+let hideRafId: number | null = null
 
-function updatePosition() {
-  if (!props.visible || !tooltipRef.value) return
+const hasContent = computed(() => {
+  return !!(props.title || props.subtitle || props.path)
+})
 
+const showTooltip = computed(() => {
+  return props.visible && hasContent.value && isPositioned.value
+})
+
+function computePosition() {
+  if (!tooltipRef.value) return
+
+  const el = tooltipRef.value
   const vw = window.innerWidth
   const vh = window.innerHeight
   const tooltipMaxWidth = props.maxWidth > 0
     ? Math.min(props.maxWidth, vw - props.sidePadding * 2)
     : vw - props.sidePadding * 2
 
-  tooltipRef.style.maxWidth = `${tooltipMaxWidth}px`
-  maxWidthStyle.value = `${tooltipMaxWidth}px`
+  el.style.maxWidth = `${tooltipMaxWidth}px`
 
-  const tooltipWidth = tooltipRef.offsetWidth
-  const tooltipHeight = tooltipRef.offsetHeight
+  const tooltipWidth = el.offsetWidth
+  const tooltipHeight = el.offsetHeight
 
   if (tooltipWidth === 0 || tooltipHeight === 0) return
 
@@ -93,14 +110,6 @@ function updatePosition() {
 
     left = anchorCenterX + props.offsetX
 
-    const halfWidth = tooltipWidth / 2
-    if (left - halfWidth < props.sidePadding) {
-      left = props.sidePadding + halfWidth
-    }
-    if (left + halfWidth > vw - props.sidePadding) {
-      left = vw - props.sidePadding - halfWidth
-    }
-
     if (placement === 'top') {
       top = anchorTop - tooltipHeight - props.offsetY
     } else {
@@ -120,14 +129,6 @@ function updatePosition() {
 
     top = anchorCenterY + props.offsetY
 
-    const halfHeight = tooltipHeight / 2
-    if (top - halfHeight < props.sidePadding) {
-      top = props.sidePadding + halfHeight
-    }
-    if (top + halfHeight > vh - props.sidePadding) {
-      top = vh - props.sidePadding - halfHeight
-    }
-
     if (placement === 'left') {
       left = anchorLeft - tooltipWidth - props.offsetX
     } else {
@@ -135,97 +136,230 @@ function updatePosition() {
     }
   }
 
+  const isMouseMode = props.mouseX != null && props.mouseY != null
+  const hasHCenter = (placement === 'top' || placement === 'bottom') && !isMouseMode
+  const hasVCenter = placement === 'left' || placement === 'right'
+
+  let realLeft: number
+  let realTop: number
+
+  if (hasHCenter) {
+    realLeft = left - tooltipWidth / 2
+  } else {
+    realLeft = left
+  }
+
+  if (hasVCenter) {
+    realTop = top - tooltipHeight / 2
+  } else {
+    realTop = top
+  }
+
+  let realRight = realLeft + tooltipWidth
+  let realBottom = realTop + tooltipHeight
+
+  if (realLeft < props.sidePadding) {
+    realLeft = props.sidePadding
+    realRight = realLeft + tooltipWidth
+  }
+  if (realRight > vw - props.sidePadding) {
+    realRight = vw - props.sidePadding
+    realLeft = realRight - tooltipWidth
+  }
+  if (realTop < props.sidePadding) {
+    realTop = props.sidePadding
+    realBottom = realTop + tooltipHeight
+  }
+  if (realBottom > vh - props.sidePadding) {
+    realBottom = vh - props.sidePadding
+    realTop = realBottom - tooltipHeight
+  }
+
+  if (hasHCenter) {
+    left = realLeft + tooltipWidth / 2
+  } else {
+    left = realLeft
+  }
+
+  if (hasVCenter) {
+    top = realTop + tooltipHeight / 2
+  } else {
+    top = realTop
+  }
+
   actualPlacement.value = placement
+  isPositioned.value = true
+
+  const centerX = realLeft + tooltipWidth / 2
+  const centerY = realTop + tooltipHeight / 2
+  const leftDist = centerX
+  const rightDist = vw - centerX
+  const topDist = centerY
+  const bottomDist = vh - centerY
+
+  const thresholdX = vw * 0.25
+  const thresholdY = vh * 0.25
+
+  let origin: 'left' | 'right' | 'top' | 'bottom' | 'default' = 'default'
+
+  const minDist = Math.min(leftDist, rightDist, topDist, bottomDist)
+
+  if (minDist < thresholdX || minDist < thresholdY) {
+    if (minDist === leftDist && leftDist < thresholdX) {
+      origin = 'left'
+    } else if (minDist === rightDist && rightDist < thresholdX) {
+      origin = 'right'
+    } else if (minDist === topDist && topDist < thresholdY) {
+      origin = 'top'
+    } else if (minDist === bottomDist && bottomDist < thresholdY) {
+      origin = 'bottom'
+    }
+  }
+
+  animationOrigin.value = origin
 
   tooltipStyle.value = {
     left: `${left}px`,
     top: `${top}px`,
+    opacity: '1',
+    pointerEvents: 'none',
   }
 }
 
-function scheduleUpdate() {
-  if (!props.visible) return
+function scheduleShow() {
+  if (!props.visible || !hasContent.value) return
+
+  isPositioned.value = false
+
+  if (hideRafId) {
+    cancelAnimationFrame(hideRafId)
+    hideRafId = null
+  }
+  if (rafId) cancelAnimationFrame(rafId)
 
   nextTick(() => {
-    updatePosition()
-    requestAnimationFrame(() => {
-      updatePosition()
+    computePosition()
+    rafId = requestAnimationFrame(() => {
+      computePosition()
     })
   })
 }
 
+function hideTooltip() {
+  isPositioned.value = false
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  tooltipStyle.value = {
+    left: '0px',
+    top: '-9999px',
+    opacity: '0',
+    pointerEvents: 'none',
+  }
+}
+
+function setupResizeObserver() {
+  if (!tooltipRef.value || resizeObserver) return
+
+  resizeObserver = new ResizeObserver(() => {
+    if (props.visible && hasContent.value && isPositioned.value) {
+      computePosition()
+    }
+  })
+  resizeObserver.observe(tooltipRef.value)
+}
+
 watch(() => props.visible, (val) => {
   if (val) {
-    scheduleUpdate()
+    scheduleShow()
+  } else {
+    hideTooltip()
   }
-})
+}, { flush: 'post' })
+
+watch(() => [props.title, props.subtitle, props.path], () => {
+  if (props.visible && hasContent.value) {
+    scheduleShow()
+  }
+}, { flush: 'post' })
 
 watch(() => [props.mouseX, props.mouseY], () => {
-  if (props.visible && props.mouseX != null && props.mouseY != null) {
-    updatePosition()
+  if (props.visible && props.mouseX != null && props.mouseY != null && isPositioned.value) {
+    computePosition()
   }
-}, { deep: false })
+}, { flush: 'post' })
 
 watch(() => props.placement, () => {
   if (props.visible) {
-    scheduleUpdate()
+    scheduleShow()
   }
-})
+}, { flush: 'post' })
 
-watch(() => [props.offsetX, props.offsetY, props.maxWidth, props.sidePadding], () => {
-  if (props.visible) {
-    updatePosition()
+watch(() => props.anchor, () => {
+  if (props.visible && props.anchor) {
+    scheduleShow()
   }
-}, { deep: false })
+}, { flush: 'post' })
 
 function handleScroll() {
-  if (props.visible && props.anchor) {
-    updatePosition()
+  if (props.visible && props.anchor && isPositioned.value) {
+    computePosition()
   }
 }
 
 function handleResize() {
-  if (props.visible) {
-    updatePosition()
+  if (props.visible && isPositioned.value) {
+    scheduleShow()
   }
 }
 
 onMounted(() => {
-  if (props.visible) {
-    scheduleUpdate()
+  if (props.visible && hasContent.value) {
+    scheduleShow()
+  } else {
+    hideTooltip()
   }
+  setupResizeObserver()
   window.addEventListener('resize', handleResize)
   window.addEventListener('scroll', handleScroll, true)
 })
 
 onBeforeUnmount(() => {
+  if (resizeObserver) {
+    resizeObserver.disconnect()
+    resizeObserver = null
+  }
+  if (rafId) {
+    cancelAnimationFrame(rafId)
+    rafId = null
+  }
+  if (hideRafId) {
+    cancelAnimationFrame(hideRafId)
+    hideRafId = null
+  }
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('scroll', handleScroll, true)
-})
-
-const hasContent = computed(() => {
-  return !!(props.title || props.subtitle || props.path)
 })
 </script>
 
 <template>
   <Teleport to="body">
-    <Transition name="mt-tooltip-fade">
-      <div
-        v-if="visible && hasContent"
-        ref="tooltipRef"
-        class="mt-tooltip"
-        :class="[
-          `mt-tooltip--${actualPlacement}`,
-          { 'mt-tooltip--mouse': mouseX != null && mouseY != null }
-        ]"
-        :style="tooltipStyle"
-      >
-        <div v-if="title" class="mt-tooltip__title">{{ title }}</div>
-        <div v-if="subtitle" class="mt-tooltip__subtitle">{{ subtitle }}</div>
-        <div v-if="path" class="mt-tooltip__path">{{ path }}</div>
-      </div>
-    </Transition>
+    <div
+      ref="tooltipRef"
+      class="mt-tooltip"
+      :class="[
+        `mt-tooltip--${actualPlacement}`,
+        `mt-tooltip--from-${animationOrigin}`,
+        { 'mt-tooltip--mouse': mouseX != null && mouseY != null },
+        { 'mt-tooltip--visible': showTooltip }
+      ]"
+      :style="tooltipStyle"
+    >
+      <div v-if="title" class="mt-tooltip__title">{{ title }}</div>
+      <div v-if="subtitle" class="mt-tooltip__subtitle">{{ subtitle }}</div>
+      <div v-if="path" class="mt-tooltip__path">{{ path }}</div>
+    </div>
   </Teleport>
 </template>
 
@@ -249,16 +383,91 @@ const hasContent = computed(() => {
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   text-align: left;
+  opacity: 0;
+  --anim-x: 0px;
+  --anim-y: 2px;
+  --base-transform: translateX(0);
+  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out);
+  transform: var(--base-transform) translate(var(--anim-x), var(--anim-y));
+}
+
+.mt-tooltip--visible {
+  opacity: 1;
+  transform: var(--base-transform) translate(0, 0);
 }
 
 .mt-tooltip--top,
 .mt-tooltip--bottom {
-  transform: translateX(-50%);
+  --base-transform: translateX(-50%);
 }
 
 .mt-tooltip--left,
 .mt-tooltip--right {
-  transform: none;
+  --base-transform: translateY(-50%);
+}
+
+.mt-tooltip--mouse {
+  --base-transform: translateX(0);
+}
+
+/* Default: slide up */
+.mt-tooltip--from-default {
+  --anim-x: 0px;
+  --anim-y: 2px;
+}
+
+.mt-tooltip--top.mt-tooltip--from-default,
+.mt-tooltip--bottom.mt-tooltip--from-default {
+  --anim-x: 0px;
+  --anim-y: 2px;
+}
+
+/* From left: slide right */
+.mt-tooltip--from-left {
+  --anim-x: -8px;
+  --anim-y: 0px;
+}
+
+.mt-tooltip--top.mt-tooltip--from-left,
+.mt-tooltip--bottom.mt-tooltip--from-left {
+  --anim-x: -8px;
+  --anim-y: 0px;
+}
+
+/* From right: slide left */
+.mt-tooltip--from-right {
+  --anim-x: 8px;
+  --anim-y: 0px;
+}
+
+.mt-tooltip--top.mt-tooltip--from-right,
+.mt-tooltip--bottom.mt-tooltip--from-right {
+  --anim-x: 8px;
+  --anim-y: 0px;
+}
+
+/* From top: slide down */
+.mt-tooltip--from-top {
+  --anim-x: 0px;
+  --anim-y: -8px;
+}
+
+.mt-tooltip--top.mt-tooltip--from-top,
+.mt-tooltip--bottom.mt-tooltip--from-top {
+  --anim-x: 0px;
+  --anim-y: -8px;
+}
+
+/* From bottom: slide up */
+.mt-tooltip--from-bottom {
+  --anim-x: 0px;
+  --anim-y: 8px;
+}
+
+.mt-tooltip--top.mt-tooltip--from-bottom,
+.mt-tooltip--bottom.mt-tooltip--from-bottom {
+  --anim-x: 0px;
+  --anim-y: 8px;
 }
 
 .mt-tooltip__title {
@@ -295,35 +504,5 @@ const hasContent = computed(() => {
 .mt-tooltip__subtitle:last-child,
 .mt-tooltip__path:last-child {
   margin-bottom: 0;
-}
-
-.mt-tooltip-fade-enter-active,
-.mt-tooltip-fade-leave-active {
-  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out);
-}
-
-.mt-tooltip-fade-enter-from,
-.mt-tooltip-fade-leave-to {
-  opacity: 0;
-}
-
-.mt-tooltip--top.mt-tooltip-fade-enter-from,
-.mt-tooltip--top.mt-tooltip-fade-leave-to {
-  transform: translateX(-50%) translateY(-2px);
-}
-
-.mt-tooltip--bottom.mt-tooltip-fade-enter-from,
-.mt-tooltip--bottom.mt-tooltip-fade-leave-to {
-  transform: translateX(-50%) translateY(2px);
-}
-
-.mt-tooltip--left.mt-tooltip-fade-enter-from,
-.mt-tooltip--left.mt-tooltip-fade-leave-to {
-  transform: translateX(-2px);
-}
-
-.mt-tooltip--right.mt-tooltip-fade-enter-from,
-.mt-tooltip--right.mt-tooltip-fade-leave-to {
-  transform: translateX(2px);
 }
 </style>

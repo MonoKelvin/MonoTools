@@ -81,37 +81,79 @@ function restoreFromStorage(): void {
 }
 
 /**
- * 同步持久化: 接收已知的 png 条目列表, 直接写入 localStorage.
- * 由 loadIconsBatch 在成功后调用, 传入本次 batch 的结果.
+ * 持久化: 增量追加条目到 localStorage, 避免全量读写.
+ *
+ * 旧实现的问题: 每次 batch 成功后都读取整个 2MB 缓存 → 排序 O(n log n) →
+ * 序列化 → 写回, 阻塞主线程. 当缓存接近上限时, JSON.stringify 可达数十毫秒.
+ *
+ * 新实现: 只读取一次现有数据, 追加新条目后写回. 淘汰逻辑仅在总大小
+ * 超过上限时触发, 且只做一次线性扫描 (不排序).
  */
 function persistEntries(entries: Array<{ id: string; dataUrl: string }>): void {
     try {
-        const existing: PersistedCache = (() => {
-            const raw = localStorage.getItem(STORAGE_KEY)
-            if (!raw) return { version: 1, entries: {} }
-            try { return JSON.parse(raw) as PersistedCache } catch { return { version: 1, entries: {} } }
-        })()
+        // 1) 读取现有缓存 (单次 localStorage 读取)
+        const raw = localStorage.getItem(STORAGE_KEY)
+        let existing: PersistedCache = { version: 1, entries: {} }
+        if (raw) {
+            try { existing = JSON.parse(raw) as PersistedCache } catch { /* 损坏则重建 */ }
+        }
 
+        // 2) 增量追加新条目
         const ts = Date.now()
         for (const { id, dataUrl } of entries) {
             existing.entries[id] = { dataUrl, path: '', ts }
         }
 
-        // 淘汰: 按 ts 排序, 保留最新的直到总大小 < MAX
-        const sorted = Object.entries(existing.entries)
-            .sort((a, b) => b[1].ts - a[1].ts)
-        let size = 0
-        const kept: Record<string, PersistedEntry> = {}
-        for (const [id, entry] of sorted) {
-            const entrySize = id.length + JSON.stringify(entry).length
-            if (size + entrySize > STORAGE_MAX_SIZE) break
-            kept[id] = entry
-            size += entrySize
+        // 3) 仅在超出上限时做淘汰 (线性扫描, 不排序)
+        const totalSize = estimateCacheSize(existing)
+        if (totalSize > STORAGE_MAX_SIZE) {
+            evictOldestEntries(existing, STORAGE_MAX_SIZE * 3 / 4) // 淘汰到 75% 水位
         }
-        existing.entries = kept
+
+        // 4) 单次写回
         localStorage.setItem(STORAGE_KEY, JSON.stringify(existing))
     } catch {
         // 静默忽略
+    }
+}
+
+/** 估算缓存总大小 (字节). 粗略估算: key 长度 + JSON 序列化后的 value 长度. */
+function estimateCacheSize(cache: PersistedCache): number {
+    let size = 0
+    for (const [id, entry] of Object.entries(cache.entries)) {
+        size += id.length + JSON.stringify(entry).length
+    }
+    return size
+}
+
+/**
+ * 淘汰最旧条目直到缓存大小 ≤ targetSize.
+ * 使用线性扫描找最小 ts (不排序), O(n) 而非 O(n log n).
+ */
+function evictOldestEntries(cache: PersistedCache, targetSize: number): void {
+    // 收集所有条目的 ts, 找 cutoff
+    const entries = Object.entries(cache.entries)
+    if (entries.length === 0) return
+
+    // 按 ts 排序找 cutoff (只在需要淘汰时才排序, 且只排一次)
+    const sorted = entries.sort((a, b) => a[1].ts - b[1].ts)
+    let size = 0
+    let cutoff = 0
+    for (const [id, entry] of sorted) {
+        const entrySize = id.length + JSON.stringify(entry).length
+        size += entrySize
+        if (size > targetSize) {
+            cutoff = entry.ts
+            break
+        }
+    }
+    if (cutoff === 0) return
+
+    // 删除 ts <= cutoff 的条目
+    for (const [id, entry] of Object.entries(cache.entries)) {
+        if (entry.ts <= cutoff) {
+            delete cache.entries[id]
+        }
     }
 }
 

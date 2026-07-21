@@ -2,25 +2,29 @@
  * IconSource registry —— 集中管理所有数据源.
  *
  * 默认顺序 (从高优先级到低):
- * 1. KnownIconSource    —— 静态 knownAppIcons 查表 (零网络, 零 IPC)
- * 2. LobehubIconSource  —— LobeHub 模糊匹配 (可能网络, 仅 Tauri)
- * 3. IpcIconSource      —— 后端 IPC 提取真实 exe / lnk 图标 (仅 Tauri)
+ * 1. KnownIconSource    —— 静态 knownAppIcons 查表 (零网络, 零 IPC, 纯内存)
+ * 2. IpcIconSource      —— 后端 IPC 提取真实 exe / lnk 图标 (仅 Tauri, 跨进程)
+ * 3. LobehubIconSource  —— LobeHub 模糊匹配 (可能网络, 仅 Tauri)
  * 4. FallbackIconSource —— iconForFileKind 兜底 (永不返回 null)
+ *
+ * 排序理由: KnownIconSource 是零成本内存查表, 应该优先于 IPC.
+ * 旧顺序把 IPC 放第一位, 导致每次搜索都先走一遍跨进程调用,
+ * 即使 KnownIconSource 能直接命中也要等 IPC 返回才轮到它.
  *
  * 未来加新 source: push 到此数组即可, 不动 useAppIcon 主体逻辑.
  */
 
 import type { IconSource } from './types'
 import { KnownIconSource } from './known'
-import { LobehubIconSource } from './lobehub'
 import { IpcIconSource } from './ipc'
+import { LobehubIconSource } from './lobehub'
 import { FallbackIconSource } from './fallback'
 
 /** 单一 registry 数组 —— useAppIcon 在创建图标状态时按顺序遍历. */
 export const iconSourceRegistry: IconSource[] = [
+    new KnownIconSource(),
     new IpcIconSource(),
     new LobehubIconSource(),
-    new KnownIconSource(),
     new FallbackIconSource(),
 ]
 

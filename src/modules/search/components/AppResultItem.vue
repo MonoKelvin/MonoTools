@@ -19,7 +19,7 @@
  * `src/composables/useIconRenderer.ts`.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
-import { AppWindow, Monitor, Package, CornerDownLeft } from '@lucide/vue'
+import { AppWindow, Monitor, Store, CornerDownLeft } from '@lucide/vue'
 import type { SearchResult } from '@/modules/search'
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { useAdaptiveText } from '@/utils/adaptiveText'
@@ -176,7 +176,7 @@ const isUwpApp = computed(() => props.result?.resultType === 'uwp-app')
 
 const badgeInfo = computed(() => {
   if (isUwpApp.value) {
-    return { icon: Package, label: 'UWP 应用', type: 'uwp' }
+    return { icon: Store, label: 'UWP 应用', type: 'uwp' }
   }
   if (isSystemApp.value) {
     return { icon: Monitor, label: '系统应用', type: 'system' }

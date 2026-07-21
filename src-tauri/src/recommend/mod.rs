@@ -58,10 +58,14 @@ pub use types::{
 pub use window_monitor::{ActiveAppEntry, WindowMonitorState};
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use window_monitor::WindowMonitor;
+
+/// 延迟初始化标记：frontend_ready 前不启动窗口监控和 Python 引擎。
+static DEFERRED_START_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 /// 推荐服务 - 对外统一入口
 ///
@@ -85,6 +89,9 @@ pub struct RecommendService {
 
     /// 运行状态
     status: RwLock<RecommendStatus>,
+
+    /// 是否已执行延迟启动（frontend_ready 触发一次）
+    deferred_started: AtomicBool,
 }
 
 /// 使用统计记录
@@ -109,6 +116,7 @@ impl RecommendService {
                 enabled,
                 ..Default::default()
             }),
+            deferred_started: AtomicBool::new(false),
         }
     }
 
@@ -281,6 +289,16 @@ impl RecommendService {
         let mut status = self.status.write().await;
         status.total_recommendations += 1;
     }
+
+    /// 是否已执行延迟启动（窗口监控/Python 引擎）。
+    pub(crate) fn window_monitor_started(&self) -> bool {
+        self.deferred_started.load(Ordering::SeqCst)
+    }
+
+    /// 标记延迟启动已完成。
+    pub(crate) fn mark_deferred_started(&self) {
+        self.deferred_started.store(true, Ordering::SeqCst);
+    }
 }
 
 /// 简单评分：启动次数（对数缩放） + 最近使用时间衰减
@@ -339,44 +357,55 @@ impl Default for RecommendInitConfig {
 }
 
 /// 完整初始化推荐模块（推荐使用）
-///
-/// 包含：
-/// - 基础服务注册
-/// - Python 引擎自动检测与初始化（如果启用了 recommend-py feature）
-/// - 窗口监控（可选，默认开启）
-///
-/// # 注意
-/// Python 引擎初始化是异步的，启动失败会自动降级，不影响使用。
-pub fn init_full<R: tauri::Runtime + 'static>(
-    app: &tauri::AppHandle<R>,
-    config: RecommendInitConfig,
-) {
-    use tauri::Manager;
+    ///
+    /// 包含：
+    /// - 基础服务注册
+    /// - Python 引擎自动检测与初始化（如果启用了 recommend-py feature）
+    /// - 窗口监控（可选，默认开启）
+    ///
+    /// # 注意
+    /// Python 引擎初始化是异步的，启动失败会自动降级，不影响使用。
+    pub fn init_full<R: tauri::Runtime + 'static>(
+        app: &tauri::AppHandle<R>,
+        _config: RecommendInitConfig,
+    ) {
+        // 先注册基础服务
+        init(app);
 
-    // 先注册基础服务
-    init(app);
+        log::info!("[recommend] 完整初始化开始");
 
-    log::info!("[recommend] 完整初始化开始");
-
-    // 获取已注册的服务
-    let service = app.state::<Arc<RecommendService>>().inner().clone();
-
-    // 窗口监控
-    if config.enable_window_monitor {
-        let monitor = service.window_monitor().clone();
-        window_monitor::start_window_monitor(app, service, monitor);
-        log::info!("[recommend] 窗口监控已启动");
+        // 延迟启动：直到前端 ready 后再启动窗口监控 / Python 引擎，
+        // 避免 setup 阶段阻塞窗口显示。
+        DEFERRED_START_REQUESTED.store(true, Ordering::SeqCst);
+        log::info!("[recommend] 窗口监控与 Python 引擎将在 frontend_ready 后启动");
     }
 
-    // Python 引擎（可选）
-    #[cfg(feature = "recommend-py")]
-    {
-        let app_handle = app.clone();
-        tauri::async_runtime::spawn(async move {
-            init_python_engine(&app_handle).await;
-        });
+    /// frontend_ready 后调用：执行实际启动逻辑。
+    pub fn start_deferred<R: tauri::Runtime + 'static>(
+        app: &tauri::AppHandle<R>,
+        config: RecommendInitConfig,
+    ) {
+        use tauri::Manager;
+
+        let service = app.state::<Arc<RecommendService>>().inner().clone();
+
+        // 窗口监控
+        if config.enable_window_monitor && !service.window_monitor_started() {
+            let monitor = service.window_monitor().clone();
+            window_monitor::start_window_monitor(app, service.clone(), monitor);
+            service.mark_deferred_started();
+            log::info!("[recommend] 窗口监控已启动");
+        }
+
+        // Python 引擎（可选）
+        #[cfg(feature = "recommend-py")]
+        {
+            let app_handle = app.clone();
+            tauri::async_runtime::spawn(async move {
+                init_python_engine(&app_handle).await;
+            });
+        }
     }
-}
 
 // ============================================================
 // Python 引擎初始化（可选）

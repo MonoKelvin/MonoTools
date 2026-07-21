@@ -23,9 +23,10 @@
 //! 默认实例, 不直接 import Windows 平台代码.
 
 use parking_lot::Mutex;
+use parking_lot::Condvar as ParkingCondvar;
 use std::collections::HashMap;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 
@@ -103,6 +104,15 @@ fn in_flight() -> &'static Mutex<std::collections::HashSet<String>> {
     IN_FLIGHT.get_or_init(|| Mutex::new(std::collections::HashSet::new()))
 }
 
+/// 每个 in-flight key 对应的 Condvar, 用于高效等待提取完成.
+/// 使用 parking_lot::Condvar 以匹配 parking_lot::Mutex, 避免跨 crate 类型不兼容.
+/// parking_lot::Condvar 不可 Clone, 所以用 Arc 包装.
+static IN_FLIGHT_CONDVAR: OnceLock<Mutex<std::collections::HashMap<String, Arc<ParkingCondvar>>>> = OnceLock::new();
+
+fn in_flight_condvar() -> &'static Mutex<std::collections::HashMap<String, Arc<ParkingCondvar>>> {
+    IN_FLIGHT_CONDVAR.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
 /// 全局默认 IconExtractor. 第一次访问时构造 `WindowsIconExtractor`,
 /// 进程内复用. 未来多平台只需在 init 分支里加 cfg 判别.
 pub fn get_extractor() -> &'static dyn IconExtractor {
@@ -111,10 +121,17 @@ pub fn get_extractor() -> &'static dyn IconExtractor {
         .as_ref()
 }
 
-/// 归一化路径作为缓存 key. 小写 + canonicalize (失败时退回原路径).
+/// 归一化路径作为缓存 key. 小写 + 替换斜杠 (快速, 无 I/O).
+///
+/// 注意: 这里故意不做 `canonicalize()`, 因为 canonicalize 需要打开文件句柄
+/// (GetFinalPathNameByHandleW), 是文件系统 I/O. 对于缓存命中率高的场景
+/// (如同一应用多次搜索), 每次都 canonicalize 会造成大量不必要的磁盘访问.
+///
+/// 代价: 同一路径的不同表示 (如 `C:\App\app.exe` vs `C:\App\..\App\app.exe`)
+/// 会被视为不同 key, 可能导致少量缓存未命中. 但实际使用中路径通常已经标准化,
+/// 这个问题几乎不会出现.
 fn cache_key(p: &Path) -> String {
-    let canon = p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
-    canon.to_string_lossy().to_lowercase()
+    p.to_string_lossy().to_lowercase()
 }
 
 /// 获取缓存的克隆 snapshot. 用于 commands.rs 在进入 spawn_blocking 前
@@ -157,7 +174,12 @@ pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Ve
         return Ok(None);
     }
 
-    if !p.exists() {
+    // shell: 开头的是 shell 命名空间路径 (如 UWP 应用的 shell:AppsFolder\...),
+    // 不是文件系统路径, Path::exists() 会返回 false. 跳过 exists 检查,
+    // 直接进入提取逻辑, 由 IShellItemImageFactory 处理.
+    let is_shell_path = path.starts_with("shell:");
+
+    if !is_shell_path && !p.exists() {
         log_icon_debug("file-missing", path, "Path::exists() == false");
         log::warn!("[icon] file-missing path={}", path);
         return Ok(None);
@@ -174,34 +196,49 @@ pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Ve
 
     // Single-flight: 如果另一个线程正在提取同一个图标, 就等它完成后直接读 cache,
     // 而不是自己再提取一遍. 避免 "缓存失效瞬间 N 个请求同时穿透" 的 dog pile effect.
-    let is_first = {
+    //
+    // 使用 Condvar + Mutex 实现高效等待, 而非自旋轮询. 当提取完成时, 等待线程
+    // 会被立即唤醒, 而不是每 10ms 检查一次缓存 (旧实现会浪费 CPU 时间片).
+    let (is_first, condvar) = {
         let mut in_flight = in_flight().lock();
         if in_flight.contains(&key) {
-            false
+            // 已有线程在提取, 获取对应的 Condvar 用于等待
+            let cv = in_flight_condvar().lock().get(&key).cloned();
+            drop(in_flight);
+            match cv {
+                Some(cv) => (false, Some(cv)),
+                None => (true, None), // 理论上不应该发生
+            }
         } else {
+            // 第一个请求, 创建 Condvar 并注册
+            let cv = Arc::new(ParkingCondvar::new());
             in_flight.insert(key.clone());
-            true
+            in_flight_condvar().lock().insert(key.clone(), cv);
+            (true, None)
         }
     };
 
     if !is_first {
-        // 另一个线程在提取, 我们自旋等待它写入 cache (最多等 3s)
-        // 每 10ms 检查一次 cache, 命中就返回
-        let mut waited = 0u64;
-        loop {
-            {
-                let cache = cache().lock();
-                if let Some(cached) = cache.get(&key) {
+        // 高效等待: 阻塞直到提取完成或超时
+        if let Some(cv) = condvar {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(3);
+            let mut cache_guard = cache().lock();
+            let mut timed_out = false;
+            // parking_lot::Condvar 没有 wait_timeout_while, 用 wait_until + 循环检查
+            while cache_guard.get(&key).is_none() {
+                let result = cv.wait_until(&mut cache_guard, deadline);
+                if result.timed_out() {
+                    timed_out = true;
+                    break;
+                }
+            }
+            if !timed_out {
+                if let Some(cached) = cache_guard.get(&key) {
                     return Ok(cached.clone());
                 }
             }
-            if waited >= 3000 {
-                // 超时兜底: 3s 还没好 (可能另一个线程挂了), 自己提取
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(10));
-            waited += 10;
         }
+        // 超时兜底: 3s 还没好 (可能另一个线程挂了), 自己提取
     }
 
     // 对于 .lnk 快捷方式: 解析目标路径, 提取目标文件的图标.
@@ -254,14 +291,19 @@ pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Ve
             path
         );
     }
-    // 写入 cache + 清除 in-flight 标记
+    // 写入 cache + 清除 in-flight 标记 + 通知等待线程
     {
         let mut cache = cache().lock();
         cache.insert(key.clone(), extracted.clone());
     }
     {
+        // 通知所有等待该 key 的线程: 提取完成, 可以读 cache 了
+        if let Some(cv) = in_flight_condvar().lock().get(&key) {
+            cv.notify_all();
+        }
         let mut in_flight = in_flight().lock();
         in_flight.remove(&key);
+        in_flight_condvar().lock().remove(&key);
     }
     Ok(extracted)
 }
@@ -555,8 +597,12 @@ fn extract_rgba_via_shell_item_factory(path: &Path, size: i32) -> Option<Vec<u8>
     };
 
     // 对于 shell 路径，使用了 BIGGERSIZEOK，系统会自动缩放到请求尺寸
-    // 所以这里仍然可以用严格模式检查
-    let rgba = extract_rgba_from_hbitmap_strict(&hbitmap, size);
+    // 使用非严格模式，允许位图尺寸与请求尺寸不完全匹配
+    let rgba = if is_shell_path {
+        extract_rgba_from_hbitmap_lenient(&hbitmap, size)
+    } else {
+        extract_rgba_from_hbitmap_strict(&hbitmap, size)
+    };
     unsafe {
         let _ = DeleteObject(hbitmap.into());
     }
@@ -614,6 +660,60 @@ fn extract_rgba_from_hbitmap_strict(
         }
     }
     Some(rgba)
+}
+
+/// 从 HBITMAP 读取像素的**宽松模式**. 与严格模式不同, 这里允许位图实际尺寸
+/// 与请求尺寸不完全匹配 (系统在使用 SIIGBF_BIGGERSIZEOK 时会自动缩放, 返回的
+/// 位图尺寸可能略小于请求尺寸). 主要用于 shell: 路径 (UWP 应用) 的图标提取.
+#[cfg(windows)]
+fn extract_rgba_from_hbitmap_lenient(
+    hbitmap: &windows::Win32::Graphics::Gdi::HBITMAP,
+    size: i32,
+) -> Option<Vec<u8>> {
+    use windows::Win32::Graphics::Gdi::{GetObjectW, BITMAP};
+
+    let mut bmp: BITMAP = unsafe { std::mem::zeroed() };
+    let result = unsafe {
+        GetObjectW(
+            (*hbitmap).into(),
+            std::mem::size_of::<BITMAP>() as i32,
+            Some(&mut bmp as *mut _ as *mut _),
+        )
+    };
+    if result == 0 {
+        return None;
+    }
+    if bmp.bmBitsPixel != 32 {
+        return None;
+    }
+    // 宽松: 只要求宽高 <= size (系统缩放后的结果), 不要求严格相等
+    let w = bmp.bmWidth;
+    let h = bmp.bmHeight.abs();
+    if w <= 0 || h <= 0 || w > size || h > size {
+        return None;
+    }
+
+    let byte_len = (w as usize) * (h as usize) * 4;
+    let mut rgba = Vec::with_capacity(byte_len);
+    unsafe {
+        let src = std::slice::from_raw_parts(bmp.bmBits as *const u8, byte_len);
+        for chunk in src.chunks_exact(4) {
+            rgba.push(chunk[2]);
+            rgba.push(chunk[1]);
+            rgba.push(chunk[0]);
+            rgba.push(chunk[3]);
+        }
+    }
+
+    // 如果尺寸小于目标, 双线性插值放大到 size x size
+    if w == size && h == size {
+        return Some(rgba);
+    }
+
+    // 复用已有的双线性插值缩放函数放大到 size x size
+    Some(resize_rgba_bilinear(
+        &rgba, w as u32, h as u32, size as u32, size as u32,
+    ))
 }
 
 /// Tier 3/4 共用: 把 `HICON` 绘制到 `size x size` 的 32-bit DIB section, 转 RGBA.
@@ -1068,6 +1168,8 @@ mod tests {
         let p = Path::new(r"C:\Windows\System32\notepad.exe");
         let k = cache_key(p);
         assert!(k.to_lowercase().contains("notepad"));
+        // 验证不再做 canonicalize (不会解析符号链接或相对路径)
+        assert_eq!(k, r"c:\windows\system32\notepad.exe");
     }
 
     #[test]

@@ -14,7 +14,7 @@
 
 import type { Component } from 'vue'
 import {
-    Monitor, AppWindow, Package, Terminal, FileText, Folder, FolderOpen,
+    AppWindow, Package, Terminal, FileText, Folder, FolderOpen,
     Music as MusicIcon, Image as ImageIcon, Video, Settings, Mail, Globe,
     MessageCircle, MessagesSquare, MessageSquare,
     Code, CodeXml, GitBranch,
@@ -23,7 +23,7 @@ import {
     Calculator, Calendar, Clock,
     Gamepad2, Joystick, Sword,
     ShoppingCart, CreditCard, Wallet,
-    Wrench,
+    Wrench, Cog,
     Shield, Lock, Key,
     Database, Server, HardDrive,
     TerminalSquare,
@@ -315,7 +315,7 @@ function appFallbackIcon(resultType: string | undefined, title: string, path: st
 
     switch (resultType) {
         case 'system-app':
-            return Monitor
+            return Cog
         case 'uwp-app':
             return Package
         case 'command':
