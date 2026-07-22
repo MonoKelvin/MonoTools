@@ -19,7 +19,7 @@ use crate::search_engine::models::{
 };
 use parking_lot::Mutex;
 use rusqlite::{Connection, OpenFlags};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -215,7 +215,6 @@ impl FileSearchEngine {
             CREATE TABLE IF NOT EXISTS dirs (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
                 name       TEXT NOT NULL,
-                parent_id  INTEGER DEFAULT 0,
                 full_path  TEXT NOT NULL UNIQUE
             );
             CREATE TABLE IF NOT EXISTS files (
@@ -246,7 +245,6 @@ impl FileSearchEngine {
                 INSERT INTO files_fts(files_fts, rowid, name) VALUES('delete', old.id, old.name);
                 INSERT INTO files_fts(rowid, name) VALUES (new.id, new.name);
             END;
-            CREATE INDEX IF NOT EXISTS idx_dirs_parent_id ON dirs(parent_id);
             CREATE INDEX IF NOT EXISTS idx_files_dir_id ON files(dir_id);
 
             -- 增量索引状态: 每个 NTFS 卷的最后一次 USN 位置.
@@ -405,81 +403,110 @@ impl FileSearchEngine {
         let mut buffer: Vec<UsnRecord> = Vec::with_capacity(INCREMENTAL_FLUSH_INTERVAL);
         let mut total_inserted: usize = 0;
 
+        // 跨 chunk 存活的目录路径 → rowid 映射.
+        // 消除每文件一次 SELECT 的 N+1 查询: 目录插入后立即写入此 map,
+        // 文件插入时直接哈希查找 dir_id, 不再访问数据库.
+        let mut dir_id_cache: HashMap<String, i64> = HashMap::new();
+
         // 提交一个 chunk 并返回插入数量.
         // 为了增量可见, 每写完一批就 COMMIT 一次, 让读侧能立即查到.
-        let flush_and_commit = |engine: &Self, buf: &[UsnRecord]| -> usize {
-            if buf.is_empty() {
-                return 0;
-            }
-            let conn = engine.db.lock();
-            // 开启事务
-            if let Err(e) = conn.execute("BEGIN TRANSACTION", []) {
-                log::error!("[idx] BEGIN TRANSACTION 失败: {}", e);
-                return 0;
-            }
-            let mut dir_stmt = match conn.prepare(
-                "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, ?2, ?3)",
-            ) {
-                Ok(s) => s,
-                Err(e) => {
-                    log::error!("[idx] dir_stmt prepare 失败: {}", e);
-                    let _ = conn.execute("ROLLBACK", []);
+        let flush_and_commit =
+            |engine: &Self, buf: &[UsnRecord], dir_cache: &mut HashMap<String, i64>| -> usize {
+                if buf.is_empty() {
                     return 0;
                 }
-            };
-
-            // 第一轮: 先插入所有目录, 确保 dirs 表数据完整
-            for record in buf {
-                if record.is_directory {
-                    let path_str = record.full_path.to_string_lossy().to_string();
-                    let _ = dir_stmt
-                        .execute(rusqlite::params![record.file_name, 0i64, path_str,]);
+                let conn = engine.db.lock();
+                if let Err(e) = conn.execute("BEGIN TRANSACTION", []) {
+                    log::error!("[idx] BEGIN TRANSACTION 失败: {}", e);
+                    return 0;
                 }
-            }
-            drop(dir_stmt);
-
-            let mut file_stmt =
-                match conn.prepare("INSERT INTO files(name, dir_id) VALUES (?1, ?2)") {
+                let mut dir_stmt = match conn.prepare(
+                    "INSERT OR IGNORE INTO dirs(name, full_path) VALUES (?1, ?2)",
+                ) {
                     Ok(s) => s,
                     Err(e) => {
-                        log::error!("[idx] file_stmt prepare 失败: {}", e);
+                        log::error!("[idx] dir_stmt prepare 失败: {}", e);
                         let _ = conn.execute("ROLLBACK", []);
                         return 0;
                     }
                 };
 
-            // 第二轮: 再插入所有文件, 此时目录已全部就绪
-            let mut inserted = 0usize;
-            for record in buf {
-                if !record.is_directory {
-                    let dir_path = if let Some(p) = record.full_path.parent() {
-                        p.to_string_lossy().to_string()
-                    } else {
-                        String::new()
-                    };
-                    let dir_id: i64 = conn
-                        .query_row(
-                            "SELECT id FROM dirs WHERE full_path = ?1",
-                            [dir_path.as_str()],
-                            |r| r.get::<_, i64>(0),
-                        )
-                        .unwrap_or(0);
-                    if dir_id > 0 && file_stmt.execute(rusqlite::params![record.file_name, dir_id]).is_ok() {
-                        inserted += 1;
+                // 第一轮: 先插入所有目录, 并将 rowid 写入 dir_cache
+                for record in buf {
+                    if record.is_directory {
+                        let path_str = record.full_path.to_string_lossy().to_string();
+                        if dir_cache.contains_key(&path_str) {
+                            continue;
+                        }
+                        if dir_stmt
+                            .execute(rusqlite::params![record.file_name, path_str.as_str()])
+                            .is_ok()
+                        {
+                            let rowid = conn.last_insert_rowid();
+                            if rowid > 0 {
+                                dir_cache.insert(path_str, rowid);
+                            }
+                        }
                     }
                 }
-            }
-            drop(file_stmt);
+                drop(dir_stmt);
 
-            // 提交事务: 让数据立即可见
-            if let Err(e) = conn.execute("COMMIT", []) {
-                log::error!("[idx] COMMIT 失败: {}", e);
-                let _ = conn.execute("ROLLBACK", []);
-                return 0;
-            }
-            drop(conn);
-            inserted
-        };
+                // 对 INSERT OR IGNORE 未插入(已存在)的目录补查 rowid
+                // (仅在 cache miss 时才查, 数量极少)
+                for record in buf {
+                    if record.is_directory {
+                        let path_str = record.full_path.to_string_lossy().to_string();
+                        if !dir_cache.contains_key(&path_str) {
+                            if let Ok(id) = conn.query_row(
+                                "SELECT id FROM dirs WHERE full_path = ?1",
+                                [path_str.as_str()],
+                                |r| r.get::<_, i64>(0),
+                            ) {
+                                dir_cache.insert(path_str, id);
+                            }
+                        }
+                    }
+                }
+
+                let mut file_stmt =
+                    match conn.prepare("INSERT INTO files(name, dir_id) VALUES (?1, ?2)") {
+                        Ok(s) => s,
+                        Err(e) => {
+                            log::error!("[idx] file_stmt prepare 失败: {}", e);
+                            let _ = conn.execute("ROLLBACK", []);
+                            return 0;
+                        }
+                    };
+
+                // 第二轮: 插入文件, 直接从 dir_cache 查 dir_id (无 DB 查询)
+                let mut inserted = 0usize;
+                for record in buf {
+                    if !record.is_directory {
+                        let dir_path = record
+                            .full_path
+                            .parent()
+                            .map(|p| p.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        if let Some(&dir_id) = dir_cache.get(&dir_path) {
+                            if file_stmt
+                                .execute(rusqlite::params![record.file_name, dir_id])
+                                .is_ok()
+                            {
+                                inserted += 1;
+                            }
+                        }
+                    }
+                }
+                drop(file_stmt);
+
+                if let Err(e) = conn.execute("COMMIT", []) {
+                    log::error!("[idx] COMMIT 失败: {}", e);
+                    let _ = conn.execute("ROLLBACK", []);
+                    return 0;
+                }
+                drop(conn);
+                inserted
+            };
 
         // === 2. 枚举 + 流式写入 + 增量提交 ===
         if let Some(indexer) = &self.ntfs_indexer {
@@ -513,10 +540,12 @@ impl FileSearchEngine {
                     // 每积累 INCREMENTAL_FLUSH_INTERVAL 条就刷入 DB 并提交事务,
                     // 让读侧 (search 空查询) 能立即看到新数据.
                     if buffer.len() >= INCREMENTAL_FLUSH_INTERVAL {
-                        let inserted = flush_and_commit(self, &buffer);
+                        let inserted = flush_and_commit(self, &buffer, &mut dir_id_cache);
                         total_inserted += inserted;
                         buffer.clear();
-                        // 通知进度: 调用方可以通过 IPC 把"已索引 N 个文件"推给前端
+                        // 轻微让渡: 避免索引线程独占 CPU/磁盘导致 UI 卡顿.
+                        // spawn_blocking 线程内 sleep 不占用 async runtime.
+                        std::thread::sleep(std::time::Duration::from_millis(3));
                         on_volume(volume, n, total_inserted, total_volumes);
                     }
                 });
@@ -527,7 +556,7 @@ impl FileSearchEngine {
 
                 // 卷内剩余 buffer 也刷入并提交
                 if !buffer.is_empty() {
-                    let inserted = flush_and_commit(self, &buffer);
+                    let inserted = flush_and_commit(self, &buffer, &mut dir_id_cache);
                     total_inserted += inserted;
                     buffer.clear();
                 }
@@ -811,7 +840,7 @@ impl FileSearchEngine {
             // 确保目录存在.
             let dir_path = record.full_path.to_string_lossy().to_string();
             conn.execute(
-                "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, 0, ?2)",
+                "INSERT OR IGNORE INTO dirs(name, full_path) VALUES (?1, ?2)",
                 rusqlite::params![record.file_name, dir_path],
             )?;
         } else {
@@ -823,7 +852,7 @@ impl FileSearchEngine {
                 .unwrap_or_default();
             if !dir_path.is_empty() {
                 conn.execute(
-                    "INSERT OR IGNORE INTO dirs(name, parent_id, full_path) VALUES (?1, 0, ?2)",
+                    "INSERT OR IGNORE INTO dirs(name, full_path) VALUES (?1, ?2)",
                     rusqlite::params![
                         record
                             .full_path

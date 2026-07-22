@@ -47,12 +47,14 @@ impl AppSearchEngine {
     }
 
     /// 增量式重建索引。每完成一个扫描目录就调用一次 `on_progress`，
-    /// 调用方可通过 IPC 事件把"已就绪 N 个应用"实时推给前端，
-    /// 让用户一启动就能看到内容逐步出现，而非等全部扫完才显示。
+    /// 调用方可通过 IPC 事件把"已就绪 N 个应用"实时推给前端。
+    ///
+    /// 所有同步阻塞扫描（WalkDir、注册表、PowerShell）都在 `spawn_blocking` 中执行，
+    /// 通过 channel 回传进度，避免占用 async runtime 工作线程。
     ///
     /// `on_progress(count, phase)`:
     /// - `count`: 当前已索引的应用总数
-    /// - `phase`: 当前阶段名（"common_start_menu" / "user_start_menu" / "desktop" / "registry"）
+    /// - `phase`: 当前阶段名
     pub async fn refresh_index_incremental<F>(&self, mut on_progress: F) -> Result<()>
     where
         F: FnMut(usize, &str) + Send + 'static,
@@ -63,54 +65,63 @@ impl AppSearchEngine {
             cache.clear();
         }
 
-        // 分阶段扫描，每阶段结束后释放写锁并通知进度，
-        // 这样读侧（search）能立即拿到已就绪的部分结果。
-        let phases: [(&str, Option<PathBuf>); 3] = [
-            (
-                "common_start_menu",
-                std::env::var("ProgramData")
-                    .ok()
-                    .map(|v| PathBuf::from(v).join("Microsoft\\Windows\\Start Menu\\Programs")),
-            ),
-            (
-                "user_start_menu",
-                std::env::var("APPDATA")
-                    .ok()
-                    .map(|v| PathBuf::from(v).join("Microsoft\\Windows\\Start Menu\\Programs")),
-            ),
-            (
-                "desktop",
-                std::env::var("USERPROFILE")
-                    .ok()
-                    .map(|v| PathBuf::from(v).join("Desktop")),
-            ),
-        ];
+        // 用 channel 在 spawn_blocking（扫描线程）和 async 上下文（进度回调）之间传递进度。
+        // spawn_blocking 侧 send 后不 await，async 侧 recv 后调用 on_progress emit 事件。
+        let (progress_tx, mut progress_rx) =
+            tokio::sync::mpsc::channel::<(usize, String)>(16);
 
-        for (phase, dir) in phases {
-            if let Some(dir) = dir {
-                let count = Self::scan_dir_and_count(&dir, &self.cache);
-                on_progress(count, phase);
+        let self_ptr = self as *const Self as usize;
+        let total = tokio::task::spawn_blocking(move || {
+            // SAFETY: 调用方持有 Arc<AppSearchEngine>，生命周期跨越整个 await。
+            let this: &'static Self = unsafe { &*(self_ptr as *const Self) };
+
+            let phases: [(&str, Option<PathBuf>); 3] = [
+                (
+                    "common_start_menu",
+                    std::env::var("ProgramData")
+                        .ok()
+                        .map(|v| PathBuf::from(v).join("Microsoft\\Windows\\Start Menu\\Programs")),
+                ),
+                (
+                    "user_start_menu",
+                    std::env::var("APPDATA")
+                        .ok()
+                        .map(|v| PathBuf::from(v).join("Microsoft\\Windows\\Start Menu\\Programs")),
+                ),
+                (
+                    "desktop",
+                    std::env::var("USERPROFILE")
+                        .ok()
+                        .map(|v| PathBuf::from(v).join("Desktop")),
+                ),
+            ];
+
+            for (phase, dir) in phases {
+                if let Some(dir) = dir {
+                    let count = Self::scan_dir_and_count(&dir, &this.cache);
+                    let _ = progress_tx.send((count, phase.to_string()));
+                }
             }
-            // 阶段间 yield: 让 async runtime 处理其他任务 (前端事件、UI 渲染等).
-            // 避免连续扫描阻塞 runtime 线程, 导致窗口拖动/滚动卡顿.
-            tokio::task::yield_now().await;
+
+            let count = Self::scan_registry_apps(&this.cache);
+            let _ = progress_tx.send((count, "registry".to_string()));
+
+            let count = Self::scan_uwp_apps(&this.cache);
+            let _ = progress_tx.send((count, "uwp".to_string()));
+
+            let count = Self::add_system_apps(&this.cache);
+            let _ = progress_tx.send((count, "system_apps".to_string()));
+
+            this.total()
+        })
+        .await
+        .map_err(|e| crate::core::error::AppError::Other(format!("spawn_blocking join error: {e}")))?;
+
+        // 异步侧：从 channel 读取进度并回调（可能有一些进度在 spawn_blocking 结束后才入队）
+        while let Some((count, phase)) = progress_rx.recv().await {
+            on_progress(count, &phase);
         }
 
-        // 从注册表 Uninstall 键发现更多应用 (HKLM + HKCU).
-        let count = Self::scan_registry_apps(&self.cache);
-        on_progress(count, "registry");
-        tokio::task::yield_now().await;
-
-        // 扫描 UWP 应用 (Microsoft Store 应用)
-        let count = Self::scan_uwp_apps(&self.cache);
-        on_progress(count, "uwp");
-        tokio::task::yield_now().await;
-
-        // 额外添加常用系统应用（白名单）
-        let count = Self::add_system_apps(&self.cache);
-        on_progress(count, "system_apps");
-
-        let total = self.total();
         log::info!("App index: {} applications", total);
         Ok(())
     }

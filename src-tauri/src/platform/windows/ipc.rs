@@ -15,8 +15,14 @@ use std::path::PathBuf;
 /// 获取可执行文件图标 (base64 编码 PNG).
 #[tauri::command]
 pub async fn get_app_icon(path: String) -> Result<Option<String>, String> {
-    let resolved_path = crate::platform::windows::shell::resolve_shortcut(&PathBuf::from(&path))
-        .unwrap_or(PathBuf::from(&path));
+    // shell: 开头的是 shell 命名空间路径 (如 UWP 应用的 shell:AppsFolder\...),
+    // resolve_shortcut 对此类路径无意义且会返回原路径. 直接跳过解析.
+    let resolved_path = if path.starts_with("shell:") {
+        PathBuf::from(&path)
+    } else {
+        crate::platform::windows::shell::resolve_shortcut(&PathBuf::from(&path))
+            .unwrap_or(PathBuf::from(&path))
+    };
     let resolved_path_str = resolved_path.to_string_lossy().to_string();
 
     {
@@ -55,10 +61,16 @@ pub async fn get_app_icons_batch(paths: Vec<String>) -> Result<Vec<Option<String
     let resolved: Vec<String> = paths
         .iter()
         .map(|p| {
-            crate::platform::windows::shell::resolve_shortcut(&PathBuf::from(p))
-                .unwrap_or_else(|_| PathBuf::from(p))
-                .to_string_lossy()
-                .to_string()
+            // shell: 开头的是 shell 命名空间路径 (如 UWP 应用的 shell:AppsFolder\...),
+            // resolve_shortcut 对此类路径无意义, 直接跳过解析.
+            if p.starts_with("shell:") {
+                p.clone()
+            } else {
+                crate::platform::windows::shell::resolve_shortcut(&PathBuf::from(p))
+                    .unwrap_or_else(|_| PathBuf::from(p))
+                    .to_string_lossy()
+                    .to_string()
+            }
         })
         .collect();
 

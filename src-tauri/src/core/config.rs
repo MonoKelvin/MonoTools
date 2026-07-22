@@ -18,19 +18,17 @@
 
 pub mod icon {
     /// 图标像素尺寸. 与前端 `ICON_CONFIG.size` 对齐.
-    /// 使用 256x256 获取高质量图标, 前端可按需缩放显示.
-    pub const SIZE: i32 = 256;
+    pub const SIZE: i32 = 128;
 
     /// 后端 base64 最短长度 (字符数).
-    /// 256x256 RGBA PNG 压缩后通常 1000-5000 chars, 256 是安全下限.
-    pub const MIN_BASE64_LEN: usize = 256;
+    /// 128x128 RGBA PNG 压缩后通常 500-2000 chars, 128 是安全下限.
+    pub const MIN_BASE64_LEN: usize = 128;
 
     /// PNG magic 89 50 4E 47 0D 0A 1A 0A 的 base64 编码.
     pub const PNG_MAGIC_BASE64: &str = "iVBORw0KGgo";
 
-    /// 256x256 RGBA 图标的字节数 (4 通道).
-    /// 用于空白检测时判断 buffer 是否完整.
-    pub const BUF_SIZE: usize = 256 * 256 * 4;
+    /// 128x128 RGBA 图标的字节数 (4 通道).
+    pub const BUF_SIZE: usize = 128 * 128 * 4;
 
     /// 空白/单色图标检测阈值 —— icon.rs::is_blank_icon 用.
     /// 用于过滤"图标被提取了但实际上是全黑/全白/纯灰, 不应展示"的场景.
@@ -139,8 +137,10 @@ pub mod fs {
     pub const SCHEMA_VERSION: i64 = 9;
     /// SQLite PRAGMA page_size.
     pub const PAGE_SIZE: u32 = 4096;
-    /// SQLite PRAGMA cache_size (负数 = KB). 256MB → -262144; 历史值 -65536 = 64MB.
-    pub const CACHE_SIZE_KB: i64 = -262144;
+    /// SQLite PRAGMA cache_size (负数 = KB). 48MB → -49152.
+    /// 轻量级取向: 索引构建期页缓存不需要很大, 48MB 足够摊平热页,
+    /// 历史值 -262144 (256MB) 是内存占用高的直接原因, 历史值 -65536 = 64MB.
+    pub const CACHE_SIZE_KB: i64 = -49152;
     /// SQLite PRAGMA mmap_size (字节). 64 MB.
     pub const MMAP_SIZE_BYTES: i64 = 67_108_864;
     /// SQLite PRAGMA wal_autocheckpoint (页数).

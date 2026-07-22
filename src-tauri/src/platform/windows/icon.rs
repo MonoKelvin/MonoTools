@@ -1,6 +1,6 @@
 //! Windows 应用图标提取
 //!
-//! 提供从 `.exe` / `.lnk` 中提取 32x32 RGBA 图标并编码为 PNG 的能力.
+//! 提供从 `.exe` / `.lnk` 中提取 128x128 RGBA 图标并编码为 PNG 的能力.
 //!
 //! ## 错误处理协议
 //!
@@ -9,10 +9,12 @@
 //! - 非 PE 文件 / 损坏 → `Ok(None)`
 //! - 编码失败 → `Ok(None)`
 //!
-//! ## 缓存
+//! ## 缓存层级 (3 层)
 //!
-//! 进程内 `OnceLock<Mutex<HashMap>>` 缓存 (path -> Option<Vec<u8>>),
-//! key 用归一化路径 (小写 + canonicalize 回退), 避免重复 SHGetFileInfoW 调用.
+//! 1. **进程内 `OnceLock<Mutex<HashMap>>`** — 进程内复用, 避免重复提取.
+//! 2. **磁盘缓存** (`icons/<hash>.png`) — 跨进程持久化, 重启不丢失. 异步写入,
+//!    不阻塞提取路径.
+//! 3. **提取** — 真正从文件提取图标 (最重的操作).
 //!
 //! ## 扩展性
 //!
@@ -22,11 +24,12 @@
 //! 调用方 (commands / services) 始终通过 [`get_extractor()`] 拿
 //! 默认实例, 不直接 import Windows 平台代码.
 
-use parking_lot::Mutex;
 use parking_lot::Condvar as ParkingCondvar;
+use parking_lot::Mutex;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use windows::Win32::UI::WindowsAndMessaging::HICON;
 
@@ -107,7 +110,8 @@ fn in_flight() -> &'static Mutex<std::collections::HashSet<String>> {
 /// 每个 in-flight key 对应的 Condvar, 用于高效等待提取完成.
 /// 使用 parking_lot::Condvar 以匹配 parking_lot::Mutex, 避免跨 crate 类型不兼容.
 /// parking_lot::Condvar 不可 Clone, 所以用 Arc 包装.
-static IN_FLIGHT_CONDVAR: OnceLock<Mutex<std::collections::HashMap<String, Arc<ParkingCondvar>>>> = OnceLock::new();
+static IN_FLIGHT_CONDVAR: OnceLock<Mutex<std::collections::HashMap<String, Arc<ParkingCondvar>>>> =
+    OnceLock::new();
 
 fn in_flight_condvar() -> &'static Mutex<std::collections::HashMap<String, Arc<ParkingCondvar>>> {
     IN_FLIGHT_CONDVAR.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
@@ -142,6 +146,158 @@ fn cache_key(p: &Path) -> String {
 pub fn cache_snapshot() -> std::collections::HashMap<String, Option<Vec<u8>>> {
     cache().lock().clone()
 }
+
+// ===== 磁盘持久化缓存 =====
+
+/// 磁盘缓存目录名.
+const DISK_CACHE_DIR: &str = "icons";
+
+/// 磁盘缓存最大条目数 (超限按 mtime 淘汰).
+const DISK_CACHE_MAX_ENTRIES: usize = 500;
+
+/// 全局磁盘缓存路径 (懒初始化, 通过 `app_cache_dir()/icons` 构建).
+static DISK_CACHE_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// 初始化磁盘缓存路径 (由 Tauri 层在启动时调用一次).
+pub fn init_disk_cache(app_cache_dir: &std::path::Path) {
+    let _ = DISK_CACHE_PATH.get_or_init(|| app_cache_dir.join(DISK_CACHE_DIR));
+    // 确保目录存在
+    let _ = std::fs::create_dir_all(&DISK_CACHE_PATH.get().unwrap());
+}
+
+/// 从磁盘缓存加载图标 (返回 PNG 字节数组).
+/// 命中: 返回 Some(png_bytes). 未命中: 返回 None.
+fn load_disk_cached(key: &str) -> Option<Vec<u8>> {
+    let cache_dir = DISK_CACHE_PATH.get().clone()?;
+    let file_path = cache_dir.join(format!("{}.png", hash_to_hex(key)));
+
+    let data = match std::fs::read(&file_path) {
+        Ok(d) => d,
+        Err(_) => return None,
+    };
+
+    // 校验 PNG magic
+    if data.len() < 8 || data[0..8] != [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+        let _ = std::fs::remove_file(&file_path); // 清除损坏缓存
+        return None;
+    }
+
+    Some(data)
+}
+
+/// 异步写磁盘缓存 (非阻塞).
+fn save_disk_cached_async(key: String, png_data: Vec<u8>) {
+    // 后台执行, 不阻塞
+    std::thread::spawn(move || {
+        let cache_dir = match DISK_CACHE_PATH.get() {
+            Some(p) => p.clone(),
+            None => return,
+        };
+
+        // 确保目录存在
+        if std::fs::create_dir_all(&cache_dir).is_err() {
+            return;
+        }
+
+        // 清理过期条目
+        evict_expired(&cache_dir);
+
+        // 写入临时文件 + 原子重命名 (避免脏数据)
+        let key_hex = hash_to_hex(&key);
+        let tmp_path = cache_dir.join(format!("{}.tmp", key_hex));
+        let final_path = cache_dir.join(format!("{}.png", key_hex));
+
+        if std::fs::write(&tmp_path, png_data).is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+            return;
+        }
+
+        if std::fs::rename(&tmp_path, &final_path).is_err() {
+            let _ = std::fs::remove_file(&tmp_path);
+        }
+    });
+}
+
+/// 清理过期缓存: 如果 PNG mtime 超过 30 天, 删除.
+/// 同时按 LRU 淘汰, 保持缓存条目不超过上限.
+fn evict_expired(cache_dir: &Path) {
+    let entries = match std::fs::read_dir(cache_dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok()).collect::<Vec<_>>(),
+        Err(_) => return,
+    };
+
+    let now_ts = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // 30 天过期阈值
+    let expiry_secs = 30 * 24 * 3600;
+
+    let mut file_mtimes: Vec<(PathBuf, u64)> = Vec::with_capacity(entries.len());
+
+    for entry in entries {
+        let path = entry.path();
+        // 跳过非 .png 文件
+        if path.extension().map_or(true, |e| e != "png") {
+            continue;
+        }
+        // 跳过临时文件
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map_or(false, |n| n.ends_with(".tmp"))
+        {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
+
+        let metadata = match entry.metadata() {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+
+        let mtime = metadata
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+
+        // 过期删除
+        if now_ts.saturating_sub(mtime) > expiry_secs {
+            let _ = std::fs::remove_file(&path);
+            continue;
+        }
+
+        file_mtimes.push((path, mtime));
+    }
+
+    // 按 mtime 排序 (最旧在前), 淘汰多余条目
+    if file_mtimes.len() > DISK_CACHE_MAX_ENTRIES {
+        file_mtimes.sort_by_key(|(_, mt)| *mt);
+        let excess = file_mtimes.len() - DISK_CACHE_MAX_ENTRIES;
+        let to_remove: Vec<_> = file_mtimes
+            .into_iter()
+            .take(excess)
+            .map(|(p, _)| p)
+            .collect();
+        for p in to_remove {
+            let _ = std::fs::remove_file(p);
+        }
+    }
+}
+
+/// 将字符串哈希为 16 字符 hex (SHA-256 前 16 字符, 足够防碰撞).
+fn hash_to_hex(input: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+// ===== 磁盘持久化缓存结束 =====
 
 /// 公共入口: 带缓存的图标提取. 永远不抛错.
 ///
@@ -192,6 +348,16 @@ pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Ve
         if let Some(cached) = cache.get(&key) {
             return Ok(cached.clone());
         }
+    }
+
+    // 第二阶段: 磁盘缓存命中 → 读入内存并返回
+    if let Some(png_data) = load_disk_cached(&key) {
+        // 同时写入内存缓存, 供后续使用
+        {
+            cache().lock().insert(key.clone(), Some(png_data.clone()));
+        }
+        log_icon_debug("disk-cache-hit", path, "从磁盘缓存命中 PNG");
+        return Ok(Some(png_data));
     }
 
     // Single-flight: 如果另一个线程正在提取同一个图标, 就等它完成后直接读 cache,
@@ -291,7 +457,11 @@ pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Ve
             path
         );
     }
-    // 写入 cache + 清除 in-flight 标记 + 通知等待线程
+    // 写入内存 cache + 异步写磁盘 + 清除 in-flight 标记 + 通知等待线程
+    if let Some(ref png_data) = extracted {
+        // 异步写磁盘 (非阻塞)
+        save_disk_cached_async(key.clone(), png_data.clone());
+    }
     {
         let mut cache = cache().lock();
         cache.insert(key.clone(), extracted.clone());
@@ -712,7 +882,11 @@ fn extract_rgba_from_hbitmap_lenient(
 
     // 复用已有的双线性插值缩放函数放大到 size x size
     Some(resize_rgba_bilinear(
-        &rgba, w as u32, h as u32, size as u32, size as u32,
+        &rgba,
+        w as u32,
+        h as u32,
+        size as u32,
+        size as u32,
     ))
 }
 

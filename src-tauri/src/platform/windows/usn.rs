@@ -694,18 +694,17 @@ impl NtfsIndexer {
             log::warn!("无法确定根目录 FRN，使用 fallback (0 和 5)");
         }
 
-        // 按层级排序目录（BFS顺序构建路径缓存）
-        dir_records.sort_by_key(|(_, parent_ref, _, _)| *parent_ref);
-
-        // 第二遍：构建目录路径缓存（迭代直到稳定）
-        log::debug!("第二遍扫描：构建目录路径缓存...");
+        // 按 parent 已解析优先的拓扑推进：用队列替代固定 100 轮迭代,
+        // 每轮只处理"父节点已就绪"的目录, 避免每轮全量扫描.
+        let mut queue: Vec<&(u64, u64, String, i64)> = dir_records.iter().collect();
         let mut changed = true;
         let mut iterations = 0;
-        while changed && iterations < 100 {
+        while changed && !queue.is_empty() {
             changed = false;
             iterations += 1;
-
-            for (file_ref, parent_ref, file_name, _) in &dir_records {
+            let mut next_queue = Vec::new();
+            for entry in queue {
+                let (file_ref, parent_ref, file_name, _) = entry;
                 if path_cache.contains_key(file_ref) {
                     continue;
                 }
@@ -713,8 +712,11 @@ impl NtfsIndexer {
                     let full_path = parent_path.join(file_name);
                     path_cache.insert(*file_ref, full_path);
                     changed = true;
+                } else {
+                    next_queue.push(entry);
                 }
             }
+            queue = next_queue;
         }
 
         let dirs_cached = path_cache.len() - 1; // 减去根目录
@@ -724,8 +726,8 @@ impl NtfsIndexer {
             iterations
         );
 
-        // 第三遍：处理文件并调用 callback
-        log::debug!("第三遍扫描：处理文件记录...");
+        // 第三遍：处理目录记录并调用 callback
+        log::debug!("第三遍扫描：处理目录记录...");
         let mut total_count = 0u64;
         let mut skipped_no_parent = 0u64;
 
@@ -747,22 +749,27 @@ impl NtfsIndexer {
                 total_count += 1;
             }
         }
+        // 目录记录已全部回调, 立即释放以降低内存峰值.
+        // path_cache 仍需保留供文件记录查父路径.
+        drop(dir_records);
 
-        for (file_ref, parent_ref, file_name, timestamp) in &file_records {
-            if let Some(parent_path) = path_cache.get(parent_ref) {
-                let full_path = parent_path.join(file_name);
+        // 第四遍：消费文件记录 (into_iter 避免额外克隆)
+        log::debug!("第四遍扫描：处理文件记录...");
+        for (file_ref, parent_ref, file_name, timestamp) in file_records.into_iter() {
+            if let Some(parent_path) = path_cache.get(&parent_ref) {
+                let full_path = parent_path.join(&file_name);
                 let ext = full_path
                     .extension()
                     .and_then(|e| e.to_str())
                     .map(|s| s.to_lowercase());
 
                 let usn_record = UsnRecord {
-                    file_reference_number: *file_ref,
-                    parent_file_reference: *parent_ref,
-                    file_name: file_name.clone(),
+                    file_reference_number: file_ref,
+                    parent_file_reference: parent_ref,
+                    file_name,
                     full_path,
                     file_size: 0,
-                    last_write_time: *timestamp / 10000000 - 11644473600,
+                    last_write_time: timestamp / 10000000 - 11644473600,
                     is_directory: false,
                     extension: ext,
                     reason: UsnChangeReason::Created,

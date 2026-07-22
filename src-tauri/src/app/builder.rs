@@ -56,8 +56,15 @@ pub fn run() {
 
         crate::app::modules::post_window_init(&app_handle, &state);
 
+        // 初始化图标磁盘缓存路径 (在 setup 中, app_handle 可用时)
+        #[cfg(windows)]
+        if let Ok(cache_dir) = app_handle.path().app_cache_dir() {
+            crate::platform::windows::icon::init_disk_cache(&cache_dir);
+            log::info!("[icon] 磁盘缓存路径: {:?}", cache_dir.join("icons"));
+        }
+
         #[cfg(debug_assertions)]
-        log::info!("[boot] setup: 初始化所有业务模块");
+        log::info!("[boot] 初始化所有业务模块");
         crate::app::modules::init_all_modules(&app_handle, &state);
 
         #[cfg(debug_assertions)]
