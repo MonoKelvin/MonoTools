@@ -387,7 +387,7 @@ fn bench_end_to_end_search() {
     let app_engine = build_app_engine(n_apps);
     // 构建命令引擎 (空)
     let cmd_engine = {
-        use monotools_lib::repositories::InMemoryCommandRepo;
+        use monotools_lib::core::command::InMemoryCommandRepo;
         use monotools_lib::search_engine::command_search::CommandSearchEngine;
         CommandSearchEngine::new(std::sync::Arc::new(InMemoryCommandRepo::new()))
     };

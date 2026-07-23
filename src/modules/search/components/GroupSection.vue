@@ -8,7 +8,7 @@ import MtComboBox from '@/ui/components/MtComboBox.vue'
 import MtTooltip from '@/ui/components/MtTooltip.vue'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
-import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder } from '@lucide/vue'
+import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder, CalendarDays, HardDrive, Tag } from '@lucide/vue'
 import { ICON_CONFIG } from '@/core/config/icon'
 
 interface TooltipData {
@@ -143,6 +143,9 @@ const sortIconMap: Record<string, any> = {
   name: Type,
   recent: Clock,
   path: Folder,
+  modified: CalendarDays,
+  size: HardDrive,
+  type: Tag,
 }
 
 const EMPTY_OPTIONS: MtComboBoxOption[] = []
@@ -427,7 +430,7 @@ function isItemSelected(localIndex: number): boolean {
 </script>
 
 <template>
-  <div class="group-section" :data-kind="kind" :data-interactive="isInteractive ? '1' : '0'">
+  <div class="group-section" :data-kind="kind" :data-interactive="isInteractive ? '1' : '0'" :class="{ 'group-section--empty': items.length === 0 }">
     <div class="group-header" @click="toggleCollapse">
       <div class="group-header-left">
         <component :is="icon" :size="13" :stroke-width="1.8" class="group-icon" />
@@ -456,7 +459,7 @@ function isItemSelected(localIndex: number): boolean {
       </div>
     </div>
 
-    <div :id="`group-content-${id}`" class="group-content-wrapper">
+    <div :id="`group-content-${id}`" class="group-content-wrapper" :class="{ 'group-content-wrapper--empty': items.length === 0 }">
       <div class="group-content-inner">
           <Transition name="layout-fade" mode="out-in">
             <div :key="layoutMode" class="group-content" :class="`group-content--${layoutMode}`">
@@ -478,8 +481,8 @@ function isItemSelected(localIndex: number): boolean {
                   @mouseleave="() => { onItemLeave(); hideTooltip() }"
                   @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                 >
-                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-tooltip="true" />
-                  <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-tooltip="true" />
+                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="sm" :no-tooltip="true" />
+                  <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-tooltip="true" />
                 </div>
               </template>
 
@@ -501,8 +504,8 @@ function isItemSelected(localIndex: number): boolean {
                     @mouseleave="() => { onItemLeave(); hideTooltip() }"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
-                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
-                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
+                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
+                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
                   </div>
                 </div>
               </template>
@@ -526,8 +529,8 @@ function isItemSelected(localIndex: number): boolean {
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
                     <div class="gs-icon-mode-icon">
-                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" badge-size="xs" :no-tooltip="true" />
-                      <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :no-tooltip="true" />
+                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="xs" :no-tooltip="true" />
+                      <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-tooltip="true" />
                     </div>
                     <GsIconTitle :text="item.title" />
                   </div>
@@ -592,13 +595,38 @@ function isItemSelected(localIndex: number): boolean {
 
 .group-section[data-kind="pinned"] .group-header::before,
 .group-section[data-kind="recent"] .group-header::before {
-  /* 固定项目 / 最近访�?是首个分�?(紧贴 SearchInput), 不画顶部分割�?*/
+  /* 固定项目 / 最近访问是首个分组 (紧贴 SearchInput), 不画顶部分割线 */
   display: none;
 }
 
-/* 空组 (无内�? 不可点击. 鼠标光标保持默认, 避免误导用户. */
+/* 首个可见分组不画顶部分割线，避免与 SearchInput 的 border-bottom 重复 */
+.group-section:first-child .group-header::before {
+  display: none;
+}
+
+/* 空组 (无内容): 不显示顶部分割线 */
+.group-section--empty .group-header::before {
+  display: none;
+}
+
+/* 空组 header 淡化处理：保留标题但降低视觉权重 */
+.group-section[data-interactive="0"] .group-title {
+  color: var(--text-quaternary);
+  opacity: 0.5;
+}
+
+.group-section[data-interactive="0"] .group-count {
+  display: none;
+}
+
+.group-section[data-interactive="0"] .group-header-right {
+  display: none;
+}
+
+/* 空组 (无内容) 不可点击. 鼠标光标保持默认, 避免误导用户. */
 .group-section[data-interactive="0"] .group-header {
   cursor: default;
+  pointer-events: none;
 }
 
 .group-header-left {

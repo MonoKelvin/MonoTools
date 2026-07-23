@@ -370,12 +370,36 @@ export const useSearchStore = defineStore('search', () => {
             case 'name':
                 return [...items].sort((a, b) => a.title.localeCompare(b.title))
             case 'recent':
-                // 按 score (launch_count) 降序
-                return [...items].sort((a, b) => (b.score || 0) - (a.score || 0))
+                // 按 launchCount 降序，再用 score 兜底
+                return [...items].sort((a, b) => {
+                    const la = (a.launchCount ?? 0) || (a.score || 0)
+                    const lb = (b.launchCount ?? 0) || (b.score || 0)
+                    return lb - la
+                })
             case 'path':
                 return [...items].sort((a, b) =>
                     (a.subtitle || '').localeCompare(b.subtitle || ''),
                 )
+            case 'modified':
+                return [...items].sort((a, b) => {
+                    const ma = a.modifiedAt ?? 0
+                    const mb = b.modifiedAt ?? 0
+                    return mb - ma
+                })
+            case 'size':
+                return [...items].sort((a, b) => {
+                    const sa = a.size ?? 0
+                    const sb = b.size ?? 0
+                    return sb - sa
+                })
+            case 'type':
+                return [...items].sort((a, b) => {
+                    const ta = a.resultType || 'other-file'
+                    const tb = b.resultType || 'other-file'
+                    const cmp = ta.localeCompare(tb)
+                    if (cmp !== 0) return cmp
+                    return a.title.localeCompare(b.title)
+                })
             case 'smart':
             default:
                 return [...items].sort((a, b) =>
@@ -392,10 +416,16 @@ export const useSearchStore = defineStore('search', () => {
     let debounceHandle: ReturnType<typeof setTimeout> | null = null
     /** 增量搜索防抖: 防止索引过程中频繁重搜导致 UI 卡顿 */
     let incrementalRefreshTimer: ReturnType<typeof setTimeout> | null = null
-    /** 增量刷新间隔（毫秒）: 索引过程中每 200ms 最多刷新一次列表 */
-    const INCREMENTAL_REFRESH_INTERVAL = 200
+    /** 增量刷新间隔（毫秒）: 索引过程中每 500ms 最多刷新一次列表.
+     *  200ms 过短，首屏索引阶段会与 app completed 事件的 runSearch 竞速，
+     *  导致 results.value 在短时间内剧烈振荡 → displayGroups 反复重排 →
+     *  GroupSection 动画/选中态/下拉框全部乱掉。 */
+    const INCREMENTAL_REFRESH_INTERVAL = 500
     /** 搜索请求序号，用于竞态处理，确保旧请求不会覆盖新结果 */
     let searchRequestSeq = 0
+    /** 应用索引完成后的首次刷新防抖: 避免在文件索引仍在 building 时
+     *  立即触发搜索，让两个索引阶段的结果错开。 */
+    let appReadyRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
     const filteredResults = computed(() => {
         if (activeCategory.value === 'all') return results.value
@@ -419,13 +449,20 @@ export const useSearchStore = defineStore('search', () => {
     })
 
     /**
-     * "最近访问" 分组: 按 launch_count 排序的前 N 个结果.
-     * 与 pinned 不互斥 —— 同一项目可同时出现在固定和最近中, 各自独立.
-     * 空列表时分组区域不显示.
+     * "最近访问" 分组: 仅包含用户**实际启动过**的应用 (launch_count > 0).
+     *
+     * 关键修复: 之前只过滤 category === 'apps'，但所有应用在首次索引时
+     * launch_count 都是 0，导致空查询时所有应用都出现在"最近访问"中，
+     * 与"应用程序"分组完全重复。用户从未启动任何应用时此分组应为空。
+     *
+     * 排序方式 (recent mode): 按 launch_count 降序，用户实际启动过的
+     * 应用排在前面，未启动的 (score=0) 被过滤掉。
      */
     const recent = computed<SearchResult[]>(() => {
         if (activeCategory.value === 'commands') return []
-        const items = results.value.slice(0, RECENT_MAX)
+        const items = results.value
+            .filter((r) => r.category === 'apps' && (r.launchCount ?? 0) > 0)
+            .slice(0, RECENT_MAX)
         return sortItems(items, groupSortModes.value[GROUP_ID.recent], GROUP_ID.recent)
     })
 
@@ -608,10 +645,18 @@ export const useSearchStore = defineStore('search', () => {
     async function loadIndexStatus() {
         try {
             const stats = await searchApi.getIndexStatus()
+            const prevApps = indexStats.value.apps
             indexStats.value = stats
             if (stats.files > 0) {
                 indexStatus.value = 'completed'
                 indexMessage.value = `已索引 ${stats.files.toLocaleString()} 个文件`
+            }
+            // 应用数量从 0 变为非零 → 触发刷新，确保首屏"应用程序"分组有数据.
+            // 修复: 首次启动时 app search 可能在 frontend_ready 前完成,
+            // loadIndexStatus 拿到非零 app 数时如果没刷新，用户看到的是空列表,
+            // Ctrl+R 后才出现。此处检测变化并主动刷新。
+            if (prevApps === 0 && stats.apps > 0 && query.value === '') {
+                triggerIncrementalRefresh()
             }
         } catch {
             /* 静默 */
@@ -629,14 +674,22 @@ export const useSearchStore = defineStore('search', () => {
         apps?: number
     }) {
         const phase = progress.phase
-        // 应用索引阶段: 更新 appReady; 仅当文件索引未在 building 时才动 indexStatus,
-        // 避免应用 completed 覆盖文件索引的 building 进度 (文件索引是长任务, 优先级更高)。
         if (phase === 'apps') {
             if (progress.status === 'completed') {
                 appReady.value = true
                 if (typeof progress.apps === 'number') {
                     indexStats.value.apps = progress.apps
                 }
+                // 应用索引完成后延迟刷新，避免与文件索引进度重叠。
+                // 文件索引通常在 app completed 之后立即开始 (building)，
+                // 此时如果立即触发 runSearch，会拿到中间态结果 → 下一次文件 completed
+                // 又触发一次 → 短时间内两次重排 → UI 抖动。
+                // 策略：等待 600ms，给文件索引一个稳定期。
+                if (appReadyRefreshTimer) clearTimeout(appReadyRefreshTimer)
+                appReadyRefreshTimer = setTimeout(() => {
+                    appReadyRefreshTimer = null
+                    triggerIncrementalRefresh()
+                }, 600)
             }
             if (typeof progress.apps === 'number') {
                 indexStats.value.apps = progress.apps
@@ -645,8 +698,6 @@ export const useSearchStore = defineStore('search', () => {
                 indexStatus.value = progress.status as IndexStatus
                 indexMessage.value = progress.message || ''
             }
-            // 增量刷新: 每收到应用索引进度就刷新一次列表（带防抖）
-            triggerIncrementalRefresh()
             return
         }
         // 文件索引阶段 (phase === 'files' 或缺省): 原逻辑
@@ -666,7 +717,7 @@ export const useSearchStore = defineStore('search', () => {
                 if (typeof progress.current_volume === 'string') {
                     indexCurrentVolume.value = progress.current_volume
                 }
-                // 增量刷新: 每收到文件索引进度就刷新一次列表（带防抖）
+                // 文件索引 building 阶段也刷新（带防抖）
                 triggerIncrementalRefresh()
                 break
             case 'completed':
@@ -690,7 +741,7 @@ export const useSearchStore = defineStore('search', () => {
     }
 
     /**
-     * 触发增量刷新。带 200ms 防抖，避免索引过程中频繁重搜。
+     * 触发增量刷新。带防抖，避免索引进度事件频繁触发重搜。
      * 仅在空查询时刷新，因为有查询词的搜索依赖 FTS5，FTS5 要最后才建好。
      */
     function triggerIncrementalRefresh() {
@@ -746,9 +797,10 @@ export const useSearchStore = defineStore('search', () => {
     })
 
     const commandsItems = computed<SearchResult[]>(() => {
-        return filteredResults.value
+        const items = filteredResults.value
             .filter((r) => r.category === 'commands')
             .slice(0, SEARCH_LIMITS_VISIBLE.commandsMax)
+        return sortItems(items, groupSortModes.value[GROUP_ID.commands], GROUP_ID.commands)
     })
 
     // 不再截断: 后端返回全量, vue-virtual-scroller 负责渲染.

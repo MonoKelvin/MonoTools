@@ -215,6 +215,14 @@ pub fn get_system_theme() -> Result<String, String> {
     }
 }
 
+/// 刷新图标缓存索引: 扫描磁盘上的 PNG 缓存文件,
+/// 与 index.json 对比, 处理映射不匹配、路径丢失、孤立缓存.
+#[tauri::command]
+pub fn refresh_icon_cache() -> Result<(), String> {
+    crate::platform::windows::icon::refresh_icon_index();
+    Ok(())
+}
+
 /// 注册 Windows 平台的 IPC 命令到 Tauri builder
 pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     builder.invoke_handler(tauri::generate_handler![
@@ -224,5 +232,6 @@ pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Buil
         show_file_properties,
         delete_file_to_recycle_bin,
         get_system_theme,
+        refresh_icon_cache,
     ])
 }

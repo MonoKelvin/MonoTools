@@ -18,10 +18,18 @@ pub enum ResultType {
     Directory,
     Document,
     Image,
+    Svg,
     Video,
     Audio,
     Executable,
+    StaticLib,
+    DynamicLib,
     Archive,
+    Shortcut,
+    Html,
+    Font,
+    Config,
+    Code,
     OtherFile,
     Command,
 }
@@ -73,4 +81,13 @@ pub struct SearchResult {
     pub result_type: ResultType,
     pub action: SearchAction,
     pub score: f32,
+    /// 文件大小 (字节), 仅文件类结果有意义.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<i64>,
+    /// 修改时间 (Unix timestamp), 仅文件类结果有意义.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<i64>,
+    /// 启动次数, 仅应用类结果有意义.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launch_count: Option<u32>,
 }

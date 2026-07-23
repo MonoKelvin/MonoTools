@@ -50,7 +50,15 @@ impl CommandRegistry {
     }
 
     pub fn lookup(&self, name: &str) -> Option<&dyn Command> {
-        self.cmds.get(name).map(|c| c.as_ref())
+        if let Some(cmd) = self.cmds.get(name).map(|c| c.as_ref()) {
+            return Some(cmd);
+        }
+        if let Some(target) = self.aliases.get(name) {
+            if let Some(cmd) = self.cmds.get(target).map(|c| c.as_ref()) {
+                return Some(cmd);
+            }
+        }
+        None
     }
 
     pub fn names(&self) -> Vec<String> {

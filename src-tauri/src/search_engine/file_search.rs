@@ -380,8 +380,10 @@ impl FileSearchEngine {
         F: FnMut(&str, usize, usize, usize),
     {
         log::info!("[idx] build_index_ntfs_internal 入口");
+        log::info!("[idx] db_path={:?}, db_initialized={}", self.db_path, self.db_initialized.load(Ordering::SeqCst));
         // 首次进入索引构建时, 懒打开磁盘 DB (在 spawn_blocking 线程中执行, 不阻塞 UI)。
         self.ensure_db()?;
+        log::info!("[idx] ensure_db 完成");
 
         // === 1. 准备阶段: 清空表 + 卸载 FTS5 触发器 ===
         {
@@ -1408,6 +1410,9 @@ fn file_result_to_search_result(f: FileResult) -> SearchResult {
             SearchAction::Open(path_str)
         },
         score: 0.0,
+        size: if f.is_directory { None } else { Some(f.size) },
+        modified_at: Some(f.modified_at),
+        launch_count: None,
     }
 }
 
@@ -1419,15 +1424,37 @@ fn file_type_of(f: &FileResult) -> ResultType {
     let ext = f.extension.as_deref().unwrap_or("").to_lowercase();
 
     match ext.as_str() {
-        "exe" | "dll" | "msi" | "bat" | "cmd" | "ps1" => ResultType::Executable,
-        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "ico" | "svg" | "webp" => {
-            ResultType::Image
-        }
+        // 可执行文件
+        "exe" | "bat" | "cmd" | "ps1" | "msi" => ResultType::Executable,
+        // 静态库
+        "lib" | "a" | "obj" | "o" => ResultType::StaticLib,
+        // 动态库
+        "dll" | "so" | "dylib" => ResultType::DynamicLib,
+        // 图片 (不含 svg)
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "tiff" | "ico" | "webp" => ResultType::Image,
+        // SVG 单独分类
+        "svg" => ResultType::Svg,
+        // 视频
         "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" => ResultType::Video,
+        // 音频
         "mp3" | "wav" | "flac" | "ogg" | "aac" | "wma" => ResultType::Audio,
+        // 压缩包
         "zip" | "rar" | "7z" | "tar" | "gz" | "bz2" | "xz" => ResultType::Archive,
+        // 快捷方式
+        "lnk" | "url" => ResultType::Shortcut,
+        // 网页
+        "html" | "htm" => ResultType::Html,
+        // 字体
+        "ttf" | "otf" | "woff" | "woff2" | "eot" => ResultType::Font,
+        // 配置文件
+        "ini" | "cfg" | "conf" | "yaml" | "yml" | "toml" | "reg" => ResultType::Config,
+        // 文档
         "txt" | "md" | "doc" | "docx" | "pdf" | "xls" | "xlsx" | "ppt" | "pptx" | "csv"
         | "json" | "xml" => ResultType::Document,
+        // 代码
+        "rs" | "py" | "js" | "ts" | "jsx" | "tsx" | "vue" | "go" | "java" | "c" | "cpp"
+        | "h" | "cs" | "php" | "rb" | "swift" | "kt" | "scala" | "sql" | "sh" | "bash"
+        | "zsh" | "fish" | "lua" | "r" | "m" | "mm" | "asm" | "wasm" => ResultType::Code,
         _ => ResultType::OtherFile,
     }
 }

@@ -232,49 +232,7 @@ onBeforeUnmount(() => {
       <ChevronDown v-if="displayArrow" :size="12" class="mt-combobox__trigger-arrow" />
     </button>
 
-    <template v-if="dropdownAnchor">
-      <Teleport :to="dropdownAnchor">
-        <Transition name="mt-combobox-dropdown">
-          <div
-            v-if="open"
-            ref="dropdownRef"
-            class="mt-combobox__dropdown"
-            :style="dropdownStyle"
-          >
-            <div class="mt-combobox__content glass-card">
-              <ul class="mt-combobox__list">
-                <li
-                  v-for="(option, idx) in options"
-                  :key="option.key ?? `i${idx}`"
-                  :class="[
-                    'mt-combobox__option',
-                    {
-                      'mt-combobox__option--divider': option.divider,
-                      'mt-combobox__option--disabled': option.disabled,
-                      'mt-combobox__option--active': !option.disabled && !option.divider && activeIndex === idx,
-                      'mt-combobox__option--selected': option.key === modelValue,
-                    },
-                  ]"
-                  @click="selectOption(option)"
-                  @mouseenter="!option.disabled && !option.divider && (activeIndex = idx)"
-                >
-                  <template v-if="option.divider">
-                    <span class="mt-combobox__divider" />
-                  </template>
-                  <template v-else>
-                    <component :is="option.icon" v-if="option.icon" class="mt-combobox__option-icon" :size="14" :stroke-width="2" />
-                    <span class="mt-combobox__option-label">{{ option.label }}</span>
-                    <slot v-if="option.custom" :name="option.custom" />
-                  </template>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </Transition>
-      </Teleport>
-    </template>
-
-    <template v-if="!dropdownAnchor">
+    <Teleport to="body">
       <Transition name="mt-combobox-dropdown">
         <div
           v-if="open"
@@ -312,7 +270,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </Transition>
-    </template>
+    </Teleport>
   </div>
 </template>
 

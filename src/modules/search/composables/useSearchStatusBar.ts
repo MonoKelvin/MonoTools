@@ -146,10 +146,27 @@ export function useSearchStatusBar(search: ReturnType<typeof useSearchStore>) {
   })
 
   // === 选中项 / 结果统计 ===========================================
+  let selectionSeq = 0
   const selectionMessage = computed<StatusBarMessage>(() => {
+    // 强制依赖 selectedIndexes 变化 → 多选数量变化时立即重算
+    void search.selectedIndexes
     const list = search.displayList
     if (list.length === 0) {
-      return { id: 'empty', type: 'info', segments: [{ text: '未找到结果', kind: 'label' }] }
+      return { id: `empty-${++selectionSeq}`, type: 'info', segments: [{ text: '未找到结果', kind: 'label' }] }
+    }
+
+    const selCount = search.selectedIndexes?.size ?? 0
+    // 多选模式: 选中数量 > 1 时显示"已选择 N 项"
+    if (selCount > 1) {
+      return {
+        id: `multi-${selCount}-${++selectionSeq}`,
+        type: 'info',
+        segments: [
+          { text: '已选择 ', kind: 'label' },
+          { text: String(selCount), kind: 'number' },
+          { text: ' 项', kind: 'label' },
+        ],
+      }
     }
 
     const selected = list[search.selectedIndex]
@@ -172,11 +189,11 @@ export function useSearchStatusBar(search: ReturnType<typeof useSearchStore>) {
         segs.push({ text: ' · ', kind: 'muted' })
         segs.push({ text: selected.meta, kind: 'number' })
       }
-      return { id: `sel-${selected.id}`, type: 'info', segments: segs }
+      return { id: `sel-${selected.id}-${++selectionSeq}`, type: 'info', segments: segs }
     }
 
     return {
-      id: `count-${list.length}`,
+      id: `count-${list.length}-${++selectionSeq}`,
       type: 'info',
       segments: [
         { text: '共 ', kind: 'label' },

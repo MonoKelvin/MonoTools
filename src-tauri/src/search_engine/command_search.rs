@@ -45,6 +45,9 @@ impl CommandSearchEngine {
                         args: cmd.args.clone(),
                     },
                     score: 0.0,
+                    size: None,
+                    modified_at: None,
+                    launch_count: None,
                 })
                 .collect();
             results.sort_by(|a, b| a.title.to_lowercase().cmp(&b.title.to_lowercase()));
@@ -86,6 +89,9 @@ impl CommandSearchEngine {
                     args: cmd.args.clone(),
                 },
                 score,
+                size: None,
+                modified_at: None,
+                launch_count: None,
             });
         }
         // 先排序再截断: 确保返回的是得分最高的 limit 条结果

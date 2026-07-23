@@ -227,6 +227,22 @@ export function useAppIcon() {
             return fb
         }
 
+        // 文件类结果跳过真实图标提取, 直接用 Lucide 图标, 避免大量 IPC 开销.
+        if (result?.category === 'files') {
+            const fb = safeFallback(result)
+            logIconTrace({
+                id,
+                title: result.title ?? '',
+                path: extractPath(result),
+                resultType: result.resultType ?? '',
+                level: 'fallback',
+                durationMs: 0,
+                kind: fb.kind,
+                note: 'files-skip-ipc',
+            })
+            return fb
+        }
+
         // 1) 缓存命中
         const cached = cache.get(id)
         if (cached) {
@@ -352,6 +368,7 @@ export function useAppIcon() {
             const id = item?.id
             if (!id) continue
             if (cache.has(id)) continue
+            if (item.category === 'files') continue
             const path = extractPath(item)
             if (!path || knownMissingPaths.has(path)) continue
             if (seenPath.has(path)) continue

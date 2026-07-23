@@ -19,14 +19,15 @@
  * `src/composables/useIconRenderer.ts`.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
-import { AppWindow, Monitor, Store, CornerDownLeft } from '@lucide/vue'
+import { AppWindow, Monitor, Store } from '@lucide/vue'
 import type { SearchResult } from '@/modules/search'
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { useAdaptiveText } from '@/utils/adaptiveText'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
 import MtTooltip from '@/ui/components/MtTooltip.vue'
+import { resultTypeMeta, hslToAlpha } from '../utils/resultTypeMeta'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   result: SearchResult
   active?: boolean
   index: number
@@ -38,7 +39,11 @@ const props = defineProps<{
   noFontShrink?: boolean
   /** 是否禁用 tooltip: 由父容器统一处理时设为 true, 避免重复 */
   noTooltip?: boolean
-}>()
+  /** 当前分组排序模式 */
+  sortMode?: string
+}>(), {
+  badgeSize: 'sm',
+})
 
 // 事件全部由父容器 (VirtualGroupedResults 的行 div) 统一处理, 这里只做展示.
 // 仅声明 emit 留作扩展点: 右键菜单等场景需要时再使用.
@@ -174,12 +179,17 @@ onBeforeUnmount(() => {
 const isSystemApp = computed(() => props.result?.resultType === 'system-app')
 const isUwpApp = computed(() => props.result?.resultType === 'uwp-app')
 
+const resultTypeColor = computed(() => {
+  const meta = resultTypeMeta(props.result?.resultType)
+  return meta?.color ?? 'hsl(0, 0%, 55%)'
+})
+
 const badgeInfo = computed(() => {
   if (isUwpApp.value) {
-    return { icon: Store, label: 'UWP 应用', type: 'uwp' }
+    return { icon: Store, label: 'UWP 应用', type: 'uwp', color: resultTypeColor.value, borderColor: hslToAlpha(resultTypeColor.value, 0.35) }
   }
   if (isSystemApp.value) {
-    return { icon: Monitor, label: '系统应用', type: 'system' }
+    return { icon: Monitor, label: '系统应用', type: 'system', color: resultTypeColor.value, borderColor: hslToAlpha(resultTypeColor.value, 0.35) }
   }
   return null
 })
@@ -280,6 +290,7 @@ watch(
         :size="18"
         :stroke-width="1.7"
         class="app-result-item__lucide"
+        :style="{ color: resultTypeColor }"
       />
       <div
         v-if="badgeInfo"
@@ -289,6 +300,7 @@ watch(
           `app-result-item__badge--${badgeInfo.type}`,
           `app-result-item__badge--${badgeSize ?? 'sm'}`
         ]"
+        :style="{ color: badgeInfo.color, borderColor: badgeInfo.borderColor }"
         @mouseenter="onBadgeEnter"
         @mouseleave="onBadgeLeave"
       >
@@ -322,7 +334,6 @@ watch(
     </div>
 
     <div class="app-result-item__meta">
-      <CornerDownLeft :size="15" :stroke-width="1.8" class="app-result-item__enter" />
     </div>
 
     <!-- 自定义 hover tooltip: 显示应用绝对路径.
@@ -431,7 +442,8 @@ watch(
   transition:
     color var(--dur-fast) var(--ease-out),
     border-color var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out);
+    transform var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
 }
 
 .app-result-item__badge--sm { width: 16px; height: 16px; border-radius: var(--radius-xs); }

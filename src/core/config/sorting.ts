@@ -11,7 +11,7 @@ import type { Component } from 'vue'
 // 排序模式
 // ============================================================================
 
-export type SortMode = 'smart' | 'name' | 'recent' | 'path'
+export type SortMode = 'smart' | 'name' | 'recent' | 'path' | 'modified' | 'size' | 'type'
 
 export interface SortOption {
   key: SortMode
@@ -24,6 +24,9 @@ export const SORT_OPTIONS: SortOption[] = [
   { key: 'name', label: '名称' },
   { key: 'recent', label: '最近访问' },
   { key: 'path', label: '路径' },
+  { key: 'modified', label: '修改时间' },
+  { key: 'size', label: '大小' },
+  { key: 'type', label: '类型' },
 ]
 
 // ============================================================================

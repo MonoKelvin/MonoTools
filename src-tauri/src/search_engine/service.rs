@@ -273,6 +273,9 @@ mod tests {
                 result_type: crate::search_engine::models::ResultType::UserApp,
                 action: SearchAction::Launch("C:\\test.exe".into()),
                 score: 1.0,
+                size: None,
+                modified_at: None,
+                launch_count: None,
             },
         );
         let mock: Arc<dyn SearchSource> = Arc::new(MockEngine { items });

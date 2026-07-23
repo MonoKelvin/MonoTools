@@ -22,11 +22,11 @@ import {
   FolderOpen, FileText, Terminal, Command, Grid3x3,
   Monitor, User, Package, Image, Video, Music, Archive, Cpu,
   Folder, AppWindow, FileCode, FileImage, FileVideo, FileAudio,
-  FileArchive, File, CornerDownLeft
+  FileArchive, File
 } from "@lucide/vue"
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { useAdaptiveText } from '@/utils/adaptiveText'
-import { resultTypeMeta } from '../utils/resultTypeMeta'
+import { resultTypeMeta, hslToAlpha } from '../utils/resultTypeMeta'
 import { ICON_CONFIG } from '@/core/config'
 
 // --- Component ---
@@ -42,6 +42,8 @@ const props = defineProps<{
   noFontShrink?: boolean
   /** 是否禁用 tooltip: 由父容器统一处理时设为 true, 避免重复 */
   noTooltip?: boolean
+  /** 当前分组排序模式，用于条件显示元信息 */
+  sortMode?: string
 }>()
 
 const emit = defineEmits<{
@@ -118,6 +120,11 @@ watch(
   },
   { immediate: false }
 )
+
+// 副标题字号变化时重新截断，避免自适应文字缩小后路径仍按旧宽度截断
+watch(subtitleFontSize, () => {
+  nextTick(() => requestAnimationFrame(applyTruncation))
+})
 
 const contentRef = ref<HTMLElement | null>(null)
 const titleRef = ref<HTMLElement | null>(null)
@@ -219,6 +226,20 @@ const IconComponent = computed(() => {
 const resultTypeLabel = computed(() => {
   return resultTypeMeta(props.result?.resultType)?.label ?? ''
 })
+const resultTypeColor = computed(() => {
+  return resultTypeMeta(props.result?.resultType)?.color ?? 'hsl(0, 0%, 55%)'
+})
+const resultTypeColorBg = computed(() => {
+  const c = resultTypeMeta(props.result?.resultType)?.color ?? 'hsl(0, 0%, 55%)'
+  return hslToAlpha(c, 0.25)
+})
+/** 根据 sortMode 决定是否显示 meta 信息 */
+const showMeta = computed(() => {
+  const mode = props.sortMode
+  // 按名称/路径排序时不显示大小、时间等元信息，保持列表清爽
+  if (!mode || mode === 'name' || mode === 'path' || mode === 'recent' || mode === 'smart') return false
+  return true
+})
 
 /**
  * 图标渲染 composable —�?�?AppResultItem 共享同一套图标状态机.
@@ -280,6 +301,7 @@ onBeforeUnmount(() => {
           :is="iconState.value || IconComponent"
           :size="18"
           :stroke-width="2"
+          :style="{ color: resultTypeColor }"
         />
     </div>
 
@@ -322,11 +344,8 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="result-item__meta">
-      <span v-if="result.meta" class="result-item__meta-text">{{ result.meta }}</span>
-      <span v-if="resultTypeLabel" class="result-item__badge">{{ resultTypeLabel }}</span>
-      <span class="result-item__shortcut">
-        <CornerDownLeft :size="15" :stroke-width="1.8" class="result-item__enter" />
-      </span>
+      <span v-if="showMeta && result.meta" class="result-item__meta-text">{{ result.meta }}</span>
+      <span v-if="resultTypeLabel" class="result-item__badge" :style="{ background: resultTypeColorBg, color: resultTypeColor }">{{ resultTypeLabel }}</span>
     </div>
   </div>
 </template>
@@ -459,13 +478,14 @@ onBeforeUnmount(() => {
   margin-left: auto;
 }
 
-/* 文件大小等次级元信息: 灰色, �?type badge 更轻的视觉权�?*/
+/* 文件大小等次级元信息: 灰色, 比 type badge 更轻的视觉权重*/
 .result-item__meta-text {
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--text-quaternary);
   letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
+  margin-right: var(--sp-1);
   transition: color var(--dur-fast) var(--ease-out);
 }
 
@@ -478,54 +498,9 @@ onBeforeUnmount(() => {
   font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: var(--text-quaternary);
-  background: transparent;
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
   transition:
-    color var(--dur-fast) var(--ease-out),
-    border-color var(--dur-fast) var(--ease-out),
-    background var(--dur-fast) var(--ease-out);
-}
-
-.result-item--active .result-item__badge {
-  color: var(--accent);
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.result-item__shortcut {
-  opacity: 0;
-  transform: translateX(6px);
-  transition:
-    opacity var(--dur-normal) var(--ease-out),
-    transform var(--dur-normal) var(--ease-out);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-sm);
-}
-
-.result-item:hover .result-item__shortcut,
-.result-item--active .result-item__shortcut {
-  opacity: 1;
-  transform: translateX(0);
-}
-
-.result-item__enter {
-  color: var(--text-muted);
-  opacity: 0.85;
-  transition:
-    color var(--dur-fast) var(--ease-out),
-    transform var(--dur-fast) var(--ease-out),
-    opacity var(--dur-fast) var(--ease-out);
-}
-
-.result-item--active .result-item__enter {
-  color: var(--accent);
-  opacity: 1;
-  transform: scale(1.08);
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 </style>

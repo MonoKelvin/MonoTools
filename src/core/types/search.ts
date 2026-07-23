@@ -7,10 +7,19 @@ export type ResultType =
     | 'directory'
     | 'document'
     | 'image'
+    | 'svg'
     | 'video'
     | 'audio'
     | 'executable'
+    | 'library'
+    | 'static-lib'
+    | 'dynamic-lib'
     | 'archive'
+    | 'shortcut'
+    | 'html'
+    | 'font'
+    | 'config'
+    | 'code'
     | 'other-file'
     | 'command'
 
@@ -36,4 +45,7 @@ export interface SearchResult {
     resultType: ResultType
     action: SearchAction
     score: number
+    size?: number | null
+    modifiedAt?: number | null
+    launchCount?: number | null
 }

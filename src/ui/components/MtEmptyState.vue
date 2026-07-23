@@ -52,7 +52,6 @@ const renderIcon = computed<Component>(() =>
 
 <template>
   <div :class="['mt-empty', `mt-empty--${padding}`]">
-    <div class="mt-empty__halo" aria-hidden="true"></div>
     <div class="mt-empty__icon">
       <component :is="renderIcon" :size="26" :stroke-width="1.6" />
     </div>
@@ -75,33 +74,9 @@ const renderIcon = computed<Component>(() =>
   gap: var(--sp-3);
   text-align: center;
   width: 100%;
-  /* 默认 fade in, 每次显示都重新触发 */
+  height: 100%;
+  min-height: 0;
   animation: mt-empty-in 320ms var(--ease-out) both;
-}
-
-.mt-empty--sm { padding: var(--sp-6) var(--sp-5); }
-.mt-empty--md { padding: var(--sp-8) var(--sp-5); }
-.mt-empty--lg { padding: var(--sp-10) var(--sp-5); }
-.mt-empty--xl { padding: var(--sp-12) var(--sp-5); }
-
-/* === 光晕背景 (极淡 radial 渐变) ======================================= */
-.mt-empty__halo {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 220px;
-  height: 220px;
-  margin-top: -110px;
-  margin-left: -110px;
-  background: radial-gradient(
-    circle,
-    var(--accent-soft) 0%,
-    transparent 60%
-  );
-  opacity: 0.5;
-  pointer-events: none;
-  z-index: 0;
-  animation: mt-empty-halo-pulse 6s var(--ease-in-out) infinite;
 }
 
 /* === 图标容器 ========================================================== */
@@ -114,16 +89,9 @@ const renderIcon = computed<Component>(() =>
   align-items: center;
   justify-content: center;
   color: var(--text-tertiary);
-  background: var(--inset);
+  background: transparent;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  /* 顶部 1px 高光 + 内阴影, 营造"按下去的浮雕" */
-  background-image:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0) 50%),
-    radial-gradient(circle at 50% 100%, rgba(0, 0, 0, 0.18) 0%, transparent 70%);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02) inset;
-  /* 呼吸式浮动 */
-  animation: mt-empty-icon-float 6s var(--ease-in-out) infinite;
 }
 
 /* === 文本 =============================================================== */
@@ -169,21 +137,10 @@ const renderIcon = computed<Component>(() =>
   }
 }
 
-@keyframes mt-empty-icon-float {
-  0%, 100% { transform: translateY(0); }
-  50%      { transform: translateY(-3px); }
-}
-
-@keyframes mt-empty-halo-pulse {
-  0%, 100% { opacity: 0.4; transform: scale(1); }
-  50%      { opacity: 0.7; transform: scale(1.05); }
-}
-
 /* === 无障碍 ============================================================ */
 @media (prefers-reduced-motion: reduce) {
   .mt-empty,
-  .mt-empty__icon,
-  .mt-empty__halo {
+  .mt-empty__icon {
     animation: none;
   }
 }

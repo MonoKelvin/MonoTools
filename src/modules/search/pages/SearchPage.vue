@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, onMounted, onBeforeUnmount, nextTick, onUpdated, computed } from 'vue'
-import { Pin, Clock, Settings, Terminal, Sparkles, Folder } from '@lucide/vue'
+import { Pin, Clock, Settings, Terminal, Sparkles, Folder, LayoutList, Grid3X3, WrapText, LayoutGrid, Type, CalendarDays, HardDrive, Tag } from '@lucide/vue'
 import { useSearchStore, GROUP_ID } from '@/modules/search'
 import type { DisplayGroup, GroupId } from '@/modules/search'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
@@ -12,7 +12,6 @@ import { useRouter } from 'vue-router'
 import { listenEvent } from '@/services/tauri'
 import type { SearchResult } from '@/modules/search'
 import { WINDOW_DIMENSIONS, UI_DELAYS, SEARCH_LIMITS_VISIBLE } from '@/core/config'
-import { LayoutList, Grid3X3, WrapText, LayoutGrid, Type } from '@lucide/vue'
 
 import SearchInput from '@/modules/search/components/SearchInput.vue'
 import GroupSection from '@/modules/search/components/GroupSection.vue'
@@ -122,11 +121,8 @@ const handleIndexProgress = (progress: {
   phase?: string
 }) => {
   search.setIndexProgress(progress)
-  // 应用索引就绪后, 若当前是空查询, 自动刷新一次让应用出现在首屏
-  // 注意: search.query 是 Ref<string>, 必须用 .value 取值
-  if (progress.phase === 'apps' && progress.status === 'completed' && search.query.value === '') {
-    search.runSearch().catch(() => undefined)
-  }
+  // 增量刷新由 store.triggerIncrementalRefresh() 内部防抖处理,
+  // 此处不再额外调用 runSearch(), 避免与防抖定时器竞速造成 UI 抖动.
 }
 
 // ============================================================================
@@ -284,12 +280,14 @@ const sortOptionsByKind: Record<string, MtComboBoxOption[]> = {
   recent: [
     { key: 'recent', label: '最近访问', icon: Clock },
     { key: 'name', label: '名称', icon: Type },
+    { key: 'path', label: '路径', icon: Folder },
   ],
   apps: [
     { key: 'smart', label: '智能排序', icon: Sparkles },
     { key: 'name', label: '名称', icon: Type },
     { key: 'recent', label: '最近访问', icon: Clock },
     { key: 'path', label: '路径', icon: Folder },
+    { key: 'type', label: '类型', icon: Tag },
   ],
   system: [
     { key: 'name', label: '名称', icon: Type },
@@ -297,10 +295,14 @@ const sortOptionsByKind: Record<string, MtComboBoxOption[]> = {
   commands: [
     { key: 'smart', label: '智能排序', icon: Sparkles },
     { key: 'name', label: '名称', icon: Type },
+    { key: 'recent', label: '最近访问', icon: Clock },
   ],
   files: [
     { key: 'name', label: '名称', icon: Type },
     { key: 'path', label: '路径', icon: Folder },
+    { key: 'modified', label: '修改时间', icon: CalendarDays },
+    { key: 'size', label: '大小', icon: HardDrive },
+    { key: 'type', label: '类型', icon: Tag },
   ],
 }
 
@@ -337,7 +339,8 @@ function onToggleGroup(groupId: GroupId) {
 }
 
 /**
- * 选中项变化时, 滚动到可见区域.
+ * 选中项变化时, 仅在元素不在可视区域内时才滚动.
+ * 避免跨 GroupSection 时误触发滚动导致列表跳到顶部.
  */
 watch(
   () => search.selectedIndex,
@@ -345,7 +348,13 @@ watch(
     nextTick(() => {
       if (!resultsScrollRef.value) return
       const activeEl = resultsScrollRef.value.querySelector('.gs-item--active') as HTMLElement | null
-      if (activeEl) {
+      if (!activeEl) return
+      const container = resultsScrollRef.value
+      const containerRect = container.getBoundingClientRect()
+      const elRect = activeEl.getBoundingClientRect()
+      // 元素已在可视区域内则跳过，避免不必要的滚动
+      const isVisible = elRect.top >= containerRect.top - 1 && elRect.bottom <= containerRect.bottom + 1
+      if (!isVisible) {
         activeEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
       }
     })
@@ -376,12 +385,10 @@ onMounted(async () => {
   // 并行执行独立的启动任务，提升启动速度
   // 这些任务之间没有依赖关系，可以同时进行
   await Promise.all([
-    search.initialLoad().catch(() => undefined),
     search.loadPinned().catch(() => undefined),
     settings.load().catch(() => undefined),
     tryRegisterHotkey().catch(() => undefined),
     fixWindowWidth().catch(() => undefined),
-    search.loadIndexStatus().catch(() => undefined),
   ])
 
   if (containerRef.value && typeof ResizeObserver !== 'undefined') {
@@ -402,6 +409,14 @@ onMounted(async () => {
 
   // 后端已显示窗口, 淡出加载状态
   showLoading.value = false
+
+  // frontend_ready 后并行执行: 拉取索引状态 + 初始搜索
+  // 将 initialLoad 从前面移到此处, 避免阻塞窗口显示.
+  // 与 loadIndexStatus 并行执行, 两者都是 IPC 调用, 互不依赖.
+  await Promise.all([
+    search.loadIndexStatus().catch(() => undefined),
+    search.initialLoad().catch(() => undefined),
+  ])
 })
 
 onUpdated(() => {

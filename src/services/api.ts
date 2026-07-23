@@ -64,6 +64,13 @@ export const appIconApi = {
       () => paths.map(() => null),
     )
   },
+  /**
+   * 刷新图标磁盘缓存索引: 扫描 PNG 文件与 index.json 对比,
+   * 清理失效条目、删除孤立文件、更新映射.
+   */
+  refreshCache(): Promise<void> {
+    return call<void>('refresh_icon_cache', {}).catch(() => {})
+  },
 }
 
 export const commandApi = {

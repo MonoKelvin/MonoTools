@@ -16,16 +16,17 @@
 //!    不阻塞提取路径.
 //! 3. **提取** — 真正从文件提取图标 (最重的操作).
 //!
-//! ## 扩展性
+//! ## 磁盘索引 (index.json)
 //!
-//! [`IconExtractor`] trait 把"平台特定"的图标提取能力抽象成可替换的
-//! impl. 当前只有 [`WindowsIconExtractor`]; 未来 Linux (libunity /
-//! freedesktop) / macOS (NSWorkspace) 可加 impl 后挂到全局 registry.
-//! 调用方 (commands / services) 始终通过 [`get_extractor()`] 拿
-//! 默认实例, 不直接 import Windows 平台代码.
+//! 磁盘缓存目录下维护一个 `index.json` 文件, 将 hash → {path, name, cached_at, file_size}
+//! 建立映射. 每次启动或刷新时:
+//! - 映射不匹配 (路径改变) → 更新映射, 下次请求重新提取
+//! - 路径丢失 → 删除索引条目 + PNG 文件
+//! - 孤立的缓存文件 → 删除文件
 
 use parking_lot::Condvar as ParkingCondvar;
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -165,11 +166,138 @@ pub fn init_disk_cache(app_cache_dir: &std::path::Path) {
     let _ = std::fs::create_dir_all(&DISK_CACHE_PATH.get().unwrap());
 }
 
+// ===== 磁盘索引 (index.json) =====
+
+/// 索引文件路径: `icons/index.json`.
+const INDEX_FILE_NAME: &str = "index.json";
+
+/// 索引中单条记录的字段.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CacheIndexEntry {
+    /// 原始路径 (小写, 用于比对).
+    path: String,
+    /// 文件名称 (用于展示或日志).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    /// 缓存时间戳 (Unix seconds).
+    cached_at: u64,
+    /// PNG 文件大小 (bytes), 用于快速校验是否被篡改.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    file_size: Option<u64>,
+}
+
+/// 完整索引: hash → entry.
+type CacheIndex = HashMap<String, CacheIndexEntry>;
+
+/// 内存中的索引快照 (进程级共享).
+static ICON_INDEX: OnceLock<Mutex<CacheIndex>> = OnceLock::new();
+
+fn icon_index() -> &'static Mutex<CacheIndex> {
+    ICON_INDEX.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 从磁盘加载 index.json. 加载失败或文件不存在 → 返回空索引.
+fn load_index(cache_dir: &Path) -> CacheIndex {
+    let path = cache_dir.join(INDEX_FILE_NAME);
+    let data = match std::fs::read(&path) {
+        Ok(d) => d,
+        Err(_) => return HashMap::new(),
+    };
+    match serde_json::from_slice(&data) {
+        Ok(idx) => idx,
+        Err(_) => {
+            let _ = std::fs::remove_file(&path);
+            HashMap::new()
+        }
+    }
+}
+
+/// 将索引原子写入磁盘 (tmp + rename).
+fn save_index(cache_dir: &Path, index: &CacheIndex) {
+    let _ = std::fs::create_dir_all(cache_dir);
+    let data = match serde_json::to_vec(index) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let tmp_path = cache_dir.join(format!("{}.tmp", INDEX_FILE_NAME));
+    let final_path = cache_dir.join(INDEX_FILE_NAME);
+    if std::fs::write(&tmp_path, data).is_ok() {
+        let _ = std::fs::rename(&tmp_path, &final_path);
+    }
+}
+
+/// 刷新图标缓存索引:
+/// 1. 加载已有 index.json
+/// 2. 扫描磁盘上所有 `<hash>.png` 文件
+/// 3. 对每条索引记录:
+///    - 对应 PNG 不存在 → 删除索引条目
+///    - 路径仍存在但 hash 变了 → 更新 path/name/file_size, 下次请求会重新提取
+/// 4. 对磁盘上存在但索引没有的孤立 PNG → 删除文件
+pub fn refresh_icon_index() {
+    let Some(cache_dir) = DISK_CACHE_PATH.get().cloned() else {
+        return;
+    };
+    let entries = match std::fs::read_dir(&cache_dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok()).collect::<Vec<_>>(),
+        Err(_) => return,
+    };
+
+    let mut index = load_index(&cache_dir);
+    let mut disk_pngs: HashMap<String, std::fs::Metadata> = HashMap::new();
+
+    // 收集所有磁盘 PNG 文件
+    for entry in &entries {
+        let path = entry.path();
+        if path.extension().map_or(true, |e| e != "png") {
+            continue;
+        }
+        if let Some(hash) = path.file_stem().and_then(|s| s.to_str()) {
+            if let Ok(meta) = entry.metadata() {
+                disk_pngs.insert(hash.to_string(), meta);
+            }
+        }
+    }
+
+    // 遍历索引, 校验/更新
+    let mut to_remove_png: Vec<String> = Vec::new();
+    {
+        let mut idx = index.iter_mut().collect::<Vec<_>>();
+        for (hash, entry) in &mut idx {
+            if let Some(meta) = disk_pngs.get(*hash) {
+                let current_size = meta.len();
+                // 文件大小不匹配 → 视为被篡改/损坏 → 删除
+                if entry.file_size.map(|s| s != current_size).unwrap_or(true) {
+                    to_remove_png.push(hash.clone());
+                }
+            } else {
+                // PNG 不存在 → 删除索引
+                to_remove_png.push(hash.clone());
+            }
+        }
+    }
+    for hash in &to_remove_png {
+        index.remove(hash);
+        let _ = std::fs::remove_file(cache_dir.join(format!("{}.png", hash)));
+    }
+
+    // 孤立的 PNG 文件 (索引中没有) → 删除
+    for hash in disk_pngs.keys() {
+        if !index.contains_key(hash.as_str()) {
+            let _ = std::fs::remove_file(cache_dir.join(format!("{}.png", hash)));
+        }
+    }
+
+    if !index.is_empty() || !to_remove_png.is_empty() {
+        save_index(&cache_dir, &index);
+    }
+}
+
 /// 从磁盘缓存加载图标 (返回 PNG 字节数组).
 /// 命中: 返回 Some(png_bytes). 未命中: 返回 None.
 fn load_disk_cached(key: &str) -> Option<Vec<u8>> {
     let cache_dir = DISK_CACHE_PATH.get().clone()?;
-    let file_path = cache_dir.join(format!("{}.png", hash_to_hex(key)));
+    let key_hex = hash_to_hex(key);
+    let file_path = cache_dir.join(format!("{}.png", key_hex));
 
     let data = match std::fs::read(&file_path) {
         Ok(d) => d,
@@ -186,7 +314,7 @@ fn load_disk_cached(key: &str) -> Option<Vec<u8>> {
 }
 
 /// 异步写磁盘缓存 (非阻塞).
-fn save_disk_cached_async(key: String, png_data: Vec<u8>) {
+fn save_disk_cached_async(key: String, path: String, png_data: Vec<u8>) {
     // 后台执行, 不阻塞
     std::thread::spawn(move || {
         let cache_dir = match DISK_CACHE_PATH.get() {
@@ -207,14 +335,42 @@ fn save_disk_cached_async(key: String, png_data: Vec<u8>) {
         let tmp_path = cache_dir.join(format!("{}.tmp", key_hex));
         let final_path = cache_dir.join(format!("{}.png", key_hex));
 
-        if std::fs::write(&tmp_path, png_data).is_err() {
+        if std::fs::write(&tmp_path, &png_data).is_err() {
             let _ = std::fs::remove_file(&tmp_path);
             return;
         }
 
         if std::fs::rename(&tmp_path, &final_path).is_err() {
             let _ = std::fs::remove_file(&tmp_path);
+            return;
         }
+
+        // 更新索引
+        let mut index = icon_index().lock();
+        index.insert(
+            key_hex.clone(),
+            CacheIndexEntry {
+                path,
+                name: None,
+                cached_at: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+                file_size: Some(png_data.len() as u64),
+            },
+        );
+        drop(index);
+
+        // 异步保存索引到磁盘
+        save_index_async(cache_dir);
+    });
+}
+
+/// 异步保存索引到磁盘 (不阻塞).
+fn save_index_async(cache_dir: PathBuf) {
+    std::thread::spawn(move || {
+        let index = icon_index().lock().clone();
+        save_index(&cache_dir, &index);
     });
 }
 
@@ -460,7 +616,7 @@ pub fn get_or_extract_cached(path: &str) -> crate::core::error::Result<Option<Ve
     // 写入内存 cache + 异步写磁盘 + 清除 in-flight 标记 + 通知等待线程
     if let Some(ref png_data) = extracted {
         // 异步写磁盘 (非阻塞)
-        save_disk_cached_async(key.clone(), png_data.clone());
+        save_disk_cached_async(key.clone(), path.to_string(), png_data.clone());
     }
     {
         let mut cache = cache().lock();
@@ -673,9 +829,11 @@ fn extract_hicon_via_shil_jumbo(path: &Path) -> Option<HICON> {
 /// 不带 BIGGERSIZEOK 时, 系统返回"最接近请求尺寸的原生位图"; 实际尺寸若 != 请求
 /// 尺寸就放弃这一层 (return None), 避免 16x16 被强制放大. 这是修锯齿的关键.
 ///
-/// 对于 shell: 开头的路径 (如 UWP 应用), 先通过 SHParseDisplayName 解析为 PIDL,
-/// 再用 SHCreateItemFromIDList 创建 IShellItem, 确保能正确解析 shell 命名空间路径.
-/// 同时允许 BIGGERSIZEOK, 因为这些图标通常不是 256x256 的原生尺寸.
+/// 对于 shell: 开头的路径 (如 UWP 应用):
+/// - **不用 SIIGBF_ICONONLY**: 该标志会让系统只返回图标 glyph (透明背景上的一小笔),
+///   导致 UWP 磁贴只有中间一小点、周围全透明, 在前端 20x20 显示区看起来几乎看不见.
+/// - 仅用 `SIIGBF_BIGGERSIZEOK`: 让系统返回完整的磁贴位图 (彩色背景 + glyph),
+///   这样 autocrop 不需要介入就已经足够大, 视觉上清晰可见.
 #[cfg(windows)]
 fn extract_rgba_via_shell_item_factory(path: &Path, size: i32) -> Option<Vec<u8>> {
     use windows::core::PCWSTR;
@@ -742,8 +900,11 @@ fn extract_rgba_via_shell_item_factory(path: &Path, size: i32) -> Option<Vec<u8>
     };
 
     let flags = if is_shell_path {
-        // shell 路径允许缩放，确保能拿到图标
-        SIIGBF_ICONONLY | SIIGBF_BIGGERSIZEOK
+        // UWP 磁贴: 仅允许缩放, 不限制为"仅图标".
+        // SIIGBF_ICONONLY 会让系统只返回小 glyph (透明背景上一小笔),
+        // 导致磁贴在前端列表中几乎看不见.
+        // 去掉 ICONONLY 后系统返回完整磁贴位图 (彩色背景 + glyph), 视觉清晰.
+        SIIGBF_BIGGERSIZEOK
     } else {
         SIIGBF_ICONONLY // 关键: 不带 BIGGERSIZEOK, 避免强制放大
     };
@@ -1268,7 +1429,7 @@ fn resize_rgba_bilinear(src: &[u8], src_w: u32, src_h: u32, dst_w: u32, dst_h: u
 ///
 /// 解决"图标只有左上角一点点"的问题:
 /// - 检测有效像素的边界框
-/// - 如果有效内容占比 < 60%, 说明图标被大量透明区域包围
+/// - 如果有效内容占比低于阈值 (当前 45%), 说明图标被透明区域包围
 /// - 裁剪后按比例放大到目标尺寸的 85%, 然后居中放置
 /// - 保持宽高比, 使用双线性插值保证质量
 ///

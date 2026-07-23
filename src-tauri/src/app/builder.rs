@@ -60,6 +60,7 @@ pub fn run() {
         #[cfg(windows)]
         if let Ok(cache_dir) = app_handle.path().app_cache_dir() {
             crate::platform::windows::icon::init_disk_cache(&cache_dir);
+            crate::platform::windows::icon::refresh_icon_index();
             log::info!("[icon] 磁盘缓存路径: {:?}", cache_dir.join("icons"));
         }
 

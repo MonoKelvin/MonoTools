@@ -310,6 +310,9 @@ impl AppSearchEngine {
                         result_type: app_type_of(&a),
                         action,
                         score: search_cfg::APP_EMPTY_QUERY_SCORE,
+                        size: None,
+                        modified_at: None,
+                        launch_count: Some(a.launch_count),
                     }
                 })
                 .collect();
@@ -357,6 +360,9 @@ impl AppSearchEngine {
                     result_type: app_type_of(&a),
                     action,
                     score: s,
+                    size: None,
+                    modified_at: None,
+                    launch_count: Some(a.launch_count),
                 }
             })
             .collect()
@@ -792,7 +798,8 @@ impl AppSearchEngine {
                     let path = PathBuf::from(&exe_path);
 
                     // 有效性检查: 文件存在、不是系统目录、不是卸载程序
-                    if path.exists() && !is_system_executable(&path) && !name.is_empty() {
+                    // 且必须是真正的可执行程序（排除 .dll/.ico/.url 等非程序文件）
+                    if path.exists() && !is_system_executable(&path) && is_true_executable(&path) && !name.is_empty() {
                         let (pinyin_initials, pinyin_full) = pinyin_of(&name);
                         batch.push(AppEntry {
                             id: uuid::Uuid::new_v4().to_string(),
