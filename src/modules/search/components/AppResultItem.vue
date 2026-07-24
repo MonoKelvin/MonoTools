@@ -8,9 +8,6 @@
  * - **三态图标**: 静态 SVG (立即) / 后端 PNG (异步) / Lucide 通用兜底 / monogram 兜底.
  * - **更大标题字号 (14px / 600)**: 强化应用名识别度.
  * - **省略号截断**: 标题超出时自动 ... 显示.
- * - **自定义 hover tooltip**: 显示应用绝对路径 (PrimeVue v-tooltip 在
- *   我们的 happy-dom / WebView2 / 虚拟列表 组合下不稳定, 改用纯 CSS +
- *   鼠标事件 + setTimeout 的自绘 tooltip, 视觉与项目玻璃风格一致).
  *
  * 与 ResultItem 共享选中态 / 悬停态 / 快捷键 ↵ 行为, 可直接在列表中替换.
  *
@@ -23,8 +20,7 @@ import { AppWindow, Monitor, Smartphone } from '@lucide/vue'
 import type { SearchResult } from '@/modules/search'
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { useAdaptiveText } from '@/utils/adaptiveText'
-import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
-import MtTooltip from '@/ui/components/MtTooltip.vue'
+import { FONT_SIZES } from '@/core/config'
 
 const props = withDefaults(defineProps<{
   result: SearchResult
@@ -70,111 +66,6 @@ watch(() => props.result?.id, () => refresh(props.result))
 // 显式调用 dispose (composable 已挂 onBeforeUnmount, 此处为对称性)
 onBeforeUnmount(dispose)
 
-/**
- * 自定义 hover tooltip —— 显示应用绝对路径.
- *
- * 为什么不沿用 PrimeVue v-tooltip:
- * - 在 happy-dom (测试) / WebView2 (生产) / 虚拟列表 (v-for 复用) 这三种
- *   环境下, v-tooltip 的 @mouseenter 监听和定位偶尔丢失, 表现"hover
- *   不出来". 改用纯 CSS + 鼠标事件 + setTimeout 后, 不依赖任何外部库.
- * - 自绘的好处: 玻璃风格 (blur / 边框 / 圆角) 与项目 tooltip.scss 完全
- *   一致, 不需要再为 PrimeVue 兜底样式写补丁.
- *
- * 显示规则:
- * - 选中态 (active): 不显示, 避免键盘导航时 tooltip 跟随高亮持续闪现.
- * - 路径为空: 不显示 (没必要给用户一个空 tooltip).
- * - 显示延迟: ICON_CONFIG.appTooltipDelayMs (360ms), 避免鼠标划过闪烁.
- *
- * 路径来源优先级:
- * 1) launch / open 动作: action.data (程序的绝对路径)
- * 2) 否则: subtitle (兜底)
- */
-const isHovered = ref(false)
-const tooltipVisible = ref(false)
-const tooltipStyle = ref<{ left: string; top: string }>({ left: '0px', top: '0px' })
-const itemRef = ref<HTMLElement | null>(null)
-let showTimer: ReturnType<typeof setTimeout> | null = null
-
-const absolutePath = computed(() => {
-  const r = props.result
-  if (!r) return ''
-  if (r.action?.type === 'launch' || r.action?.type === 'open') {
-    return r.action.data ?? ''
-  }
-  if (r.action?.type === 'run') {
-    return r.subtitle || ''
-  }
-  return r.subtitle || ''
-})
-
-function updateTooltipPosition() {
-  if (!itemRef.value) return
-  const rect = itemRef.value.getBoundingClientRect()
-  const vw = window.innerWidth
-  const sidePadding = 24
-  const tooltipMaxWidth = Math.min(400, vw - sidePadding * 2)
-  const gap = 6
-
-  let left = rect.left + rect.width / 2
-  let top = rect.bottom + gap
-
-  if (left - tooltipMaxWidth / 2 < sidePadding) {
-    left = sidePadding + tooltipMaxWidth / 2
-  }
-  if (left + tooltipMaxWidth / 2 > vw - sidePadding) {
-    left = vw - sidePadding - tooltipMaxWidth / 2
-  }
-
-  tooltipStyle.value = {
-    left: `${left}px`,
-    top: `${top}px`,
-  }
-}
-
-function clearShowTimer() {
-  if (showTimer) {
-    clearTimeout(showTimer)
-    showTimer = null
-  }
-}
-
-function onItemEnter() {
-  isHovered.value = true
-  if (props.noTooltip) return
-  if (props.active) return
-  if (!absolutePath.value) return
-  clearShowTimer()
-  showTimer = setTimeout(() => {
-    updateTooltipPosition()
-    tooltipVisible.value = true
-    showTimer = null
-  }, ICON_CONFIG.appTooltipDelayMs)
-}
-
-function onItemLeave() {
-  isHovered.value = false
-  tooltipVisible.value = false
-  clearShowTimer()
-}
-
-// result 变化时强制重置 (例如键盘切换选中项, result 引用换了)
-watch(() => props.result?.id, () => {
-  tooltipVisible.value = false
-  clearShowTimer()
-})
-
-// active 变化 (键盘上下方向键) 时, 立即关闭 tooltip, 避免干扰选中态
-watch(() => props.active, (isActive) => {
-  if (isActive) {
-    tooltipVisible.value = false
-    clearShowTimer()
-  }
-})
-
-onBeforeUnmount(() => {
-  clearShowTimer()
-})
-
 const isSystemApp = computed(() => props.result?.resultType === 'system-app')
 const isUwpApp = computed(() => props.result?.resultType === 'uwp-app')
 
@@ -188,33 +79,7 @@ const badgeInfo = computed(() => {
   return null
 })
 
-const badgeTooltipVisible = ref(false)
 const badgeEl = ref<HTMLElement | null>(null)
-let badgeTooltipTimer: ReturnType<typeof setTimeout> | null = null
-
-function onBadgeEnter() {
-  clearBadgeTooltipTimer()
-  badgeTooltipTimer = setTimeout(() => {
-    badgeTooltipVisible.value = true
-  }, 400)
-}
-
-function onBadgeLeave() {
-  clearBadgeTooltipTimer()
-  badgeTooltipVisible.value = false
-}
-
-function clearBadgeTooltipTimer() {
-  if (badgeTooltipTimer) {
-    clearTimeout(badgeTooltipTimer)
-    badgeTooltipTimer = null
-  }
-}
-
-onBeforeUnmount(() => {
-  clearBadgeTooltipTimer()
-  clearShowTimer()
-})
 
 /**
  * 自适应标题文字: 优先缩小字体, 超出则省略号, hover 显示 tooltip.
@@ -252,11 +117,8 @@ watch(
 
 <template>
   <div
-    ref="itemRef"
     :class="['app-result-item', { 'app-result-item--active': active }]"
     :data-app-result-id="result?.id"
-    @mouseenter="onItemEnter"
-    @mouseleave="onItemLeave"
   >
     <div class="app-result-item__icon">
       <img
@@ -293,18 +155,9 @@ watch(
           `app-result-item__badge--${badgeInfo.type}`,
           `app-result-item__badge--${badgeSize ?? 'sm'}`
         ]"
-        @mouseenter="onBadgeEnter"
-        @mouseleave="onBadgeLeave"
       >
         <component :is="badgeInfo.icon" :size="badgeSize === 'xs' ? 12 : 10" :stroke-width="2" />
       </div>
-      <MtTooltip
-        :visible="badgeTooltipVisible"
-        :title="badgeInfo?.label"
-        :anchor="badgeEl"
-        placement="top"
-        :offset-y="4"
-      />
     </div>
 
     <div
@@ -312,7 +165,6 @@ watch(
       :class="{ 'app-result-item__title--wrap': titleWrap }"
       ref="titleContainerRef"
       :style="{ fontSize: titleFontSize + 'px' }"
-      :title="!noTooltip && titleIsTruncated && !noFontShrink ? (result?.title || '') : ''"
     >
       <template v-if="noFontShrink">
         {{ result?.title || '' }}
@@ -327,22 +179,6 @@ watch(
 
     <div class="app-result-item__meta">
     </div>
-
-    <!-- 自定义 hover tooltip: 显示应用绝对路径.
-         通过 Teleport 挂载到 body, 用 position: fixed 定位,
-         避免被虚拟滚动容器的 overflow: auto 裁剪. -->
-    <Teleport to="body">
-      <Transition name="app-tooltip-fade">
-        <div
-          v-if="tooltipVisible && absolutePath"
-          class="app-tooltip"
-          :style="tooltipStyle"
-          role="tooltip"
-        >
-          {{ absolutePath }}
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
@@ -553,57 +389,5 @@ watch(
   color: var(--accent);
   opacity: 1;
   transform: scale(1.08);
-}
-
-/* === 自定义 hover tooltip: 显示应用绝对路径 ===
-   通过 Teleport 挂载到 body, 使用 position: fixed 定位,
-   避免被虚拟滚动容器的 overflow: auto 裁剪. */
-.app-tooltip {
-  position: fixed;
-  left: 0;
-  top: 0;
-  transform: translateX(-50%);
-  z-index: 9999;
-  max-width: min(400px, calc(100vw - 48px));
-  width: max-content;
-  padding: 5px 9px;
-  font-size: 11.5px;
-  font-weight: 500;
-  line-height: 1.4;
-  letter-spacing: 0.01em;
-  color: var(--text-primary);
-  text-align: left;
-  background: var(--glass-bg-soft);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  white-space: normal;
-  overflow-wrap: break-word;
-  word-break: break-all;
-  pointer-events: none;
-  user-select: none;
-  font-family: var(--font-mono);
-}
-
-.os-win10 .app-tooltip {
-  background: rgba(28, 28, 32, 0.98);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-/* === tooltip 显隐动画 === */
-.app-tooltip-fade-enter-active,
-.app-tooltip-fade-leave-active {
-  transition:
-    opacity 160ms var(--ease-out),
-    transform 200ms var(--ease-out);
-}
-
-.app-tooltip-fade-enter-from,
-.app-tooltip-fade-leave-to {
-  opacity: 0;
-  transform: translateX(-50%) translateY(-3px);
 }
 </style>

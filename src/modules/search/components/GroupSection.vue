@@ -5,82 +5,27 @@ import AppResultItem from './AppResultItem.vue'
 import ResultItem from '@/modules/search/components/ResultItem.vue'
 import GsIconTitle from './GsIconTitle.vue'
 import MtComboBox from '@/ui/components/MtComboBox.vue'
-import MtTooltip from '@/ui/components/MtTooltip.vue'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
+import MtTooltip from '@/ui/components/MtTooltip.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder, CalendarDays, HardDrive, Tag } from '@lucide/vue'
 import { ICON_CONFIG } from '@/core/config/icon'
 
-interface TooltipData {
-  title: string
-  subtitle?: string
-  path?: string
-}
+/** 获取 item 的 tooltip 文本：名称 + 副标题 + 命令ID，应用优先显示绝对路径或 shell 路径 */
+function getItemTooltipText(item: SearchResult): string {
+  const parts: string[] = [item.title]
 
-function getItemTooltipData(item: SearchResult): TooltipData | undefined {
-  const data: TooltipData = { title: item.title }
-  let hasExtra = false
-
-  if (item.subtitle && item.subtitle !== item.title) {
-    data.subtitle = item.subtitle
-    hasExtra = true
+  // 副标题（路径、命令等）
+  if (item.subtitle) {
+    parts.push(item.subtitle)
   }
 
-  if (item.action?.type === 'launch' || item.action?.type === 'open') {
-    if (item.action.data && item.action.data !== item.subtitle && item.action.data !== item.title) {
-      data.path = item.action.data
-      hasExtra = true
-    }
+  // 命令ID
+  if (item.id) {
+    parts.push(item.id)
   }
 
-  if (!hasExtra) return undefined
-  return data
-}
-
-const tooltipVisible = ref(false)
-const tooltipData = ref<TooltipData | null>(null)
-const tooltipMouseX = ref(0)
-const tooltipMouseY = ref(0)
-let tooltipShowTimer: ReturnType<typeof setTimeout> | null = null
-let tooltipCurrentItem: SearchResult | null = null
-
-function clearTooltipTimer() {
-  if (tooltipShowTimer) {
-    clearTimeout(tooltipShowTimer)
-    tooltipShowTimer = null
-  }
-}
-
-function onItemEnter(item: SearchResult, event: MouseEvent) {
-  tooltipCurrentItem = item
-  tooltipMouseX.value = event.clientX
-  tooltipMouseY.value = event.clientY
-  const data = getItemTooltipData(item)
-  if (!data) return
-
-  clearTooltipTimer()
-  tooltipShowTimer = setTimeout(() => {
-    if (tooltipCurrentItem === item) {
-      tooltipData.value = data
-      tooltipVisible.value = true
-      tooltipShowTimer = null
-    }
-  }, ICON_CONFIG.tooltipDelayMs)
-}
-
-function hideTooltip() {
-  tooltipCurrentItem = null
-  tooltipData.value = null
-  tooltipVisible.value = false
-  clearTooltipTimer()
-}
-
-function handleScroll() {
-  hideTooltip()
-}
-
-function handleClick() {
-  hideTooltip()
+  return parts.join('\n')
 }
 
 export type LayoutMode = 'list' | 'grid-fixed' | 'grid-auto' | 'icon'
@@ -121,7 +66,7 @@ const DEFAULT_LAYOUT_BY_KIND: Record<string, LayoutMode> = {
   pinned: 'grid-fixed',
   recent: 'grid-fixed',
   apps: 'icon',
-  commands: 'list',
+  commands: 'grid-fixed',
   files: 'list',
 }
 
@@ -180,7 +125,8 @@ const hoveredLocalIndex = computed(() => {
 
 const gridStyle = computed(() => {
   if (layoutMode.value === 'grid-fixed') {
-    const cols = props.gridCols || 3
+    // commands 组默认 2 列等宽
+    const cols = props.gridCols || (props.kind === 'commands' ? 2 : 3)
     return { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }
   }
   return {}
@@ -267,9 +213,6 @@ onMounted(async () => {
   if (!props.collapsed) {
     updateContentHeight()
   }
-
-  window.addEventListener('scroll', handleScroll, true)
-  window.addEventListener('click', handleClick, true)
 })
 
 onBeforeUnmount(() => {
@@ -281,8 +224,10 @@ onBeforeUnmount(() => {
     cancelAnimationFrame(rafId)
     rafId = null
   }
-  window.removeEventListener('scroll', handleScroll, true)
-  window.removeEventListener('click', handleClick, true)
+  if (scrollListernerCleanup) {
+    scrollListernerCleanup()
+    scrollListernerCleanup = null
+  }
 })
 
 watch(
@@ -364,8 +309,6 @@ function globalIndexOf(localIndex: number): number {
 }
 
 function onItemClick(item: SearchResult, localIndex: number, event: MouseEvent) {
-  // 点击时隐藏 tooltip
-  hideTooltip()
   emit('select', props.id, localIndex, event)
 }
 
@@ -430,7 +373,7 @@ function isItemSelected(localIndex: number): boolean {
 </script>
 
 <template>
-  <div class="group-section" :data-kind="kind" :data-interactive="isInteractive ? '1' : '0'" :class="{ 'group-section--empty': items.length === 0 }">
+  <div class="group-section" :data-group-id="id" :data-kind="kind" :data-interactive="isInteractive ? '1' : '0'" :class="{ 'group-section--empty': items.length === 0 }">
     <div class="group-header" @click="toggleCollapse">
       <div class="group-header-left">
         <component :is="icon" :size="13" :stroke-width="1.8" class="group-icon" />
@@ -463,36 +406,18 @@ function isItemSelected(localIndex: number): boolean {
       <div class="group-content-inner">
           <Transition name="layout-fade" mode="out-in">
             <div :key="layoutMode" class="group-content" :class="`group-content--${layoutMode}`">
-              <!-- 使用 collapsedItems 作为降级: �?items 为空�?正在收缩动画�?,
-                   保持内容�?DOM 中以支持渐变消失的高度动�?-->
               <template v-if="layoutMode === 'list'">
-                <div
+                <MtTooltip
                   v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
                   :key="`${id}-${item.id}-${idx}`"
-                  class="gs-item gs-item--list"
-                  :class="{
-                    'gs-item--active': isItemActive(idx),
-                    'gs-item--hover': isItemHovered(idx),
-                    'gs-item--selected': isItemSelected(idx),
-                  }"
-                  @click="(e) => onItemClick(item, idx, e)"
-                  @dblclick="onItemDblClick(item)"
-                  @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
-                  @mouseleave="() => { onItemLeave(); hideTooltip() }"
-                  @contextmenu="(e) => onItemContextMenu(e, item, idx)"
+                  :text="getItemTooltipText(item)"
+                  :placement="'bottom'"
+                  :offset-y="6"
+                  :side-padding="20"
+                  :delay="ICON_CONFIG.tooltipDelayMs"
                 >
-                  <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="sm" :no-tooltip="true" />
-                  <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-tooltip="true" />
-                </div>
-              </template>
-
-              <!-- grid-fixed / grid-auto -->
-              <template v-else-if="layoutMode === 'grid-fixed' || layoutMode === 'grid-auto'">
-                <div class="gs-grid" :style="gridStyle">
                   <div
-                    v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
-                    :key="`${id}-${item.id}-${idx}`"
-                    class="gs-item gs-item--grid"
+                    class="gs-item gs-item--list"
                     :class="{
                       'gs-item--active': isItemActive(idx),
                       'gs-item--hover': isItemHovered(idx),
@@ -500,40 +425,80 @@ function isItemSelected(localIndex: number): boolean {
                     }"
                     @click="(e) => onItemClick(item, idx, e)"
                     @dblclick="onItemDblClick(item)"
-                    @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
-                    @mouseleave="() => { onItemLeave(); hideTooltip() }"
+                    @mouseenter="() => onItemHover(idx)"
+                    @mouseleave="onItemLeave"
                     @contextmenu="(e) => onItemContextMenu(e, item, idx)"
                   >
-                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
-                    <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-font-shrink="layoutMode === 'grid-auto'" :no-tooltip="true" />
+                    <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="sm" />
+                  <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-font-shrink="true" />
                   </div>
+                </MtTooltip>
+              </template>
+
+              <!-- grid-fixed / grid-auto -->
+              <template v-else-if="layoutMode === 'grid-fixed' || layoutMode === 'grid-auto'">
+                <div class="gs-grid" :style="gridStyle">
+                  <MtTooltip
+                    v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
+                    :key="`${id}-${item.id}-${idx}`"
+                    :text="getItemTooltipText(item)"
+                    :placement="'bottom'"
+                    :offset-y="6"
+                    :side-padding="20"
+                    :delay="ICON_CONFIG.tooltipDelayMs"
+                  >
+                    <div
+                      class="gs-item gs-item--grid"
+                      :class="{
+                        'gs-item--active': isItemActive(idx),
+                        'gs-item--hover': isItemHovered(idx),
+                        'gs-item--selected': isItemSelected(idx),
+                      }"
+                      @click="(e) => onItemClick(item, idx, e)"
+                      @dblclick="onItemDblClick(item)"
+                      @mouseenter="() => onItemHover(idx)"
+                      @mouseleave="onItemLeave"
+                      @contextmenu="(e) => onItemContextMenu(e, item, idx)"
+                    >
+                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="sm" :no-font-shrink="layoutMode === 'grid-auto'" />
+                      <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-font-shrink="layoutMode === 'grid-auto'" />
+                    </div>
+                  </MtTooltip>
                 </div>
               </template>
 
               <!-- icon mode -->
               <template v-else-if="layoutMode === 'icon'">
                 <div class="gs-grid gs-grid--icon" :style="iconGridStyle">
-                  <div
+                  <MtTooltip
                     v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
                     :key="`${id}-${item.id}-${idx}`"
-                    class="gs-item gs-item--icon"
-                    :class="{
-                      'gs-item--active': isItemActive(idx),
-                      'gs-item--hover': isItemHovered(idx),
-                      'gs-item--selected': isItemSelected(idx),
-                    }"
-                    @click="(e) => onItemClick(item, idx, e)"
-                    @dblclick="onItemDblClick(item)"
-                    @mouseenter="(e) => { onItemHover(idx); onItemEnter(item, e) }"
-                    @mouseleave="() => { onItemLeave(); hideTooltip() }"
-                    @contextmenu="(e) => onItemContextMenu(e, item, idx)"
+                    :text="getItemTooltipText(item)"
+                    :placement="'bottom'"
+                    :offset-y="6"
+                    :side-padding="20"
+                    :delay="ICON_CONFIG.tooltipDelayMs"
                   >
-                    <div class="gs-icon-mode-icon">
-                      <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="xs" :no-tooltip="true" />
-                      <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-tooltip="true" />
+                    <div
+                      class="gs-item gs-item--icon"
+                      :class="{
+                        'gs-item--active': isItemActive(idx),
+                        'gs-item--hover': isItemHovered(idx),
+                        'gs-item--selected': isItemSelected(idx),
+                      }"
+                      @click="(e) => onItemClick(item, idx, e)"
+                      @dblclick="onItemDblClick(item)"
+                      @mouseenter="() => onItemHover(idx)"
+                      @mouseleave="onItemLeave"
+                      @contextmenu="(e) => onItemContextMenu(e, item, idx)"
+                    >
+                      <div class="gs-icon-mode-icon">
+                        <AppResultItem v-if="isAppKind(kind)" :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" badge-size="xs" />
+                        <ResultItem v-else :result="item" :index="idx" :active="isItemActive(idx)" :sort-mode="sortMode" :no-font-shrink="true" />
+                      </div>
+                      <GsIconTitle :text="item.title" />
                     </div>
-                    <GsIconTitle :text="item.title" />
-                  </div>
+                  </MtTooltip>
                 </div>
               </template>
             </div>
@@ -541,18 +506,6 @@ function isItemSelected(localIndex: number): boolean {
         </div>
       </div>
   </div>
-
-  <MtTooltip
-    :visible="tooltipVisible && !!tooltipData"
-    :title="tooltipData?.title"
-    :subtitle="tooltipData?.subtitle"
-    :path="tooltipData?.path"
-    :mouse-x="tooltipMouseX"
-    :mouse-y="tooltipMouseY"
-    placement="bottom"
-    :offset-y="6"
-    :side-padding="20"
-  />
 </template>
 
 <style scoped>
@@ -704,6 +657,12 @@ function isItemSelected(localIndex: number): boolean {
 
 .group-content {
   width: 100%;
+}
+
+/* list mode: 纵向堆叠 */
+.group-content--list {
+  display: flex;
+  flex-direction: column;
 }
 
 /* === 布局切换过渡动画 === */

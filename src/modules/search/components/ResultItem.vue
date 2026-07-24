@@ -311,7 +311,6 @@ onBeforeUnmount(() => {
         :class="{ 'result-item__title--wrap': titleWrap }"
         ref="titleContainerRef"
         :style="{ fontSize: titleFontSize + 'px' }"
-        :title="!noTooltip && titleIsTruncated && !noFontShrink ? (result.title || '') : ''"
       >
         <template v-if="noFontShrink">
           {{ result.title || '' }}
@@ -329,7 +328,6 @@ onBeforeUnmount(() => {
         :class="{ 'result-item__subtitle--wrap': titleWrap }"
         ref="subtitleContainerRef"
         :style="{ fontSize: subtitleFontSize + 'px' }"
-        :title="!noTooltip && subtitleIsTruncated && !noFontShrink ? (result.subtitle || '') : ''"
       >
         <template v-if="noFontShrink">
           {{ result.subtitle || '' }}
