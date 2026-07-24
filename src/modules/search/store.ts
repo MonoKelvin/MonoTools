@@ -13,6 +13,7 @@ import {
     DEFAULT_SORT_BY_GROUP,
 } from '@/core/config/sorting'
 import { isTauri } from '@/services/env'
+import { commandSpecRegistry } from '@/core/command'
 
 export type ActiveCategory = 'all' | 'apps' | 'files' | 'commands'
 export type IndexStatus = 'idle' | 'building' | 'completed' | 'error'
@@ -797,11 +798,51 @@ export const useSearchStore = defineStore('search', () => {
     })
 
     const commandsItems = computed<SearchResult[]>(() => {
-        const items = filteredResults.value
+        // 1) 后端返回的用户自定义命令（可编辑/删除）
+        const userCmds = filteredResults.value
             .filter((r) => r.category === 'commands')
-            .slice(0, SEARCH_LIMITS_VISIBLE.commandsMax)
-        return sortItems(items, groupSortModes.value[GROUP_ID.commands], GROUP_ID.commands)
+
+        // 2) 前端内置系统命令（不可编辑/删除）
+        //    当用户输入查询时，过滤匹配的系统命令；空查询时显示全部。
+        const builtinCmds = buildBuiltinCommandResults(query.value)
+
+        // 合并（用户命令优先，因为可能有 scoring）
+        const merged = [...userCmds, ...builtinCmds]
+        return sortItems(merged, groupSortModes.value[GROUP_ID.commands], GROUP_ID.commands)
     })
+
+    /**
+     * 将前端内置命令 spec 转换为 SearchResult。
+     * 用于在搜索页面显示系统命令（不可编辑/删除）。
+     */
+    function buildBuiltinCommandResults(q: string): SearchResult[] {
+        const specs = commandSpecRegistry.getAll()
+        const qLower = q.toLowerCase()
+
+        return specs
+            .filter((spec) => {
+                // 空查询时显示所有系统命令
+                if (q === '') return true
+                // 查询匹配：标题或关键词
+                const titleMatch = spec.title?.toLowerCase().includes(qLower)
+                const keywordsMatch = spec.keywords?.some((kw) => kw.toLowerCase().includes(qLower))
+                return titleMatch || keywordsMatch
+            })
+            .map((spec) => ({
+                id: spec.id,
+                title: spec.title,
+                subtitle: spec.description || spec.id,
+                meta: null,
+                icon: null,
+                category: 'commands' as const,
+                resultType: 'command' as const,
+                action: { type: 'launch' as const, data: spec.id },
+                score: 0,
+                size: null,
+                modifiedAt: null,
+                launchCount: null,
+            }))
+    }
 
     // 不再截断: 后端返回全量, vue-virtual-scroller 负责渲染.
     const filesAllUnfiltered = computed<SearchResult[]>(() => {

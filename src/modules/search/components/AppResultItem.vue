@@ -19,13 +19,12 @@
  * `src/composables/useIconRenderer.ts`.
  */
 import { computed, onBeforeUnmount, onMounted, ref, watch, nextTick } from 'vue'
-import { AppWindow, Monitor, Store } from '@lucide/vue'
+import { AppWindow, Monitor, Smartphone } from '@lucide/vue'
 import type { SearchResult } from '@/modules/search'
 import { useIconRenderer } from '@/ui/widgets/appicon/useIconRenderer'
 import { useAdaptiveText } from '@/utils/adaptiveText'
 import { FONT_SIZES, ICON_CONFIG } from '@/core/config'
 import MtTooltip from '@/ui/components/MtTooltip.vue'
-import { resultTypeMeta, hslToAlpha } from '../utils/resultTypeMeta'
 
 const props = withDefaults(defineProps<{
   result: SearchResult
@@ -179,17 +178,12 @@ onBeforeUnmount(() => {
 const isSystemApp = computed(() => props.result?.resultType === 'system-app')
 const isUwpApp = computed(() => props.result?.resultType === 'uwp-app')
 
-const resultTypeColor = computed(() => {
-  const meta = resultTypeMeta(props.result?.resultType)
-  return meta?.color ?? 'hsl(0, 0%, 55%)'
-})
-
 const badgeInfo = computed(() => {
   if (isUwpApp.value) {
-    return { icon: Store, label: 'UWP 应用', type: 'uwp', color: resultTypeColor.value, borderColor: hslToAlpha(resultTypeColor.value, 0.35) }
+    return { icon: Smartphone, label: 'UWP 应用', type: 'uwp', color: 'hsl(215, 55%, 72%)', borderColor: 'hsla(215, 55%, 68%, 0.45)' }
   }
   if (isSystemApp.value) {
-    return { icon: Monitor, label: '系统应用', type: 'system', color: resultTypeColor.value, borderColor: hslToAlpha(resultTypeColor.value, 0.35) }
+    return { icon: Monitor, label: '系统应用', type: 'system', color: 'hsl(220, 10%, 65%)', borderColor: 'hsla(220, 10%, 58%, 0.35)' }
   }
   return null
 })
@@ -219,7 +213,7 @@ function clearBadgeTooltipTimer() {
 
 onBeforeUnmount(() => {
   clearBadgeTooltipTimer()
-  clearTitleTooltipTimer()
+  clearShowTimer()
 })
 
 /**
@@ -290,7 +284,6 @@ watch(
         :size="18"
         :stroke-width="1.7"
         class="app-result-item__lucide"
-        :style="{ color: resultTypeColor }"
       />
       <div
         v-if="badgeInfo"
@@ -300,7 +293,6 @@ watch(
           `app-result-item__badge--${badgeInfo.type}`,
           `app-result-item__badge--${badgeSize ?? 'sm'}`
         ]"
-        :style="{ color: badgeInfo.color, borderColor: badgeInfo.borderColor }"
         @mouseenter="onBadgeEnter"
         @mouseleave="onBadgeLeave"
       >
@@ -449,24 +441,21 @@ watch(
 .app-result-item__badge--sm { width: 16px; height: 16px; border-radius: var(--radius-xs); }
 .app-result-item__badge--xs { width: 18px; height: 18px; border-radius: var(--radius-xs); }
 
-.app-result-item:hover .app-result-item__badge,
-.app-result-item:hover .app-result-item__badge--uwp {
+.app-result-item:hover .app-result-item__badge {
   color: var(--text-secondary);
   border-color: var(--border-default);
 }
 
-.app-result-item:hover .app-result-item__badge--uwp {
-  transform: scale(1.06);
-}
-
+/* system 在 hover/active 时也变灰 */
+.app-result-item:hover .app-result-item__badge--system,
 .app-result-item--active .app-result-item__badge--system {
   color: var(--text-secondary);
   border-color: var(--border-default);
 }
 
+/* uwp hover/active 不覆盖颜色，保留内联的浅灰蓝色 */
+.app-result-item:hover .app-result-item__badge--uwp,
 .app-result-item--active .app-result-item__badge--uwp {
-  color: var(--text-secondary);
-  border-color: var(--border-default);
   transform: scale(1.06);
 }
 

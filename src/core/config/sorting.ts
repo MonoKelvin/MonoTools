@@ -194,7 +194,7 @@ export const DEFAULT_SORT_BY_GROUP: Record<string, SortMode> = {
   apps: 'smart',
   system: 'name',
   commands: 'name',
-  files: 'smart',
+  files: 'name',
 }
 
 /**

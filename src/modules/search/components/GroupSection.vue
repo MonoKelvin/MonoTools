@@ -110,7 +110,7 @@ const emit = defineEmits<{
   (e: 'select', groupId: string, localIndex: number, event: MouseEvent): void
   (e: 'open', item: SearchResult): void
   (e: 'hover', globalIndex: number): void
-  (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number, target: EventTarget | null): void
+  (e: 'contextmenu', event: MouseEvent, item: SearchResult, globalIndex: number, target: EventTarget | null, kind: string): void
   (e: 'layout-change', mode: LayoutMode): void
   (e: 'sort-change', mode: SortMode): void
   /** 布局切换动画完成后通知父级重新同步窗口高度 */
@@ -384,7 +384,7 @@ function onItemLeave() {
 
 function onItemContextMenu(event: MouseEvent, item: SearchResult, localIndex: number) {
   event.preventDefault()
-  emit('contextmenu', event, item, globalIndexOf(localIndex), event.target)
+  emit('contextmenu', event, item, globalIndexOf(localIndex), event.target, props.kind)
 }
 
 function onLayoutChange(key: string) {

@@ -6,7 +6,7 @@ import type { DisplayGroup, GroupId } from '@/modules/search'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { useSettingsStore } from '@/core/stores/settings'
-import { hotkeyApi, windowApi, shellApi } from '@/services'
+import { windowApi, shellApi } from '@/services'
 import { isTauri } from '@/services/env'
 import { useRouter } from 'vue-router'
 import { listenEvent } from '@/services/tauri'
@@ -24,11 +24,16 @@ import { MtEmptyState } from '@/ui/components'
 import { useCommandsStore, dispatchKeyEvent } from '@/core/command'
 import { useAppIcon } from '@/ui/widgets/appicon/useAppIcon'
 import { useSearchStatusBar } from '@/modules/search/composables/useSearchStatusBar'
+import { buildContextMenuItems } from '@/modules/search/composables/useContextMenuItems'
+import { builtinCommandSpecs } from '@/core/command'
 
 const showContextMenu = ref(false)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
-const contextMenuItem = ref<SearchResult | null>(null)
+const contextMenuItems = ref<import('@/ui/components/MtMenu.vue').MtMenuItem[]>([]) // 预计算好的菜单项
+const contextMenuKind = ref('apps') // 右键菜单所在分组 kind, 用于差异化菜单
+/** 当前右键菜单对应的搜索结果项，用于 action 处理时获取目标 item */
+const contextMenuItemRef = ref<SearchResult | null>(null)
 const showHotkeyModal = ref(false)
 const showLoading = ref(true)
 const hoveredGlobalIndex = ref(-1)
@@ -107,13 +112,6 @@ const onHover = (globalIndex: number) => {
 }
 const onQueryChange = (val: string) => search.setQuery(val)
 
-const tryRegisterHotkey = async () => {
-  if (!isTauri) return
-  try {
-    await hotkeyApi.register(settings.settings.hotkey)
-  } catch {}
-}
-
 const handleIndexProgress = (progress: {
   status: string
   message?: string
@@ -146,23 +144,49 @@ watch(
   { deep: false },
 )
 
-const handleContextMenu = (e: MouseEvent, item?: SearchResult) => {
+const handleContextMenu = (e: MouseEvent, item?: SearchResult, kind?: string) => {
   e.preventDefault()
-  // 仅在右键点击具体列表项时弹出菜单, 空白区域不响应.
   if (!item) return
   contextMenuX.value = e.clientX
   contextMenuY.value = e.clientY
-  contextMenuItem.value = item
+  contextMenuKind.value = kind ?? 'apps'
+
+  // 保存当前 item 引用，用于 action 处理
+  contextMenuItemRef.value = item
+  // 动态构建菜单项：根据分组 kind 和 item 状态
+  const isPinned = search.isPinned(item.id)
+  // 命令分组：判断是否为内置命令
+  const isBuiltin = (kind === 'commands' && builtinCommandSpecs.some((s) => s.id === item.id))
+  contextMenuItems.value = buildContextMenuItems({ item, kind: kind ?? '', isPinned, isBuiltin })
+
   showContextMenu.value = true
 }
 
 const closeContextMenu = () => {
   showContextMenu.value = false
+  contextMenuItems.value = []
+  contextMenuItemRef.value = null
 }
 
-/** 右键菜单"固定 / 取消固定" → 调用 store 切换 pin 状态. */
-const handleContextMenuPinToggle = (item: SearchResult) => {
-  search.togglePin(item.id).catch(() => undefined)
+/** 右键菜单 action 统一分发: pin-toggle / edit-command / delete-command */
+const handleContextMenuAction = (menuItem: import('@/ui/components/MtMenu.vue').MtMenuItem) => {
+  const item = contextMenuItemRef.value
+  if (!item) return
+  const key = menuItem.key
+  if (!key) return
+
+  switch (key) {
+    case 'pin-toggle':
+      search.togglePin(item.id).catch(() => undefined)
+      break
+    case 'edit-command':
+      // TODO: 打开命令编辑弹窗 (CommandsPanel 已有 CRUD 逻辑)
+      console.info('[ContextMenu] edit command:', item.id)
+      break
+    case 'delete-command':
+      commandsStore.deleteCommand?.(item.id).catch(() => undefined)
+      break
+  }
 }
 
 /** UI 内部对 search.cmd.* 命令的实现：仅 react state；无 IPC 调用。 */
@@ -275,7 +299,6 @@ const sortOptionsByKind: Record<string, MtComboBoxOption[]> = {
   pinned: [
     { key: 'recent', label: '最近访问', icon: Clock },
     { key: 'name', label: '名称', icon: Type },
-    { key: 'path', label: '路径', icon: Folder },
   ],
   recent: [
     { key: 'recent', label: '最近访问', icon: Clock },
@@ -362,7 +385,6 @@ watch(
 )
 
 onMounted(async () => {
-  commandsStore.loadFromBackend().catch(() => undefined)
   window.addEventListener('keydown', handleGlobalKeydown)
   if (containerRef.value) {
     containerRef.value.addEventListener('contextmenu', handleContextMenu)
@@ -387,7 +409,6 @@ onMounted(async () => {
   await Promise.all([
     search.loadPinned().catch(() => undefined),
     settings.load().catch(() => undefined),
-    tryRegisterHotkey().catch(() => undefined),
     fixWindowWidth().catch(() => undefined),
   ])
 
@@ -397,8 +418,7 @@ onMounted(async () => {
     syncWindowHeight()
   }
 
-  // 再多等一帧, 确保 DOM 布局完全稳定后再显示窗口.
-  await nextTick()
+  // 等一帧确保 DOM 布局稳定后显示窗口 (一帧足够).
   await nextTick()
   try {
     const { call } = await import('@/services/tauri')
@@ -410,10 +430,11 @@ onMounted(async () => {
   // 后端已显示窗口, 淡出加载状态
   showLoading.value = false
 
-  // frontend_ready 后并行执行: 拉取索引状态 + 初始搜索
-  // 将 initialLoad 从前面移到此处, 避免阻塞窗口显示.
-  // 与 loadIndexStatus 并行执行, 两者都是 IPC 调用, 互不依赖.
+  // frontend_ready 后并行执行: 命令 spec + 索引状态 + 初始搜索
+  // 命令 spec 原来是启动阶段第二大 IPC 阻塞点, 挪到窗口已显示之后.
+  // 三者都是 IPC 调用, 互不依赖.
   await Promise.all([
+    commandsStore.loadFromBackend().catch(() => undefined),
     search.loadIndexStatus().catch(() => undefined),
     search.initialLoad().catch(() => undefined),
   ])
@@ -519,9 +540,9 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
       :visible="showContextMenu"
       :x="contextMenuX"
       :y="contextMenuY"
-      :item="contextMenuItem"
+      :items="contextMenuItems"
       @close="closeContextMenu"
-      @pin-toggle="handleContextMenuPinToggle"
+      @select="handleContextMenuAction"
     />
 
     <HotkeyModal :visible="showHotkeyModal" @close="showHotkeyModal = false" />
