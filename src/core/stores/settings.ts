@@ -19,7 +19,7 @@ export const useSettingsStore = defineStore('settings', () => {
       const data = await settingsApi.getAll()
       if (data) settings.value = { ...settings.value, ...data }
     } catch {
-      /* 设置加载失败已在调用方（SettingsPanel）处理；此处静默避免控制台噪音 */
+      /* 设置加载失败静默处理 */
     }
   }
 

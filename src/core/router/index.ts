@@ -11,8 +11,7 @@ export const router = createRouter({
     {
       path: '/settings',
       name: 'settings',
-      component: () => import('@/modules/search/pages/SearchPage.vue'),
-      meta: { isPanel: true },
+      component: () => import('@/modules/settings/pages/SettingsPage.vue'),
     },
     {
       path: '/commands',

@@ -77,6 +77,10 @@ async function mockBackend<T>(cmd: string, args?: Record<string, unknown>): Prom
       return { files: 2297401, apps: 186, commands: 6 } as T
     case 'build_file_index':
       return '索引构建已启动' as T
+    case 'get_settings_bulk':
+      return {} as T
+    case 'set_settings_bulk':
+      return true as T
     default:
       return ([] as unknown) as T
   }

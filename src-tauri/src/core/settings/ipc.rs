@@ -7,9 +7,16 @@
 //! 各业务模块的设置 IPC 由各模块自行提供。
 
 use crate::app::state::AppState;
-use crate::core::settings::{Settings, ThemeMode};
+use crate::core::settings::{persistence, Settings, ThemeMode};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
+
+/// 将当前设置写入 SQLite (持久化)
+fn persist(state: &Arc<AppState>) {
+    let s = state.settings_repo.get();
+    persistence::save_settings(&state.storage, &s);
+}
 
 // ==================== 通用设置 IPC ====================
 
@@ -35,6 +42,7 @@ pub async fn set_setting(
             s.set_field(&key, value);
         }))
         .map_err(|e| e.to_string())?;
+    persist(&state);
     Ok(())
 }
 
@@ -48,7 +56,9 @@ pub async fn set_all_settings(
     state: State<'_, Arc<AppState>>,
     value: Settings,
 ) -> Result<(), String> {
-    state.settings_repo.save(value).map_err(|e| e.to_string())
+    state.settings_repo.save(value).map_err(|e| e.to_string())?;
+    persist(&state);
+    Ok(())
 }
 
 #[tauri::command]
@@ -129,6 +139,42 @@ pub async fn set_follow_system_theme(
     Ok(())
 }
 
+// ==================== 批量操作 IPC ====================
+
+#[tauri::command]
+pub async fn get_settings_bulk(
+    state: State<'_, Arc<AppState>>,
+    keys: Vec<String>,
+) -> Result<HashMap<String, serde_json::Value>, String> {
+    let s = state.settings_repo.get();
+    let json = serde_json::to_value(&s).unwrap_or_default();
+    let obj = json.as_object().ok_or("settings is not an object")?;
+    let mut result = HashMap::new();
+    for key in &keys {
+        if let Some(v) = obj.get(key) {
+            result.insert(key.clone(), v.clone());
+        }
+    }
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn set_settings_bulk(
+    state: State<'_, Arc<AppState>>,
+    values: HashMap<String, serde_json::Value>,
+) -> Result<(), String> {
+    state
+        .settings_repo
+        .update(Box::new(move |s| {
+            for (key, value) in values {
+                s.set_field(&key, value);
+            }
+        }))
+        .map_err(|e| e.to_string())?;
+    persist(&state);
+    Ok(())
+}
+
 /// 注册设置模块的 IPC 命令到 Tauri builder
 pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     builder.invoke_handler(tauri::generate_handler![
@@ -141,5 +187,7 @@ pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Buil
         get_pin_top,
         set_pin_top,
         set_follow_system_theme,
+        get_settings_bulk,
+        set_settings_bulk,
     ])
 }

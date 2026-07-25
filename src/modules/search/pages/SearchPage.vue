@@ -6,6 +6,7 @@ import type { DisplayGroup, GroupId } from '@/modules/search'
 import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { useSettingsStore } from '@/core/stores/settings'
+import { useThemeStore } from '@/core/stores/theme'
 import { windowApi, shellApi } from '@/services'
 import { isTauri } from '@/services/env'
 import { useRouter } from 'vue-router'
@@ -40,6 +41,7 @@ const hoveredGlobalIndex = ref(-1)
 
 const search = useSearchStore()
 const settings = useSettingsStore()
+const themeStore = useThemeStore()
 const router = useRouter()
 const commandsStore = useCommandsStore()
 
@@ -144,7 +146,15 @@ watch(
   { deep: false },
 )
 
-const handleContextMenu = (e: MouseEvent, item?: SearchResult, kind?: string) => {
+const handleContextMenu = (e: MouseEvent | CustomEvent, item?: SearchResult, kind?: string) => {
+  // Logo 菜单导航: 当前由 SearchInput 内部直接 router.push 路由跳转,
+  // 此分支仅作兜底 (向后兼容旧调用方), 如果收到 nav-to-* 自定义事件,
+  // 静默忽略, 避免重复跳转或 throw 在 CustomEvent 上调用 preventDefault.
+  if (typeof e === 'object' && 'type' in e && typeof e.type === 'string' && e.type.startsWith('nav-to-')) {
+    return
+  }
+
+  // 搜索结果右键菜单
   e.preventDefault()
   if (!item) return
   contextMenuX.value = e.clientX
@@ -485,6 +495,7 @@ const contentHeight = computed(() => Math.max(240, pendingHeight - 88))
         @arrow-down="runUiCommand('search.cmd.next-item')"
         @arrow-up="runUiCommand('search.cmd.prev-item')"
         @escape="runUiCommand('search.cmd.close-window')"
+        @contextmenu="handleContextMenu"
         autofocus
       />
 

@@ -5,6 +5,7 @@
 //! 或通过扩展机制注册到全局设置中。
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -44,6 +45,11 @@ pub struct Settings {
     /// 是否跟随系统主题（light/dark）
     #[serde(default)]
     pub follow_system_theme: bool,
+
+    /// 动态扩展字段 — 模块通过注册机制写入的设置项
+    /// `#[serde(flatten)]` 使其与硬编码字段序列化到同一 JSON 层级
+    #[serde(flatten)]
+    pub extensions: HashMap<String, serde_json::Value>,
 }
 
 fn default_pin_to_top() -> bool {
@@ -90,6 +96,7 @@ impl Default for Settings {
             ],
             pin_to_top: true,
             follow_system_theme: false,
+            extensions: HashMap::new(),
         }
     }
 }
@@ -138,7 +145,8 @@ impl Settings {
                 }
             }
             _ => {
-                // 忽略未知字段
+                // 写入动态扩展字段
+                self.extensions.insert(key.to_string(), value.clone());
             }
         }
     }

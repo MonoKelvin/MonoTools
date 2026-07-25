@@ -21,6 +21,7 @@ pub mod repo;
 pub mod ipc;
 pub mod cmd_settings;
 pub mod tray;
+pub mod persistence;
 
 pub use models::{Settings, ThemeMode};
 pub use repo::{InMemorySettingsRepo, SettingsRepo};

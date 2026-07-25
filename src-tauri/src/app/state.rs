@@ -15,6 +15,7 @@ use crate::search_engine::file_search::FileSearchEngine;
 use crate::search_engine::{PinRepo, SearchEngine, StatsRepo};
 use crate::services::hotkey::HotkeyService;
 use crate::services::window::WindowService;
+use crate::services::StorageService;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -34,6 +35,7 @@ pub struct AppState {
 
     pub hotkey: Arc<HotkeyService>,
     pub window: Arc<WindowService>,
+    pub storage: Arc<StorageService>,
 
     pub is_dragging: Arc<Mutex<bool>>,
 

@@ -17,7 +17,8 @@ use crate::app::state::AppState;
 use crate::core::command::{
     build_core_registry, CommandRegistry, CommandRepo, InMemoryCommandRepo,
 };
-use crate::core::settings::{InMemorySettingsRepo, Settings, SettingsRepo};
+use crate::core::settings::{InMemorySettingsRepo, SettingsRepo};
+use crate::services::StorageService;
 use crate::search_engine::app_search::AppSearchEngine;
 use crate::search_engine::command_search::CommandSearchEngine;
 use crate::search_engine::file_search::FileSearchEngine;
@@ -72,7 +73,19 @@ pub fn configure_builder(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<
 /// 集中组装所有业务模块的状态。
 /// 这是 app 层唯一直接引用业务模块的地方之一。
 pub fn build_app_state(app_handle: &AppHandle) -> Arc<AppState> {
-    let settings_repo = Arc::new(InMemorySettingsRepo::new(Settings::default()));
+    // 初始化存储服务
+    let storage = Arc::new(StorageService::new(app_handle)
+        .unwrap_or_else(|e| {
+            log::error!("[settings] 无法初始化 StorageService: {e}，将不持久化设置");
+            // 用一个临时 SQLite 连接兜底 — 设置不持久化
+            StorageService::new(app_handle).unwrap_or_else(|_| {
+                panic!("StorageService 初始化失败且无法恢复")
+            })
+        }));
+
+    // 从 SQLite 加载已持久化的设置
+    let loaded = crate::core::settings::persistence::load_settings(&storage);
+    let settings_repo = Arc::new(InMemorySettingsRepo::new(loaded));
     let command_repo: Arc<dyn CommandRepo> = Arc::new(InMemoryCommandRepo::new());
     let stats_repo = Arc::new(StatsRepo::new());
     let pin_repo = Arc::new(PinRepo::new());
@@ -118,6 +131,7 @@ pub fn build_app_state(app_handle: &AppHandle) -> Arc<AppState> {
         search_engine,
         hotkey,
         window,
+        storage,
         is_dragging: Arc::new(Mutex::new(false)),
         frontend_initialized: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     })
@@ -211,6 +225,8 @@ pub fn register_ipc_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Buil
         crate::core::settings::ipc::get_pin_top,
         crate::core::settings::ipc::set_pin_top,
         crate::core::settings::ipc::set_follow_system_theme,
+        crate::core::settings::ipc::get_settings_bulk,
+        crate::core::settings::ipc::set_settings_bulk,
         // core::command
         crate::core::command::ipc::list_commands,
         crate::core::command::ipc::add_command,

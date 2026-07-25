@@ -1,4 +1,4 @@
-import { call } from './tauri'
+import { call, listenEvent } from './tauri'
 import type { SearchResult, SearchOptions } from '@/modules/search'
 import type { Settings, ThemeMode } from '@/core/types/settings'
 
@@ -89,18 +89,24 @@ export const commandApi = {
 }
 
 export const settingsApi = {
-    get<T>(key: string) {
-        return call<T | null>('get_setting', { key })
-    },
-    set<T>(key: string, value: T) {
-        return call<void>('set_setting', { key, value })
-    },
-    getAll() {
-        return call<Settings | null>('get_all_settings', {})
-    },
-    setAll(value: Settings) {
-        return call<void>('set_all_settings', { value })
-    },
+  get<T>(key: string) {
+    return call<T | null>('get_setting', { key })
+  },
+  set<T>(key: string, value: T) {
+    return call<void>('set_setting', { key, value })
+  },
+  getAll() {
+    return call<Settings | null>('get_all_settings', {})
+  },
+  setAll(value: Settings) {
+    return call<void>('set_all_settings', { value })
+  },
+  getBulk(keys: string[]) {
+    return call<Record<string, unknown>>('get_settings_bulk', { keys })
+  },
+  setBulk(values: Record<string, unknown>) {
+    return call<void>('set_settings_bulk', { values })
+  },
 }
 
 export const hotkeyApi = {

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { Search, X, Settings, Terminal, LogOut, Sun } from "@lucide/vue"
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri } from '@/services/env'
 import MtMenu from '@/ui/components/MtMenu.vue'
 import type { MtMenuItem } from '@/ui/components/MtMenu.vue'
+import { useThemeStore } from '@/core/stores/theme'
 
 const props = withDefaults(
   defineProps<{
@@ -25,6 +27,13 @@ const emit = defineEmits<{
 
 const inputRef = ref<HTMLInputElement | null>(null)
 const focused = ref(false)
+
+/* 注: 原本通过 emit('contextmenu', new CustomEvent('nav-to-*')) 上抛导航意图,
+   父级 SearchPage 再 router.push。该链路在某些情况下会被全局 contextmenu 监
+   听抢先调用 e.preventDefault(), 失去后续路由跳转窗口, 表现为"点击设置无反应
+   + 整页点击失效". 现改为组件内部直接 useRouter.push, 不再依赖事件传递. */
+const router = useRouter()
+const themeStore = useThemeStore()
 
 const onKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Enter') { e.preventDefault(); emit('enter') }
@@ -186,17 +195,13 @@ function onLogoContextMenu(event: MouseEvent) {
   emit('contextmenu', event)
 }
 
-function toggleTheme() {
-  emit('contextmenu', new CustomEvent('nav-to-theme'))
-}
-
 function onMenuSelect(item: MtMenuItem) {
   showLogoMenu.value = false
   if (item.key) {
     switch (item.key as MenuKey) {
-      case 'settings': emit('contextmenu', new CustomEvent('nav-to-settings')); break
-      case 'commands': emit('contextmenu', new CustomEvent('nav-to-commands')); break
-      case 'theme': toggleTheme(); break
+      case 'settings': router.push('/settings'); break
+      case 'commands': router.push('/commands'); break
+      case 'theme': themeStore.toggleTheme(); break
       case 'quit': if (isTauri) invoke('quit_app').catch(() => {}); break
     }
   }

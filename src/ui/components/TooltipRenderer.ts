@@ -264,7 +264,7 @@ export class TooltipRenderer {
         // 应用 maxWidth 限制并允许换行
         this.tooltipEl.style.width = 'auto'
         this.tooltipEl.style.maxWidth = `${maxWidth}px`
-        this.textEl.style.whiteSpace = 'normal'
+        if (this.textEl) this.textEl.style.whiteSpace = 'normal'
 
         // 强制重排，获取应用限制后的实际宽度
         void this.tooltipEl.offsetHeight

@@ -9,7 +9,6 @@ import type { MtComboBoxOption } from '@/ui/components/MtComboBox.vue'
 import MtTooltip from '@/ui/components/MtTooltip.vue'
 import type { SortMode } from '@/core/config/sorting'
 import { LayoutList, Grid3X3, WrapText, LayoutGrid, Sparkles, Type, Clock, Folder, CalendarDays, HardDrive, Tag } from '@lucide/vue'
-import { ICON_CONFIG } from '@/core/config/icon'
 
 /** 获取 item 的 tooltip 文本：名称 + 副标题 + 命令ID，应用优先显示绝对路径或 shell 路径 */
 function getItemTooltipText(item: SearchResult): string {
@@ -111,15 +110,23 @@ const isAppKind = (kind: string) => kind === 'pinned' || kind === 'recent' || ki
 
 const startIdx = computed(() => props.startIndex ?? 0)
 
+/* hover tooltip 的本地索引缓存.
+   上一版依赖 props.hoveredGlobalIndex - startIdx 派生, 但 SearchPage 内部
+   还要在其他 chained computed 中重设 hover → 出现"悬停时鼠标在列表顶动
+   一下就丢失 hover 状态, tooltip 来不及补线"的现象. 这里本地维护一份
+   独立的 hover 索引, 不依赖父级全局 hover, 满足"鼠标停留期间持续显示
+   tooltip". */
+const hoveredLocalIndex = ref<number>(-1)
+/* 父级 hover 派生 (键盘 hover 等场景). 不可直接用于 isItemHovered, 避免
+   与本地 hover 冲突导致 -1 闪动. */
+const hoveredLocalFallback = computed(() => {
+  if (props.hoveredGlobalIndex == null) return -1
+  const local = props.hoveredGlobalIndex - startIdx.value
+  return local >= 0 && local < props.items.length ? local : -1
+})
 const selectedLocalIndex = computed(() => {
   if (props.selectedGlobalIndex == null) return -1
   const local = props.selectedGlobalIndex - startIdx.value
-  return local >= 0 && local < props.items.length ? local : -1
-})
-
-const hoveredLocalIndex = computed(() => {
-  if (props.hoveredGlobalIndex == null) return -1
-  const local = props.hoveredGlobalIndex - startIdx.value
   return local >= 0 && local < props.items.length ? local : -1
 })
 
@@ -316,13 +323,21 @@ function onItemDblClick(item: SearchResult) {
   emit('open', item)
 }
 
+function isItemHovered(localIndex: number): boolean {
+  if (hoveredLocalIndex.value === localIndex && hoveredLocalIndex.value !== -1) return true
+  return hoveredLocalFallback.value === localIndex && hoveredLocalFallback.value !== -1
+}
+
 function onItemHover(localIndex: number) {
   // hover 仅在无修饰键时同步高亮, 避免多选 Ctrl/Shift 操作时 hover 抢占
   emit('hover', globalIndexOf(localIndex))
+  // 本地维护一份 hover (供 MtTooltip 的 :visible 使用)
+  hoveredLocalIndex.value = localIndex
 }
 
 function onItemLeave() {
   emit('hover', -1)
+  hoveredLocalIndex.value = -1
 }
 
 function onItemContextMenu(event: MouseEvent, item: SearchResult, localIndex: number) {
@@ -361,10 +376,6 @@ function onSortChange(key: string) {
 
 function isItemActive(localIndex: number): boolean {
   return selectedLocalIndex.value === localIndex
-}
-
-function isItemHovered(localIndex: number): boolean {
-  return hoveredLocalIndex.value === localIndex
 }
 
 function isItemSelected(localIndex: number): boolean {
@@ -408,13 +419,13 @@ function isItemSelected(localIndex: number): boolean {
             <div :key="layoutMode" class="group-content" :class="`group-content--${layoutMode}`">
               <template v-if="layoutMode === 'list'">
                 <MtTooltip
-                  v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
+                  v-for="(item, idx) in items"
                   :key="`${id}-${item.id}-${idx}`"
                   :text="getItemTooltipText(item)"
                   :placement="'bottom'"
                   :offset-y="6"
                   :side-padding="20"
-                  :delay="ICON_CONFIG.tooltipDelayMs"
+                  :visible="isItemHovered(idx) || isItemActive(idx)"
                 >
                   <div
                     class="gs-item gs-item--list"
@@ -439,13 +450,13 @@ function isItemSelected(localIndex: number): boolean {
               <template v-else-if="layoutMode === 'grid-fixed' || layoutMode === 'grid-auto'">
                 <div class="gs-grid" :style="gridStyle">
                   <MtTooltip
-                    v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
+                    v-for="(item, idx) in items"
                     :key="`${id}-${item.id}-${idx}`"
                     :text="getItemTooltipText(item)"
                     :placement="'bottom'"
                     :offset-y="6"
                     :side-padding="20"
-                    :delay="ICON_CONFIG.tooltipDelayMs"
+                    :visible="isItemHovered(idx) || isItemActive(idx)"
                   >
                     <div
                       class="gs-item gs-item--grid"
@@ -471,13 +482,13 @@ function isItemSelected(localIndex: number): boolean {
               <template v-else-if="layoutMode === 'icon'">
                 <div class="gs-grid gs-grid--icon" :style="iconGridStyle">
                   <MtTooltip
-                    v-for="(item, idx) in (items.length > 0 ? items : (collapsedItems ?? []))"
+                    v-for="(item, idx) in items"
                     :key="`${id}-${item.id}-${idx}`"
                     :text="getItemTooltipText(item)"
                     :placement="'bottom'"
                     :offset-y="6"
                     :side-padding="20"
-                    :delay="ICON_CONFIG.tooltipDelayMs"
+                    :visible="isItemHovered(idx) || isItemActive(idx)"
                   >
                     <div
                       class="gs-item gs-item--icon"

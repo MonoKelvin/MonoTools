@@ -4,6 +4,7 @@ import { computed, ref, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 export type TooltipPlacement = 'top' | 'bottom' | 'left' | 'right'
 
 interface TooltipProps {
+  text?: string
   visible: boolean
   title?: string
   subtitle?: string
@@ -19,6 +20,7 @@ interface TooltipProps {
 }
 
 const props = withDefaults(defineProps<TooltipProps>(), {
+  text: '',
   visible: false,
   title: '',
   subtitle: '',
@@ -48,7 +50,7 @@ let rafId: number | null = null
 let hideRafId: number | null = null
 
 const hasContent = computed(() => {
-  return !!(props.title || props.subtitle || props.path)
+  return !!(props.text || props.title || props.subtitle || props.path)
 })
 
 const showTooltip = computed(() => {
@@ -278,6 +280,12 @@ watch(() => props.visible, (val) => {
   }
 }, { flush: 'post' })
 
+watch(() => props.text, () => {
+  if (props.visible && hasContent.value) {
+    scheduleShow()
+  }
+}, { flush: 'post' })
+
 watch(() => [props.title, props.subtitle, props.path], () => {
   if (props.visible && hasContent.value) {
     scheduleShow()
@@ -344,8 +352,11 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <!-- 默认插槽: 用于承载 trigger 元素 (GroupSection 内的 item 等). -->
+  <slot />
   <Teleport to="body">
     <div
+      v-if="hasContent"
       ref="tooltipRef"
       class="mt-tooltip"
       :class="[
@@ -356,9 +367,13 @@ onBeforeUnmount(() => {
       ]"
       :style="tooltipStyle"
     >
-      <div v-if="title" class="mt-tooltip__title">{{ title }}</div>
-      <div v-if="subtitle" class="mt-tooltip__subtitle">{{ subtitle }}</div>
-      <div v-if="path" class="mt-tooltip__path">{{ path }}</div>
+      <!-- 单段 text 简化渲染 (GroupSection 用法). 多字段 title/subtitle/path 各自独立渲染. -->
+      <div v-if="text" class="mt-tooltip__text">{{ text }}</div>
+      <template v-else>
+        <div v-if="title" class="mt-tooltip__title">{{ title }}</div>
+        <div v-if="subtitle" class="mt-tooltip__subtitle">{{ subtitle }}</div>
+        <div v-if="path" class="mt-tooltip__path">{{ path }}</div>
+      </template>
     </div>
   </Teleport>
 </template>
@@ -498,6 +513,17 @@ onBeforeUnmount(() => {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   word-break: break-all;
+  overflow-wrap: break-word;
+}
+
+/* 通用单段文本 (GroupSection 的 tooltip): 多行显示, 用 title/subtitle/path 的视觉权重. */
+.mt-tooltip__text {
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-line;
+  word-break: break-word;
   overflow-wrap: break-word;
 }
 
